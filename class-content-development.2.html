@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Expert Class: AI for Content Development</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Satoshi:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+    --site-color-brand: #5A67D8;
+    --site-color-cta: #38B2AC;
+    --site-color-secondary: #EDF2F7;
+    --site-color-muted: #A0AEC0;
+    --site-color-text: #2D3748;
+    --site-color-text-light: #4A5568;
+    --site-color-background: #F7FAFC;
+    --site-color-border: #E2E8F0;
+    --site-color-white: #FFFFFF;
+    --site-color-black: #000000;
+    --site-color-success: #48BB78;
+    --site-color-info: #3B82F6;
+    --site-color-light-blue: #EFF6FF;
+}
+
+body {
+    font-family: 'Satoshi', sans-serif;
+    background-color: var(--site-color-secondary);
+    color: var(--site-color-text);
+}
+
+.site-container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+.site-presentation {
+    background-color: var(--site-color-white);
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    padding: 2rem;
+}
+
+.site-presentation__header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.site-presentation__title {
+    font-size: 2.25rem;
+    font-weight: 700;
+    color: var(--site-color-text);
+}
+
+.site-presentation__subtitle {
+    color: var(--site-color-text-light);
+}
+
+.site-slide {
+    display: none;
+    animation: fadeIn 0.5s;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.site-slide--active {
+    display: block;
+}
+
+.site-slide__title {
+    font-size: 1.875rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+}
+
+.site-slide__text {
+    margin-bottom: 1rem;
+}
+
+.site-slide__list {
+    list-style: disc;
+    padding-left: 1.5rem;
+    margin-bottom: 1rem;
+    space-y: 0.5rem;
+}
+
+.site-grid {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.site-grid--cols-2 {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+.site-grid--cols-3 {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+@media (min-width: 768px) {
+    .site-grid--cols-2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .site-grid--cols-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+.site-card {
+    background-color: var(--site-color-secondary);
+    padding: 1rem;
+    border-radius: 0.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.site-card:hover {
+    background-color: var(--site-color-light-blue);
+}
+
+.site-pro-tip {
+    background-color: var(--site-color-light-blue);
+    border-left: 4px solid var(--site-color-info);
+    padding: 1rem;
+    margin: 1.5rem 0;
+    border-radius: 0.25rem;
+}
+
+.site-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+}
+
+.site-table th, .site-table td {
+    border: 1px solid var(--site-color-border);
+    padding: 0.75rem;
+    text-align: left;
+    vertical-align: top;
+}
+
+.site-table th {
+    background-color: var(--site-color-secondary);
+    width: 30%;
+}
+
+.site-code {
+    background-color: var(--site-color-border);
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.site-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.site-modal-overlay--active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.site-modal {
+    background: var(--site-color-white);
+    padding: 2rem;
+    border-radius: 0.5rem;
+    max-width: 600px;
+    width: 90%;
+    transform: scale(0.95);
+    transition: transform 0.3s ease;
+}
+
+.site-modal-overlay--active .site-modal {
+    transform: scale(1);
+}
+
+.site-sortable-list__item {
+    cursor: grab;
+    user-select: none;
+}
+
+.site-sortable-list__item--ghost {
+    background: #cce7ff;
+    opacity: 0.5;
+}
+
+.site-prompt-form {
+    border: 1px solid var(--site-color-border);
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    background-color: var(--site-color-background);
+}
+
+.site-prompt-form__input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--site-color-border);
+    border-radius: 0.375rem;
+    margin-bottom: 1rem;
+    transition: box-shadow 0.2s;
+}
+
+.site-prompt-form__input:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+    border-color: var(--site-color-info);
+}
+
+.site-prompt-form__output {
+    background-color: var(--site-color-white);
+    border: 1px solid var(--site-color-border);
+    padding: 1rem;
+    border-radius: 0.375rem;
+    min-height: 100px;
+    white-space: pre-wrap;
+    font-family: 'Menlo', 'Consolas', monospace;
+    font-size: 0.9em;
+}
+
+.site-button {
+    font-weight: 700;
+    border-radius: 0.375rem;
+    padding: 0.5rem 1rem;
+    transition: background-color 0.2s;
+}
+
+.site-button--primary {
+    background-color: var(--site-color-info);
+    color: var(--site-color-white);
+}
+.site-button--primary:hover {
+    background-color: #2563EB;
+}
+
+.site-button--secondary {
+    background-color: var(--site-color-muted);
+    color: var(--site-color-white);
+}
+.site-button--secondary:hover {
+    background-color: #718096;
+}
+
+.site-button--success {
+    background-color: var(--site-color-success);
+    color: var(--site-color-white);
+}
+
+.site-button--success:hover {
+    background-color: #38A169;
+}
+
+
+.site-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.site-navigation {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 2rem;
+    border-top: 1px solid var(--site-color-border);
+    padding-top: 1.5rem;
+}
+</style>
+</head>
+<body>
+
+<div class="site-container">
+<div class="site-presentation">
+<header class="site-presentation__header">
+<h1 class="site-presentation__title">Expert AI Content Development</h1>
+<p class="site-presentation__subtitle">A Professional Workshop on Strategy, Tools, and Workflow</p>
+</header>
+
+<!-- Slide Container -->
+<main id="slide-container">
+<!-- Slide 1: Introduction -->
+<div id="slide-1" class="site-slide site-slide--active">
+<h2 class="site-slide__title">Welcome & Introductions</h2>
+<p class="site-slide__text">This session moves beyond basic prompting. We'll focus on a strategic framework for integrating AI into a professional content workflow, emphasizing quality, consistency, and efficiency.</p>
+<h3 class="font-semibold text-lg mb-2">Today's Session Goals:</h3>
+<ul class="site-slide__list">
+<li>Understand the landscape of AI-driven content (Office Docs vs. Web).</li>
+<li>Compare platforms and models for specific use cases.</li>
+<li>Learn practical techniques for generating and transforming content.</li>
+<li>Explore automation and integration for multi-step workflows.</li>
+<li>Build a professional review and publishing process.</li>
+</ul>
+</div>
+
+<!-- Slide 2: The Content Landscape -->
+<div id="slide-2" class="site-slide">
+    <h2 class="site-slide__title">The Content Landscape: What, Why, and Where?</h2>
+    <p class="site-slide__text">AI can be applied to two primary domains of content creation, each with different goals and requirements.</p>
+    <div class="site-grid site-grid--cols-2">
+        <div>
+            <h3 class="text-xl font-semibold mb-2">Internal Office Documents</h3>
+            <p class="mb-3"><strong>Focus:</strong> Efficiency, data synthesis, internal communication.</p>
+            <ul class="site-slide__list">
+                <li>Reports & Proposals</li>
+                <li>Presentations & Slides</li>
+                <li>Spreadsheets & Data Analysis</li>
+                <li>Meeting Summaries & Emails</li>
+            </ul>
+        </div>
+        <div>
+            <h3 class="text-xl font-semibold mb-2">External Web Content</h3>
+            <p class="mb-3"><strong>Focus:</strong> Audience engagement, SEO, brand voice, lead generation.</p>
+            <ul class="site-slide__list">
+                <li>Blog Posts & Articles</li>
+                <li>Social Media Updates</li>
+                <li>Marketing & Ad Copy</li>
+                <li>Website Landing Pages</li>
+            </ul>
+        </div>
+    </div>
+    <div class="site-pro-tip">
+        <p><strong>Use Cases for Automation:</strong> AI excels at drafting initial versions, summarizing long documents, transforming content from one format to another (e.g., a report into a presentation), and optimizing text for specific channels (like SEO).</p>
+    </div>
+</div>
+
+
+<!-- Slide 3: Spectrum Overview -->
+<div id="slide-3" class="site-slide">
+<h2 class="site-slide__title">The Spectrum of AI-Generated Content</h2>
+<p class="site-slide__text">Beyond documents and web text, AI empowers creators across a wide spectrum of formats. Click on any category to learn more.</p>
+<div class="site-grid site-grid--cols-3">
+<div class="site-card" onclick="showContentModal('text')">Text-Based</div>
+<div class="site-card" onclick="showContentModal('visual')">Visual</div>
+<div class="site-card" onclick="showContentModal('audio')">Audio</div>
+<div class="site-card" onclick="showContentModal('video')">Video & Animation</div>
+<div class="site-card" onclick="showContentModal('code')">Code & Software</div>
+<div class="site-card" onclick="showContentModal('data')">Data & Analytics</div>
+<div class="site-card" onclick="showContentModal('educational')">Educational</div>
+<div class="site-card" onclick="showContentModal('interactive')">Interactive</div>
+</div>
+<div class="site-pro-tip">
+<p><strong>Key Takeaway:</strong> Selecting the right tool depends on the content format, desired quality (fidelity), and your integration needs.</p>
+</div>
+</div>
+
+<!-- Slide 4: Choosing Your Tools -->
+<div id="slide-4" class="site-slide">
+<h2 class="site-slide__title">Choosing Your Tools: Platforms & Models</h2>
+<p class="site-slide__text">The platform you use for prompting matters. Different tools are suited for different tasks.</p>
+<table class="site-table">
+    <thead>
+        <tr><th>Tool Category</th><th>Best For</th><th>Pros</th><th>Cons</th></tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td class="font-semibold">General Chat Interfaces<br><small>(ChatGPT, Gemini)</small></td>
+            <td>Brainstorming, drafting, iteration, summarization, general Q&A.</td>
+            <td>Highly flexible, conversational, good for creative tasks.</td>
+            <td>Can lack specific formatting, requires copy-pasting, not integrated.</td>
+        </tr>
+        <tr>
+            <td class="font-semibold">Office Suite Integrations<br><small>(Microsoft 365 Copilot)</small></td>
+            <td>Drafting emails, summarizing documents, creating presentations from reports.</td>
+            <td>Seamlessly integrated into existing workflow (Word, PowerPoint, Outlook).</td>
+            <td>Less flexible for non-standard tasks, dependent on Microsoft ecosystem.</td>
+        </tr>
+        <tr>
+            <td class="font-semibold">CMS & Marketing Tools<br><small>(Jasper, Copy.ai)</small></td>
+            <td>Short-form marketing copy, SEO optimization, social media posts, ad campaigns.</td>
+            <td>Pre-built templates for specific marketing tasks, direct integration with platforms.</td>
+            <td>Can be expensive, less effective for long-form or technical content.</td>
+        </tr>
+        <tr>
+            <td class="font-semibold">IDE / Code Editors<br><small>(VS Code w/ Copilot)</small></td>
+            <td>Generating code, writing documentation, debugging, creating structured data.</td>
+            <td>Deeply integrated with code, understands project context.</td>
+            <td>Highly specialized for development tasks, not for general writing.</td>
+        </tr>
+    </tbody>
+</table>
+</div>
+
+<!-- Slide 5: The CARE Framework -->
+<div id="slide-5" class="site-slide">
+<h2 class="site-slide__title">Practical Technique: The CARE Method</h2>
+<p class="site-slide__text">Effective prompts are built on four pillars. Remember to <strong>CARE</strong>:</p>
+<ul class="list-none space-y-3 mb-6">
+<li><strong style="color: var(--site-color-info);">C - Context:</strong> Provide the background. Who is the audience? What is the purpose?</li>
+<li><strong style="color: var(--site-color-info);">A - Action:</strong> State the primary verb. "Write," "summarize," "transform," "create a table."</li>
+<li><strong style="color: var(--site-color-info);">R - Role:</strong> Assign a persona to the AI. "Act as a seasoned financial analyst."</li>
+<li><strong style="color: var(--site-color-info);">E - Explicit Instructions:</strong> Define the constraints. Specify tone, format, length, and keywords.</li>
+</ul>
+<div class="site-prompt-form mt-4">
+<label for="prompt-input-5" class="font-semibold block mb-2">Demo: Generate a Business Document Outline</label>
+<textarea id="prompt-input-5" class="site-prompt-form__input" rows="8">
+ROLE: Act as a senior project manager.
+
+ACTION: Create a detailed project proposal outline.
+
+CONTEXT: The proposal is for an internal project to develop a new employee training portal. The audience is senior management and the goal is to secure funding and approval.
+
+EXPLICIT INSTRUCTIONS: The outline should include sections for Introduction, Problem Statement, Proposed Solution, Timeline, Budget, and Success Metrics. The tone should be professional and persuasive.</textarea>
+<button onclick="submitPrompt(5)" class="site-button site-button--primary w-full">Generate</button>
+<div class="mt-4">
+<h4 class="font-semibold">AI Response:</h4>
+<div id="prompt-output-5" class="site-prompt-form__output"></div>
+</div>
+</div>
+</div>
+
+<!-- Slide 6: The User Story Format -->
+<div id="slide-6" class="site-slide">
+<h2 class="site-slide__title">Practical Technique: The User Story</h2>
+<p class="site-slide__text">Borrowed from agile software development, this format is excellent for focusing on the <strong>goal</strong> of the content.</p>
+<div class="bg-gray-100 p-4 rounded-lg text-center">
+<p class="text-lg">"As a <span class="font-bold text-purple-600">[Persona]</span>, I want to <span class="font-bold text-green-600">[Action]</span>, so that <span class="font-bold text-red-600">[Outcome]</span>."</p>
+</div>
+<div class="site-pro-tip mt-4"><p><strong>Best for:</strong> Quickly generating ideas for blog posts, marketing angles, and social media content that is audience-focused.</p></div>
+<div class="site-prompt-form mt-4">
+<label for="prompt-input-6" class="font-semibold block mb-2">Demo: Generate a Blog Post Idea</label>
+<textarea id="prompt-input-6" class="site-prompt-form__input" rows="4">As a small business owner, I want to understand the basics of SEO, so that I can improve my website's visibility on Google.</textarea>
+<button onclick="submitPrompt(6)" class="site-button site-button--primary w-full">Generate</button>
+<div class="mt-4">
+<h4 class="font-semibold">AI Response:</h4>
+<div id="prompt-output-6" class="site-prompt-form__output"></div>
+</div>
+</div>
+</div>
+
+<!-- Slide 7: Job Aid: Prompt Quality Rubric -->
+<div id="slide-7" class="site-slide">
+<h2 class="site-slide__title">Job Aid: Prompt Quality Rubric</h2>
+<p class="site-slide__text">Use this rubric to evaluate and improve your prompts before you even hit "generate." A better prompt dramatically reduces editing time later.</p>
+<table class="site-table">
+<thead>
+<tr>
+<th>Criteria</th>
+<th>Needs Improvement (1)</th>
+<th>Good (2)</th>
+<th>Excellent (3)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="font-semibold">Clarity & Specificity</td>
+<td>Vague, ambiguous action.</td>
+<td>Clear action, some details.</td>
+<td>Precise action, detailed constraints (format, length).</td>
+</tr>
+<tr>
+<td class="font-semibold">Context & Audience</td>
+<td>No context provided.</td>
+<td>Audience or purpose is mentioned.</td>
+<td>Audience persona and content goal are both clear.</td>
+</tr>
+<tr>
+<td class="font-semibold">Role Definition</td>
+<td>No role assigned.</td>
+<td>A generic role is assigned ("expert").</td>
+<td>A specific, expert role with relevant perspective is defined.</td>
+</tr>
+<tr>
+<td class="font-semibold">Example Provided</td>
+<td>No example given.</td>
+<td>A simple example of desired output is included.</td>
+<td>A detailed example (few-shot) is provided to guide structure and tone.</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<!-- Slide 8: Content Transformations, Part 1 -->
+<div id="slide-8" class="site-slide">
+<h2 class="site-slide__title">Practical Technique: Content Transformations, Part 1</h2>
+<p class="site-slide__text">Beyond generation, AI excels at transforming existing content. These commands focus on reshaping and restyling the core message.</p>
+<table class="site-table">
+<tr><th class="font-semibold">Summarization</th><td>Produce a shorter version of text. <br>• <strong>Abstractive:</strong> Generates new phrasing. <br>• <strong>Extractive:</strong> Pulls key sentences verbatim.</td></tr>
+<tr><th class="font-semibold">Elaboration / Expansion</th><td>Flesh out a brief input with more detail. <br><em>Example: Turn "Photosynthesis converts sunlight to energy" into a full paragraph.</em></td></tr>
+<tr><th class="font-semibold">Paraphrasing / Rewriting</th><td>Restate text in different words while keeping the meaning. <br><em>Example: "Paraphrase this in a more conversational tone."</em></td></tr>
+<tr><th class="font-semibold">Simplification</th><td>Convert complex text into plain language. <br><em>Example: "Simplify this explanation of blockchain for a 5th grader."</em></td></tr>
+<tr><th class="font-semibold">Tone & Style Adjustment</th><td>Shift the voice, formality, or style. <br><em>Example: "Make this more professional" or "Rewrite this in the style of a Shakespearean sonnet."</em></td></tr>
+<tr><th class="font-semibold">Sentiment Rewriting</th><td>Change the emotional valence or perspective. <br><em>Example: "Make this sound more positive" or "Rewrite from a skeptical viewpoint."</em></td></tr>
+</table>
+</div>
+
+<!-- Slide 9: Content Transformations, Part 2 -->
+<div id="slide-9" class="site-slide">
+<h2 class="site-slide__title">Practical Technique: Content Transformations, Part 2</h2>
+<p class="site-slide__text">These commands focus on restructuring content for new formats and extracting specific data for repurposing.</p>
+<table class="site-table">
+<tr><th class="font-semibold">Format Conversion</th><td>Change the structural format of content. <br><em>Example: Convert a <code class="site-code">bullet-point list</code> into a <code class="site-code">narrative paragraph</code>, or a <code class="site-code">table</code> into <code class="site-code">CSV</code>.</em></td></tr>
+<tr><th class="font-semibold">Outline & Structure Generation</th><td>Derive or impose an organized framework. <br><em>Example: "Create a 5-point outline of this article."</em></td></tr>
+<tr><th class="font-semibold">Information Extraction</th><td>Pull specific data items out of unstructured text. <br><em>Example: "Extract all named entities (people, places, dates)" or "List the key takeaways."</em></td></tr>
+<tr><th class="font-semibold">Q&A Generation</th><td>Produce quiz questions (or answers) based on source content. <br><em>Example: "Generate 5 multiple-choice questions from this text."</em></td></tr>
+<tr><th class="font-semibold">Metadata & Captioning</th><td>Generate titles, SEO descriptions, or alt-text. <br><em>Example: "Write an SEO-optimized meta description under 160 characters for this article."</em></td></tr>
+<tr><th class="font-semibold">Translation</th><td>Convert text from one natural language to another. <br><em>Example: "Translate this paragraph into Spanish."</em></td></tr>
+</table>
+</div>
+
+<!-- Slide 10: Practice with Transformations -->
+<div id="slide-10" class="site-slide">
+<h2 class="site-slide__title">Practice: Using Transformation Commands</h2>
+<p class="site-slide__text">Let's apply these concepts. Use a transformation command on the text provided below to repurpose it for a new format.</p>
+<div class="site-prompt-form">
+<label for="prompt-input-10" class="font-semibold block mb-2">Demo: Transform a Report into Presentation Points</label>
+<textarea id="prompt-input-10" class="site-prompt-form__input" rows="8">
+Command: Summarize the following text into 5 key bullet points suitable for a PowerPoint presentation.
+
+Text: The quarterly sales report indicates a 15% growth in the North American market, primarily driven by the successful launch of the 'Innovate' product line. However, the European market saw a slight decline of 3%, which is attributed to increased competition and supply chain disruptions. Key recommendations include doubling down on marketing efforts for 'Innovate' in North America and developing a new pricing strategy for Europe to regain market share.</textarea>
+<button onclick="submitPrompt(10)" class="site-button site-button--primary w-full">Generate</button>
+<div class="mt-4">
+<h4 class="font-semibold">AI Response:</h4>
+<div id="prompt-output-10" class="site-prompt-form__output"></div>
+</div>
+</div>
+</div>
+
+<!-- Slide 11: Advanced Technique: Few-Shot Prompting -->
+<div id="slide-11" class="site-slide">
+<h2 class="site-slide__title">Advanced Technique: Few-Shot Prompting</h2>
+<p class="site-slide__text">One of the best ways to get a precisely formatted response is to give the AI examples of what you want. This is called <strong>few-shot prompting</strong>.</p>
+<div class="site-prompt-form">
+<label for="prompt-input-11" class="font-semibold block mb-2">Guide the AI with an Example:</label>
+<p class="text-sm text-gray-600 mb-4">Your task is to generate marketing taglines. Provide a few examples in your prompt to set the pattern.</p>
+<textarea id="prompt-input-11" class="site-prompt-form__input" rows="7">
+Generate 3 marketing taglines for a new brand of sustainable coffee. Follow the pattern below.
+
+Product: Smartwatch
+Tagline: Your day, at a glance.
+---
+Product: Noise-cancelling headphones
+Tagline: The world, quieted.
+---
+Product: Sustainable coffee
+Tagline:</textarea>
+<button onclick="submitPrompt(11)" class="site-button site-button--primary w-full">Generate</button>
+<div class="mt-4">
+<h4 class="font-semibold">AI Response:</h4>
+<div id="prompt-output-11" class="site-prompt-form__output"></div>
+</div>
+</div>
+</div>
+
+<!-- Slide 12: Improving Prompts: Progressive Iteration -->
+<div id="slide-12" class="site-slide">
+<h2 class="site-slide__title">Improving Prompts: Progressive Iteration</h2>
+<p class="site-slide__text">Your first output is a draft, not a final product. Use conversational follow-ups and transformation commands to refine the result. This is more efficient than rewriting a long prompt from scratch.</p>
+<p class="mb-4">Powerful iterative commands:</p>
+<ul class="site-slide__list">
+<li><strong>"Regenerate the previous response, but..."</strong> (make it more formal, simplify the language).</li>
+<li><strong>"Expand on the second point."</strong></li>
+<li><strong>"Transform the bullet points into a paragraph."</strong></li>
+<li><strong>"Now, do the same for this topic: [new topic]."</strong> (Chaining prompts)</li>
+</ul>
+<div class="site-prompt-form">
+<label for="prompt-input-12" class="font-semibold block mb-2">Iterate on a Previous Prompt:</label>
+<p class="text-sm text-gray-600 mb-4">Imagine you just generated a list of marketing ideas. Now, ask the AI to elaborate on one of them.</p>
+<textarea id="prompt-input-12" class="site-prompt-form__input" rows="4">
+That's a good start. Take the idea about a 'social media photo contest' and expand it into a brief plan. Include the goal, platform, and a sample announcement post.</textarea>
+<button onclick="submitPrompt(12)" class="site-button site-button--primary w-full">Generate</button>
+<div class="mt-4">
+<h4 class="font-semibold">AI Response:</h4>
+<div id="prompt-output-12" class="site-prompt-form__output"></div>
+</div>
+</div>
+</div>
+
+<!-- Slide 13: Building a Prompt Template Library -->
+<div id="slide-13" class="site-slide">
+<h2 class="site-slide__title">Building a Prompt Template Library</h2>
+<p class="site-slide__text">Don't reinvent the wheel. Create a shared library of high-performing prompts for your team's most common tasks (e.g., blog post creation, social media updates, email newsletters).</p>
+<p class="font-semibold mb-2">Example Modular Blog Post Template:</p>
+<pre class="bg-gray-200 p-4 rounded-md mb-4 text-sm whitespace-pre-wrap">
+# ROLE
+Act as an expert [INDUSTRY] content strategist and writer, skilled in SEO and engaging storytelling.
+
+# ACTION
+Write a comprehensive, well-structured blog post.
+
+# CONTEXT
+- Topic: [Insert Topic]
+- Target Audience: [Describe Audience Persona]
+- Goal/Intent: [e.g., To educate beginners, to drive sign-ups, to compare products]
+
+# EXPLICIT INSTRUCTIONS
+- Word Count: Approximately [Number] words.
+- Tone: [e.g., Professional, witty, empathetic, technical]
+- Keywords: Naturally include the following: [Keyword 1, Keyword 2, Keyword 3]
+- Structure: Include an introduction, 3-4 main body sections with subheadings, and a concluding summary.
+- Call to Action (CTA): Conclude with a CTA to [e.g., 'Download our free guide', 'Sign up for a demo'].
+- Format: Output as clean Markdown.
+</pre>
+<div class="site-pro-tip"><p><strong>Pro-Tip:</strong> Store your templates in a shared document, a notes app, or a text expander tool for quick access.</p></div>
+</div>
+
+<!-- Slide 14: Automation & Integration -->
+<div id="slide-14" class="site-slide">
+    <h2 class="site-slide__title">Automation & Integration</h2>
+    <p class="site-slide__text">The true power of AI is unlocked when you connect tools to automate multi-step workflows, saving significant time and effort.</p>
+    <h3 class="text-xl font-semibold mt-6 mb-2">Example Multi-Step Workflow:</h3>
+    <p class="text-center text-gray-600 my-4">
+        <span class="font-bold" style="color: var(--site-color-info);">Single Prompt/Document</span> → 
+        <span class="font-bold text-purple-600">AI Processing</span> → 
+        <span class="font-bold" style="color: var(--site-color-success);">Multiple Content Outputs</span>
+    </p>
+    <ol class="list-decimal list-inside space-y-2">
+        <li><strong>Start with a "Source of Truth" Document:</strong> A detailed project brief, research report, or product document.</li>
+        <li><strong>Use AI to Transform & Generate:</strong>
+            <ul class="site-slide__list ml-6">
+                <li>Extract key points to create a <strong>PowerPoint presentation</strong>.</li>
+                <li>Summarize the report into a <strong>blog post</strong> for the company website.</li>
+                <li>Generate 5-10 social media posts from the blog post.</li>
+                <li>Draft an internal <strong>email announcement</strong> based on the original document.</li>
+            </ul>
+        </li>
+        <li><strong>One-Click Publishing (The Goal):</strong> Advanced workflows can use tools like Zapier or Make.com to connect the AI's output directly to WordPress, Hootsuite, or Mailchimp, enabling near-instant publishing after human review.</li>
+    </ol>
+</div>
+
+<!-- Slide 15: Live Demo -->
+<div id="slide-15" class="site-slide">
+    <h2 class="site-slide__title">Live Demo: End-to-End Content Production</h2>
+    <p class="site-slide__text">Let's put it all together. We will now perform a live demonstration of an automated content workflow.</p>
+    <div class="bg-gray-100 p-6 rounded-lg">
+        <h3 class="font-semibold text-lg mb-3">Demo Steps:</h3>
+        <ol class="list-decimal list-inside space-y-2">
+            <li><strong>The Concept:</strong> Start with a single, detailed prompt for a new product launch.</li>
+            <li><strong>Generate Multiple Assets:</strong>
+                <ul class="site-slide__list ml-6">
+                    <li>Create a <strong>Business Proposal Outline</strong> (Word/Docs).</li>
+                    <li>Generate a <strong>5-Slide Presentation</strong> from the proposal outline.</li>
+                    <li>Write a <strong>Blog Post Announcing the Launch</strong> for the website.</li>
+                </ul>
+            </li>
+            <li><strong>Review and Edit:</strong> Quickly review the AI-generated content for accuracy and brand voice using our checklist.</li>
+            <li><strong>Publish & Share:</strong> (Simulated) Show how the final content could be pushed to a website or shared with a team.</li>
+        </ol>
+    </div>
+</div>
+
+
+<!-- Slide 16: The Professional Workflow -->
+<div id="slide-16" class="site-slide">
+<h2 class="site-slide__title">The Professional Workflow: A Summary</h2>
+<p class="site-slide__text">Integrating AI effectively requires a structured process. This ensures quality and accountability.</p>
+<ol class="list-decimal list-inside space-y-3">
+<li class="font-semibold">Phase 1: Strategy & Prompting (Human-led)
+<ul class="site-slide__list ml-6 font-normal">
+<li>Define content goals, audience, and keywords.</li>
+<li>Select or create a high-quality prompt template.</li>
+<li>Generate the first draft using the AI.</li>
+</ul>
+</li>
+<li class="font-semibold">Phase 2: Iteration & Refinement (Human-AI Collaboration)
+<ul class="site-slide__list ml-6 font-normal">
+<li>Use transformation commands (simplify, expand, change tone) to refine sections.</li>
+<li>Generate variations for headlines or introductions.</li>
+</ul>
+</li>
+<li class="font-semibold">Phase 3: Review & Publishing (Human-led)
+<ul class="site-slide__list ml-6 font-normal">
+<li>Conduct a thorough review using the Content Checklist.</li>
+<li>Fact-check all claims, data, and names.</li>
+<li>Edit for brand voice, style, and grammar.</li>
+<li>Publish to the CMS/LMS.</li>
+</ul>
+</li>
+</ol>
+</div>
+
+<!-- Slide 17: Job Aid: The AI Content Review Checklist -->
+<div id="slide-17" class="site-slide">
+<h2 class="site-slide__title">Job Aid: Content Review Checklist</h2>
+<p class="site-slide__text"><strong>NEVER publish raw AI output.</strong> Use this checklist to ensure every piece of content is accurate, ethical, and aligned with your brand before it goes live.</p>
+<div class="space-y-3">
+<div class="flex items-start"><input type="checkbox" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-1 mr-3"><label><strong>Accuracy:</strong> Are all facts, statistics, names, and dates correct? Have they been verified with a primary source?</label></div>
+<div class="flex items-start"><input type="checkbox" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-1 mr-3"><label><strong>Originality:</strong> Does the content pass a plagiarism check? Is it sufficiently unique and not just a rehash of existing sources?</label></div>
+<div class="flex items-start"><input type="checkbox" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-1 mr-3"><label><strong>Brand Voice & Tone:</strong> Does the language align with our company's style guide? Is the tone appropriate for the target audience?</label></div>
+<div class="flex items-start"><input type="checkbox" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-1 mr-3"><label><strong>Goal Alignment:</strong> Does the content fulfill the original intent? Is the call-to-action clear and compelling?</label></div>
+<div class="flex items-start"><input type="checkbox" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-1 mr-3"><label><strong>Readability & Flow:</strong> Is the content well-structured, easy to read, and logically organized?</label></div>
+<div class="flex items-start"><input type="checkbox" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-1 mr-3"><label><strong>Ethical Considerations:</strong> Is the content free of bias? Does it cite sources where necessary?</label></div>
+</div>
+</div>
+
+<!-- Slide 18: Ethics and Professional Standards -->
+<div id="slide-18" class="site-slide">
+<h2 class="site-slide__title">Ethics and Professional Standards</h2>
+<p class="site-slide__text">Using AI responsibly is non-negotiable. Uphold professional standards to maintain trust and quality.</p>
+<ul class="site-slide__list">
+<li><strong>Accountability:</strong> The human author is always accountable for the final published content, not the AI.</li>
+<li><strong>Transparency:</strong> Consider when it's appropriate to disclose the use of AI. For journalism or academic work, this is often required. For marketing copy, it may be less critical.</li>
+<li><strong>Citing Sources:</strong> If the AI provides a specific data point or quote, ask it for the source. Then, independently verify that source. Do not trust AI-provided URLs without checking them.</li>
+<li><strong>Versioning Prompts:</strong> When working on a large project, save the version of the prompt used to generate specific text. This is crucial for being able to reproduce or refine work later.</li>
+</ul>
+</div>
+
+<!-- Slide 19: Q&A and Open Discussion -->
+<div id="slide-19" class="site-slide">
+<h2 class="site-slide__title">Q&A and Open Discussion</h2>
+<p class="site-slide__text">Let's open the floor for questions. We can troubleshoot real-world scenarios or discuss platform recommendations for your specific use cases.</p>
+<h3 class="text-xl font-bold mb-4">What challenges are you facing in your content workflow?</h3>
+</div>
+
+<!-- Slide 20: Wrap-up & Resources -->
+<div id="slide-20" class="site-slide">
+<h2 class="site-slide__title">Wrap-up & Resources</h2>
+<p class="site-slide__text">Thank you for your participation! We've covered a comprehensive framework for leveraging AI in your professional content workflow.</p>
+<div class="site-grid site-grid--cols-2">
+    <div>
+        <h3 class="font-semibold text-lg mb-2">Key Takeaways:</h3>
+        <ul class="site-slide__list">
+            <li>Differentiate between Office and Web content needs.</li>
+            <li>Use structured frameworks like CARE to build effective prompts.</li>
+            <li>Master transformation commands for efficient editing and repurposing.</li>
+            <li>Always apply a human-led review process before publishing.</li>
+        </ul>
+    </div>
+    <div>
+        <h3 class="font-semibold text-lg mb-2">Resources & Next Steps:</h3>
+        <ul class="site-slide__list">
+            <li><strong>Prompt Library:</strong> A link to our shared library of prompt templates will be emailed to you.</li>
+            <li><strong>Tool Guide:</strong> We'll also send a guide with links to the tools discussed today.</li>
+            <li><strong>Vibe Code Circle:</strong> Join our community for ongoing discussions, events, and collaboration opportunities!</li>
+        </ul>
+    </div>
+</div>
+</div>
+
+
+<!-- Slide 21: Survey -->
+<div id="slide-21" class="site-slide">
+<h2 class="site-slide__title">What's Next? Prioritize Your Learning</h2>
+<p class="site-slide__text">To help guide future deep-dive sessions, please rank the following content types based on your interest. Drag and drop to order your top 5 priorities.</p>
+<div class="site-grid site-grid--cols-2">
+<div>
+<h3 class="font-semibold text-lg mb-2">Drag to Rank Your Top 5:</h3>
+<ul id="sortable-survey" class="space-y-2">
+<li class="site-sortable-list__item bg-gray-100 p-3 rounded-lg border">Text-Based</li>
+<li class="site-sortable-list__item bg-gray-100 p-3 rounded-lg border">Visual</li>
+<li class="site-sortable-list__item bg-gray-100 p-3 rounded-lg border">Audio</li>
+<li class="site-sortable-list__item bg-gray-100 p-3 rounded-lg border">Video & Animation</li>
+<li class="site-sortable-list__item bg-gray-100 p-3 rounded-lg border">Code & Software</li>
+<li class="site-sortable-list__item bg-gray-100 p-3 rounded-lg border">Data & Analytics</li>
+<li class="site-sortable-list__item bg-gray-100 p-3 rounded-lg border">Educational</li>
+<li class="site-sortable-list__item bg-gray-100 p-3 rounded-lg border">Interactive</li>
+</ul>
+</div>
+<div class="mt-6 md:mt-0">
+<h3 class="font-semibold text-lg mb-2">Copy Your Priority List:</h3>
+<p class="text-sm text-gray-600 mb-2">Click the button below to copy your ranked list. You can then paste this into a message to the instructor.</p>
+<button id="copySurveyBtn" class="site-button site-button--success w-full">Copy My Top 5 Priorities</button>
+<textarea id="survey-output" class="w-full mt-4 p-2 bg-gray-50 border rounded-md h-40" readonly></textarea>
+</div>
+</div>
+</div>
+
+
+</main>
+
+<!-- Navigation -->
+<footer class="site-navigation">
+<button id="prevBtn" class="site-button site-button--secondary">Previous</button>
+<div id="slide-counter" class="text-sm text-gray-500 font-medium"></div>
+<button id="nextBtn" class="site-button site-button--primary">Next</button>
+</footer>
+</div>
+</div>
+
+<!-- Modal Structure -->
+<div id="content-modal" class="site-modal-overlay">
+    <div class="site-modal">
+        <h3 id="modal-title" class="text-2xl font-bold mb-4"></h3>
+        <p id="modal-description" class="mb-4"></p>
+        <h4 class="font-semibold text-lg mt-4 mb-2">Popular AI Models:</h4>
+        <p id="modal-models"></p>
+        <h4 class="font-semibold text-lg mt-4 mb-2">Popular Tools:</h4>
+        <p id="modal-tools"></p>
+        <button onclick="closeContentModal()" class="site-button site-button--primary mt-6 float-right">Close</button>
+    </div>
+</div>
+
+<script>
+let currentSlide = 1;
+const totalSlides = document.querySelectorAll('.site-slide').length;
+
+const contentDetails = {
+    text: {
+        title: 'Text-Based Content',
+        description: 'This includes blogs, articles, marketing copy, creative writing, and business reports. It is the foundation of most digital communication and SEO strategies.',
+        models: 'GPT-4o, Gemini 1.5 Pro, Claude 3 Opus, Llama 3.',
+        tools: 'ChatGPT, Google Gemini, Jasper, Copy.ai, Writesonic.'
+    },
+    visual: {
+        title: 'Visual Content',
+        description: 'Creating compelling visuals from text descriptions, such as illustrations, logos, infographics, and UI mockups. Essential for branding and engagement.',
+        models: 'Midjourney, DALL-E 3, Stable Diffusion 3, Ideogram.',
+        tools: 'Midjourney (via Discord), ChatGPT (DALL-E 3), Leonardo.Ai, Magnific AI.'
+    },
+    audio: {
+        title: 'Audio Content',
+        description: 'Generating voiceovers, narration, custom music tracks, and sound effects. AI can now clone voices and create royalty-free music tailored to a specific mood.',
+        models: 'ElevenLabs, Murf AI, Suno, Udio.',
+        tools: 'ElevenLabs, Murf.ai, Suno, Descript, Audacity (with plugins).'
+    },
+    video: {
+        title: 'Video & Animation',
+        description: 'The newest frontier. Generating short video clips, talking head animations from photos, and applying complex visual styles to existing footage.',
+        models: 'Sora (OpenAI), Veo (Google), Kling, Luma AI.',
+        tools: 'Runway, Pika, Luma Labs, HeyGen (for avatars), Synthesia.'
+    },
+    code: {
+        title: 'Code & Software',
+        description: 'Accelerating the development process by generating code snippets, functions, full-stack prototypes, and providing debugging assistance.',
+        models: 'GPT-4o, Gemini 1.5 Pro, GitHub Copilot (Codex).',
+        tools: 'GitHub Copilot, Amazon CodeWhisperer, Replit AI, v0.dev.'
+    },
+    data: {
+        title: 'Data & Analytics',
+        description: 'Analyzing datasets to generate insights, create interactive dashboards, and build predictive models for tasks like sales forecasting or customer churn.',
+        models: 'GPT-4 (Advanced Data Analysis), Gemini, Claude 3.',
+        tools: 'ChatGPT (with data analysis), Julius AI, Microsoft Power BI, Tableau.'
+    },
+    educational: {
+        title: 'Educational Content',
+        description: 'Creating bespoke learning materials such as lesson plans, curriculum outlines, quiz questions, and step-by-step tutorials.',
+        models: 'GPT-4, Claude 3, Gemini.',
+        tools: 'ChatGPT, Curipod, MagicSchool.ai, Khanmigo (by Khan Academy).'
+    },
+    interactive: {
+        title: 'Interactive Experiences',
+        description: 'Building dynamic, conversational systems like customer service chatbots, virtual tutors, and personalized recommendation engines.',
+        models: 'GPT-4 (for logic), RAG-based systems.',
+        tools: 'Voiceflow, Botpress, Character.AI, Stack AI.'
+    }
+};
+
+function showContentModal(contentType) {
+    const details = contentDetails[contentType];
+    if (!details) return;
+
+    document.getElementById('modal-title').textContent = details.title;
+    document.getElementById('modal-description').textContent = details.description;
+    document.getElementById('modal-models').textContent = details.models;
+    document.getElementById('modal-tools').textContent = details.tools;
+
+    document.getElementById('content-modal').classList.add('site-modal-overlay--active');
+}
+
+function closeContentModal() {
+    document.getElementById('content-modal').classList.remove('site-modal-overlay--active');
+}
+
+function showSlide(n) {
+    const slides = document.querySelectorAll('.site-slide');
+    slides.forEach((slide, index) => {
+        slide.classList.remove('site-slide--active');
+        if ((index + 1) === n) {
+            slide.classList.add('site-slide--active');
+        }
+    });
+
+    document.getElementById('prevBtn').disabled = n === 1;
+    document.getElementById('nextBtn').disabled = n === totalSlides;
+
+    document.getElementById('slide-counter').innerText = `Slide ${n} of ${totalSlides}`;
+}
+
+
+function changeSlide(n) {
+    currentSlide += n;
+    if (currentSlide > totalSlides) currentSlide = totalSlides;
+    if (currentSlide < 1) currentSlide = 1;
+    showSlide(currentSlide);
+}
+
+async function submitPrompt(slideNumber) {
+    const input = document.getElementById(`prompt-input-${slideNumber}`);
+    const output = document.getElementById(`prompt-output-${slideNumber}`);
+    const button = input.nextElementSibling;
+    const originalButtonText = button.textContent;
+    const promptText = input.value.trim();
+
+    if (!promptText) {
+        output.textContent = "Please enter a prompt.";
+        return;
+    }
+
+    output.textContent = "Generating response...";
+    button.disabled = true;
+    button.textContent = 'Thinking...';
+
+    try {
+        const apiUrl = 'https://vibecodecircle.com/wp-json/vibe-code/v1/proxy';
+        
+        const payload = {
+            contents: [{
+                role: "user",
+                parts: [{ text: promptText }]
+            }]
+        };
+
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            throw new Error(`API request failed with status ${response.status}`);
+        }
+
+        const result = await response.json();
+        const aiResponse = result?.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I could not generate a valid response. Please try again.';
+        
+        output.textContent = aiResponse;
+
+    } catch (error) {
+        output.textContent = `An error occurred: ${error.message}. Please check the console for details.`;
+        console.error("API Call failed:", error);
+    } finally {
+        button.disabled = false;
+        button.textContent = originalButtonText;
+    }
+}
+
+function updateSurveyOutput() {
+    const surveyList = document.getElementById('sortable-survey');
+    const items = Array.from(surveyList.getElementsByTagName('li'));
+    let surveyText = "Here are my top 5 content priorities for future sessions:\n\n";
+    items.slice(0, 5).forEach((item, index) => {
+        surveyText += `${index + 1}. ${item.textContent}\n`;
+    });
+    document.getElementById('survey-output').value = surveyText;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    showSlide(currentSlide);
+    
+    document.getElementById('prevBtn').addEventListener('click', () => changeSlide(-1));
+    document.getElementById('nextBtn').addEventListener('click', () => changeSlide(1));
+
+
+    const sortableList = document.getElementById('sortable-survey');
+    if (sortableList) {
+        new Sortable(sortableList, {
+            animation: 150,
+            ghostClass: 'site-sortable-list__item--ghost',
+            onEnd: updateSurveyOutput
+        });
+        // Initial call to populate the textarea
+        updateSurveyOutput();
+    }
+
+    const copyBtn = document.getElementById('copySurveyBtn');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', () => {
+            const surveyOutput = document.getElementById('survey-output');
+            surveyOutput.select();
+            document.execCommand('copy');
+            copyBtn.textContent = 'Copied!';
+            setTimeout(() => {
+                copyBtn.textContent = 'Copy My Top 5 Priorities';
+            }, 2000);
+        });
+    }
+    
+    const modal = document.getElementById('content-modal');
+    if(modal) {
+        modal.addEventListener('click', closeContentModal);
+        modal.querySelector('.site-modal').addEventListener('click', (e) => e.stopPropagation());
+    }
+});
+</script>
+
+</body>
+</html>
