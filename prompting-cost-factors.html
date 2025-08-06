@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Anatomy of AI Prompt Costs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            scroll-behavior: smooth;
+        }
+        .graph-container {
+            width: 100%;
+            height: 100%;
+            min-height: 600px;
+        }
+        .nodes circle {
+            cursor: pointer;
+            transition: transform 0.2s ease-in-out, filter 0.2s ease-in-out;
+        }
+        .nodes circle:hover {
+            transform: scale(1.1);
+            filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.7));
+        }
+        .links line {
+            stroke-opacity: 0.6;
+        }
+        .labels text {
+            pointer-events: none;
+            font-size: 12px;
+            fill: #E5E7EB; /* gray-200 */
+            text-shadow: 0 1px 3px rgba(0,0,0,0.7);
+        }
+        .explanation-card {
+            transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200">
+
+    <div class="container mx-auto px-4 py-8 md:py-12">
+        <header class="text-center mb-10">
+            <h1 class="text-4xl md:text-5xl font-bold text-white mb-2">The Anatomy of AI Prompt Costs</h1>
+            <p class="text-lg text-gray-400 max-w-3xl mx-auto">An interactive guide to what drives the price of a single interaction with a Large Language Model (LLM).</p>
+        </header>
+
+        <div class="flex flex-col lg:flex-row gap-8">
+            <!-- Graph Visualization -->
+            <div class="lg:w-2/3 bg-gray-800/50 rounded-2xl shadow-2xl border border-gray-700 overflow-hidden">
+                <div id="graph-container" class="graph-container relative">
+                     <div class="absolute top-4 left-4 text-sm text-gray-400">Click on a node to learn more</div>
+                </div>
+            </div>
+
+            <!-- Explanation Panel -->
+            <div id="explanation-panel" class="lg:w-1/3">
+                <div id="explanation-card" class="sticky top-8 bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-700 h-[600px] flex flex-col justify-center">
+                     <div id="default-text" class="text-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-12 w-12 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <h2 class="text-2xl font-bold text-white mt-4">Explore the Graph</h2>
+                        <p class="text-gray-400 mt-2">Click on any factor in the visualization to understand its role in the total cost of an AI prompt.</p>
+                    </div>
+                    <div id="details-content" class="hidden opacity-0">
+                        <h2 id="details-title" class="text-2xl font-bold text-blue-300 mb-3"></h2>
+                        <p id="details-text" class="text-gray-300 text-base leading-relaxed"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // --- DATA ---
+            const graphData = {
+                nodes: [
+                    // Core
+                    { id: "Total Cost", group: 0, size: 35, details: "The final price you pay, calculated by a simple but crucial formula: (Input Tokens + Output Tokens) × Price per Token. This is influenced by every other factor in this graph." },
+                    
+                    // Primary Factors
+                    { id: "Input Tokens", group: 1, size: 28, details: "Every piece of text sent *to* the model. This includes not just your direct question, but also hidden instructions, chat history, and any supplementary data provided for context. More input tokens directly increase cost." },
+                    { id: "Output Tokens", group: 1, size: 28, details: "Every piece of text the model generates *in response*. Longer, more detailed answers consume more output tokens, increasing the overall cost." },
+                    { id: "Model Choice", group: 1, size: 28, details: "The specific AI model used. Different models have vastly different capabilities and, consequently, different price points per token." },
+                    { id: "Infrastructure", group: 1, size: 28, details: "The 'behind-the-scenes' operational costs. This covers the powerful hardware, networking, and software required to run the AI service at scale." },
+
+                    // Secondary Factors (Input)
+                    { id: "User Prompt", group: 2, size: 20, details: "The explicit question or instruction you type. While it seems simple, its length and complexity are the starting point for token consumption." },
+                    { id: "Context Data", group: 2, size: 20, details: "Additional information provided to the model to improve relevance, like a document to summarize or data for analysis. This is a major cost driver, as more context means more input tokens." },
+                    { id: "Chat History", group: 2, size: 20, details: "In a conversation, the entire preceding dialogue is often sent with each new message to maintain context. This causes the input token count to grow with every turn of the conversation." },
+                    { id: "System Prompt", group: 2, size: 20, details: "Hidden instructions that guide the AI's behavior (e.g., 'You are a helpful assistant specializing in finance'). These are added to your prompt and contribute to the token count." },
+                    { id: "RAG", group: 2, size: 20, details: "Retrieval-Augmented Generation. A technique where the system first retrieves relevant documents from a database and adds them to the input prompt. This dramatically improves accuracy but also significantly increases input token count." },
+
+                    // Secondary Factors (Output)
+                    { id: "Output Length", group: 3, size: 20, details: "The verbosity of the AI's answer. A request for a one-word answer is cheaper than a request for a 1000-word essay. You can often control this with instructions like 'Be concise'." },
+                    
+                    // Secondary Factors (Model)
+                    { id: "Price per Token", group: 4, size: 20, details: "The fundamental unit price set by the AI provider. This often differs for input and output tokens, with output tokens typically being more expensive." },
+                    { id: "Model Complexity", group: 4, size: 20, details: "More advanced models (like GPT-4 or Claude 3 Opus) cost more per token than smaller, faster models (like GPT-3.5 Turbo or Claude 3 Haiku) because they require more computational power." },
+                    { id: "Fine-Tuning", group: 4, size: 20, details: "The process of customizing a base model on your own data. This involves initial training costs and ongoing hosting fees, adding another layer to the total expense." },
+
+                    // Secondary Factors (Infrastructure)
+                    { id: "Compute (GPU/TPU)", group: 5, size: 20, details: "The raw cost of the specialized processors (GPUs/TPUs) needed to perform the complex calculations for inference. This is a primary operational expense for the AI provider." },
+                    { id: "Latency / Speed", group: 5, size: 20, details: "The time it takes to get a response. While not a direct billing factor, it's a crucial part of the cost-benefit analysis. Longer prompts increase processing time, and faster models or dedicated hardware often cost more." },
+                    { id: "API Overhead", group: 5, size: 20, details: "The cost associated with managing the API itself: load balancing, security, network bandwidth, and server maintenance. These are bundled into the overall service price." },
+                ],
+                links: [
+                    // Primary to Core
+                    { source: "Input Tokens", target: "Total Cost" },
+                    { source: "Output Tokens", target: "Total Cost" },
+                    { source: "Model Choice", target: "Total Cost" },
+                    { source: "Infrastructure", target: "Total Cost" },
+
+                    // Input Breakdown
+                    { source: "User Prompt", target: "Input Tokens" },
+                    { source: "Context Data", target: "Input Tokens" },
+                    { source: "Chat History", target: "Input Tokens" },
+                    { source: "System Prompt", target: "Input Tokens" },
+                    { source: "RAG", target: "Input Tokens" },
+
+                    // Output Breakdown
+                    { source: "Output Length", target: "Output Tokens" },
+
+                    // Model Breakdown
+                    { source: "Price per Token", target: "Model Choice" },
+                    { source: "Model Complexity", target: "Model Choice" },
+                    { source: "Fine-Tuning", target: "Model Choice" },
+
+                    // Infrastructure Breakdown
+                    { source: "Compute (GPU/TPU)", target: "Infrastructure" },
+                    { source: "Latency / Speed", target: "Infrastructure" },
+                    { source: "API Overhead", target: "Infrastructure" },
+                ]
+            };
+
+            // --- D3 SETUP ---
+            const container = document.getElementById('graph-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            const svg = d3.select("#graph-container").append("svg")
+                .attr("width", width)
+                .attr("height", height)
+                .attr("viewBox", [0, 0, width, height])
+                .attr("style", "max-width: 100%; height: auto;");
+
+            const color = d3.scaleOrdinal(d3.schemeTableau10);
+
+            const simulation = d3.forceSimulation(graphData.nodes)
+                .force("link", d3.forceLink(graphData.links).id(d => d.id).distance(d => d.source.group === 0 ? 150 : 90))
+                .force("charge", d3.forceManyBody().strength(-300))
+                .force("center", d3.forceCenter(width / 2, height / 2))
+                .force("x", d3.forceX())
+                .force("y", d3.forceY());
+
+            const link = svg.append("g")
+                .attr("class", "links")
+                .selectAll("line")
+                .data(graphData.links)
+                .join("line")
+                .attr("stroke", "#9CA3AF"); // gray-400
+
+            const node = svg.append("g")
+                .attr("class", "nodes")
+                .selectAll("circle")
+                .data(graphData.nodes)
+                .join("circle")
+                .attr("r", d => d.size)
+                .attr("fill", d => color(d.group))
+                .on("click", nodeClicked);
+
+            const label = svg.append("g")
+                .attr("class", "labels")
+                .selectAll("text")
+                .data(graphData.nodes)
+                .join("text")
+                .text(d => d.id)
+                .attr("text-anchor", "middle")
+                .attr("dy", ".35em");
+
+            node.call(d3.drag()
+                .on("start", dragstarted)
+                .on("drag", dragged)
+                .on("end", dragended));
+
+            simulation.on("tick", () => {
+                link
+                    .attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y);
+                node
+                    .attr("cx", d => d.x)
+                    .attr("cy", d => d.y);
+                label
+                    .attr("x", d => d.x)
+                    .attr("y", d => d.y);
+            });
+
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            }
+
+            // --- INTERACTIVITY ---
+            const explanationCard = document.getElementById('explanation-card');
+            const defaultText = document.getElementById('default-text');
+            const detailsContent = document.getElementById('details-content');
+            const detailsTitle = document.getElementById('details-title');
+            const detailsText = document.getElementById('details-text');
+            let activeNode = null;
+
+            function nodeClicked(event, d) {
+                // Update content
+                detailsTitle.textContent = d.id;
+                detailsText.textContent = d.details;
+
+                // Animate transition
+                if (activeNode !== d.id) {
+                    detailsContent.classList.add('opacity-0');
+                    setTimeout(() => {
+                        defaultText.classList.add('hidden');
+                        detailsContent.classList.remove('hidden');
+                        detailsContent.classList.remove('opacity-0');
+                    }, 150);
+                }
+                activeNode = d.id;
+
+                // Highlight clicked node
+                node.attr("stroke", null).attr("stroke-width", null);
+                d3.select(this).attr("stroke", color(d.group)).attr("stroke-width", 4)
+                   .attr("filter", "brightness(1.5)");
+            }
+        });
+    </script>
+</body>
+</html>

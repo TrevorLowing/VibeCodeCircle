@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive AI Prompt Cost Calculator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #60A5FA; /* blue-400 */
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #E5E7EB; /* gray-200 */
+        }
+        .slider-track {
+            width: 100%;
+            height: 8px;
+            cursor: pointer;
+            background: #374151; /* gray-700 */
+            border-radius: 9999px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #60A5FA; /* blue-400 */
+            cursor: pointer;
+            border-radius: 50%;
+            margin-top: -6px; /* Center thumb on track */
+            border: 2px solid #E5E7EB; /* gray-200 */
+        }
+        input[type=range]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #60A5FA; /* blue-400 */
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #E5E7EB; /* gray-200 */
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200">
+
+    <div class="container mx-auto px-4 py-8 md:py-12">
+        <header class="text-center mb-10">
+            <h1 class="text-4xl md:text-5xl font-bold text-white mb-2">Interactive AI Prompt Cost Calculator</h1>
+            <p class="text-lg text-gray-400 max-w-3xl mx-auto">Adjust the variables below to see how they affect the cost of an AI prompt in real-time.</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Controls Panel -->
+            <div class="lg:col-span-1 bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-700 space-y-6">
+                <div>
+                    <label for="model-select" class="block text-lg font-semibold text-white mb-2">1. Select AI Model</label>
+                    <select id="model-select" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 focus:ring-blue-500 focus:border-blue-500">
+                        <!-- Options will be populated by JS -->
+                    </select>
+                </div>
+
+                <div>
+                    <label for="user-prompt-slider" class="block text-lg font-semibold text-white mb-2">2. User Prompt Length</label>
+                    <div class="flex items-center space-x-4">
+                        <input id="user-prompt-slider" type="range" min="10" max="2000" value="150" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                        <span id="user-prompt-value" class="font-mono text-blue-300 w-20 text-right">150 tokens</span>
+                    </div>
+                    <p id="user-prompt-words" class="text-sm text-gray-400 mt-1 text-right">~113 words</p>
+                </div>
+
+                <div>
+                    <label for="context-docs-slider" class="block text-lg font-semibold text-white mb-2">3. Context Documents (RAG)</label>
+                    <div class="flex items-center space-x-4">
+                        <input id="context-docs-slider" type="range" min="0" max="10" value="1" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                        <span id="context-docs-value" class="font-mono text-blue-300 w-24 text-right">1 doc</span>
+                    </div>
+                    <p id="context-docs-words" class="text-sm text-gray-400 mt-1">Each doc adds ~1500 tokens (~1125 words).</p>
+                </div>
+
+                <div>
+                    <label for="chat-history-slider" class="block text-lg font-semibold text-white mb-2">4. Chat History Turns</label>
+                    <div class="flex items-center space-x-4">
+                        <input id="chat-history-slider" type="range" min="0" max="20" value="3" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                        <span id="chat-history-value" class="font-mono text-blue-300 w-24 text-right">3 turns</span>
+                    </div>
+                     <p class="text-sm text-gray-400 mt-1">Each turn adds ~300 tokens (~225 words).</p>
+                </div>
+
+                <div>
+                    <label for="output-length-slider" class="block text-lg font-semibold text-white mb-2">5. Expected Output Length</label>
+                    <div class="flex items-center space-x-4">
+                        <input id="output-length-slider" type="range" min="50" max="4000" value="500" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                        <span id="output-length-value" class="font-mono text-blue-300 w-20 text-right">500 tokens</span>
+                    </div>
+                    <p id="output-length-words" class="text-sm text-gray-400 mt-1 text-right">~375 words</p>
+                </div>
+
+                <div>
+                    <label for="agent-steps-slider" class="block text-lg font-semibold text-white mb-2">6. Agentic Steps (Sub-Prompts)</label>
+                    <div class="flex items-center space-x-4">
+                        <input id="agent-steps-slider" type="range" min="1" max="10" value="1" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                        <span id="agent-steps-value" class="font-mono text-blue-300 w-24 text-right">1 step</span>
+                    </div>
+                     <p class="text-sm text-gray-400 mt-1">For complex tasks, the AI may use "chain of thought" reasoning, running multiple internal sub-prompts. This multiplies the total cost.</p>
+                </div>
+            </div>
+
+            <!-- Results Panel -->
+            <div class="lg:col-span-2 bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-700 flex flex-col justify-between">
+                <div>
+                    <h2 class="text-2xl font-bold text-white mb-4">Tokens & Cost (Per Step)</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                        <div class="bg-gray-700/50 p-4 rounded-lg">
+                            <h3 class="text-sm font-medium text-blue-300">INPUT TOKENS</h3>
+                            <p id="total-input-tokens" class="text-3xl font-bold text-white">0</p>
+                            <p id="input-cost" class="text-sm text-gray-400">$0.00000</p>
+                        </div>
+                        <div class="bg-gray-700/50 p-4 rounded-lg">
+                            <h3 class="text-sm font-medium text-purple-300">OUTPUT TOKENS</h3>
+                            <p id="total-output-tokens" class="text-3xl font-bold text-white">0</p>
+                            <p id="output-cost" class="text-sm text-gray-400">$0.00000</p>
+                        </div>
+                    </div>
+                    <div class="bg-blue-900/30 border border-blue-500/50 p-6 rounded-xl text-center">
+                        <h3 class="text-lg font-semibold text-blue-200">TOTAL TASK COST</h3>
+                        <p id="total-cost" class="text-5xl font-bold text-white my-2">$0.00000</p>
+                        <p id="total-cost-explanation" class="text-sm text-gray-400">This is the estimated cost for a single API call with these parameters.</p>
+                    </div>
+                </div>
+                <div class="mt-6 flex flex-col" style="height: 300px;">
+                     <h3 class="text-xl font-bold text-white mb-4 text-center">Total Task Cost by Component</h3>
+                     <div class="relative flex-grow">
+                        <canvas id="cost-chart"></canvas>
+                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // --- DATA & CONFIG ---
+            const models = {
+                'gpt-4-turbo': { name: 'GPT-4 Turbo (High-end)', inputPrice: 10.00, outputPrice: 30.00 },
+                'gpt-3.5-turbo': { name: 'GPT-3.5 Turbo (Balanced)', inputPrice: 0.50, outputPrice: 1.50 },
+                'claude-3-opus': { name: 'Claude 3 Opus (High-end)', inputPrice: 15.00, outputPrice: 75.00 },
+                'claude-3-sonnet': { name: 'Claude 3 Sonnet (Balanced)', inputPrice: 3.00, outputPrice: 15.00 },
+                'claude-3-haiku': { name: 'Claude 3 Haiku (Fast)', inputPrice: 0.25, outputPrice: 1.25 },
+                'gemini-1.5-pro': { name: 'Gemini 1.5 Pro (Balanced)', inputPrice: 3.50, outputPrice: 10.50 },
+            };
+            const TOKENS_PER_DOC = 1500;
+            const TOKENS_PER_CHAT_TURN = 300;
+            const SYSTEM_PROMPT_TOKENS = 250; 
+
+            // --- DOM ELEMENTS ---
+            const modelSelect = document.getElementById('model-select');
+            const userPromptSlider = document.getElementById('user-prompt-slider');
+            const userPromptValue = document.getElementById('user-prompt-value');
+            const userPromptWords = document.getElementById('user-prompt-words');
+            const contextDocsSlider = document.getElementById('context-docs-slider');
+            const contextDocsValue = document.getElementById('context-docs-value');
+            const chatHistorySlider = document.getElementById('chat-history-slider');
+            const chatHistoryValue = document.getElementById('chat-history-value');
+            const outputLengthSlider = document.getElementById('output-length-slider');
+            const outputLengthValue = document.getElementById('output-length-value');
+            const outputLengthWords = document.getElementById('output-length-words');
+            const agentStepsSlider = document.getElementById('agent-steps-slider');
+            const agentStepsValue = document.getElementById('agent-steps-value');
+
+            const totalInputTokensEl = document.getElementById('total-input-tokens');
+            const inputCostEl = document.getElementById('input-cost');
+            const totalOutputTokensEl = document.getElementById('total-output-tokens');
+            const outputCostEl = document.getElementById('output-cost');
+            const totalCostEl = document.getElementById('total-cost');
+            const totalCostExplanationEl = document.getElementById('total-cost-explanation');
+
+            // --- HELPER FUNCTION ---
+            const tokensToWords = (tokens) => Math.round(tokens * 0.75);
+
+            // --- CHART SETUP ---
+            const ctx = document.getElementById('cost-chart').getContext('2d');
+            const costChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['System Prompt', 'User Prompt', 'Context Docs', 'Chat History', 'Output'],
+                    datasets: [{
+                        label: 'Total Cost per Component',
+                        data: [0.00001, 0.00001, 0.00001, 0.00001, 0.00001], // Start with small non-zero values for log scale
+                        backgroundColor: [
+                            'rgba(107, 114, 128, 0.7)', // gray
+                            'rgba(96, 165, 250, 0.7)', // blue
+                            'rgba(59, 130, 246, 0.8)', // stronger blue
+                            'rgba(147, 197, 253, 0.7)', // light blue
+                            'rgba(192, 132, 252, 0.7)'  // purple
+                        ],
+                        borderColor: [
+                            'rgba(156, 163, 175, 1)',
+                            'rgba(147, 197, 253, 1)',
+                            'rgba(96, 165, 250, 1)',
+                            'rgba(192, 132, 252, 1)',
+                            'rgba(209, 173, 255, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'logarithmic', // KEY CHANGE: Use logarithmic scale
+                            min: 0.00001, // Set a minimum value to avoid issues with log(0)
+                            ticks: { 
+                                color: '#9CA3AF',
+                                callback: function(value, index, values) { 
+                                    // Format ticks as currency
+                                    return '$' + value.toExponential(1);
+                                }
+                            },
+                            grid: { color: '#374151' },
+                            title: {
+                                display: true,
+                                text: 'Cost in USD (Logarithmic Scale)',
+                                color: '#9CA3AF'
+                            }
+                        },
+                        y: {
+                            ticks: { color: '#D1D5DB' },
+                            grid: { display: false }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    // Tooltip shows the precise, non-logarithmic value
+                                    let label = context.dataset.label || '';
+                                    if (label) { label += ': '; }
+                                    const value = context.raw;
+                                    label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 6 }).format(value);
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // --- INITIALIZATION ---
+            function setup() {
+                Object.keys(models).forEach(key => {
+                    const option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = models[key].name;
+                    modelSelect.appendChild(option);
+                });
+
+                const inputs = [modelSelect, userPromptSlider, contextDocsSlider, chatHistorySlider, outputLengthSlider, agentStepsSlider];
+                inputs.forEach(input => input.addEventListener('input', updateUI));
+
+                updateUI();
+            }
+
+            // --- UPDATE LOGIC ---
+            function updateUI() {
+                // Update slider value displays
+                userPromptValue.textContent = `${userPromptSlider.value} tokens`;
+                userPromptWords.textContent = `~${tokensToWords(userPromptSlider.value)} words`;
+                contextDocsValue.textContent = `${contextDocsSlider.value} ${contextDocsSlider.value == 1 ? 'doc' : 'docs'}`;
+                chatHistoryValue.textContent = `${chatHistorySlider.value} ${chatHistorySlider.value == 1 ? 'turn' : 'turns'}`;
+                outputLengthValue.textContent = `${outputLengthSlider.value} tokens`;
+                outputLengthWords.textContent = `~${tokensToWords(outputLengthSlider.value)} words`;
+                agentStepsValue.textContent = `${agentStepsSlider.value} ${agentStepsSlider.value == 1 ? 'step' : 'steps'}`;
+
+                calculateAndDisplayCost();
+            }
+
+            function calculateAndDisplayCost() {
+                const selectedModelKey = modelSelect.value;
+                const model = models[selectedModelKey];
+                const pricePerMillionInput = model.inputPrice;
+                const pricePerMillionOutput = model.outputPrice;
+
+                // Calculate token counts for a SINGLE step
+                const userPromptTokens = parseInt(userPromptSlider.value);
+                const contextDocsTokens = parseInt(contextDocsSlider.value) * TOKENS_PER_DOC;
+                const chatHistoryTokens = parseInt(chatHistorySlider.value) * TOKENS_PER_CHAT_TURN;
+                const outputTokens = parseInt(outputLengthSlider.value);
+                const totalInputTokens = SYSTEM_PROMPT_TOKENS + userPromptTokens + contextDocsTokens + chatHistoryTokens;
+
+                // Calculate costs for a SINGLE step
+                const systemPromptCost = (SYSTEM_PROMPT_TOKENS / 1000000) * pricePerMillionInput;
+                const userPromptCost = (userPromptTokens / 1000000) * pricePerMillionInput;
+                const contextDocsCost = (contextDocsTokens / 1000000) * pricePerMillionInput;
+                const chatHistoryCost = (chatHistoryTokens / 1000000) * pricePerMillionInput;
+                const totalInputCost = systemPromptCost + userPromptCost + contextDocsCost + chatHistoryCost;
+                const totalOutputCost = (outputTokens / 1000000) * pricePerMillionOutput;
+                const singleStepCost = totalInputCost + totalOutputCost;
+
+                // Calculate TOTAL task cost with multiplier
+                const agentSteps = parseInt(agentStepsSlider.value);
+                const totalTaskCost = singleStepCost * agentSteps;
+                
+                // --- Display Results ---
+                totalInputTokensEl.textContent = totalInputTokens.toLocaleString();
+                inputCostEl.textContent = `~ $${totalInputCost.toFixed(6)}`;
+                totalOutputTokensEl.textContent = outputTokens.toLocaleString();
+                outputCostEl.textContent = `~ $${totalOutputCost.toFixed(6)}`;
+                totalCostEl.textContent = `$${totalTaskCost.toFixed(6)}`;
+                if (agentSteps > 1) {
+                    totalCostExplanationEl.textContent = `Based on a single step cost of $${singleStepCost.toFixed(6)} multiplied by ${agentSteps} agentic steps.`;
+                } else {
+                    totalCostExplanationEl.textContent = `This is the estimated cost for a single API call with these parameters.`;
+                }
+
+                // --- Update Chart (shows TOTAL cost breakdown) ---
+                // Add a tiny value to prevent log(0) errors if a cost is truly zero
+                const MIN_COST = 0.0000001;
+                costChart.data.datasets[0].data = [
+                    (systemPromptCost * agentSteps) + MIN_COST,
+                    (userPromptCost * agentSteps) + MIN_COST,
+                    (contextDocsCost * agentSteps) + MIN_COST,
+                    (chatHistoryCost * agentSteps) + MIN_COST,
+                    (totalOutputCost * agentSteps) + MIN_COST
+                ];
+                costChart.update();
+            }
+
+            // --- RUN ---
+            setup();
+        });
+    </script>
+</body>
+</html>
