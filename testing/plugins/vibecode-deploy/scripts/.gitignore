@@ -1,0 +1,4 @@
+*
+!.gitignore
+!sync-from-cfa.sh
+!build-staging-zip.sh

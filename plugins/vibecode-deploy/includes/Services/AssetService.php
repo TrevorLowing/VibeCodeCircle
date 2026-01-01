@@ -1,0 +1,122 @@
+<?php
+
+namespace VibeCode\Deploy\Services;
+
+defined( 'ABSPATH' ) || exit;
+
+final class AssetService {
+	private static function normalize_local_asset_path( string $path ): string {
+		$path = trim( $path );
+		if ( $path === '' ) {
+			return '';
+		}
+
+		$path = (string) preg_replace( '/^\.\//', '', $path );
+		$path = ltrim( $path, '/' );
+		return $path;
+	}
+
+	public static function extract_head_assets( \DOMDocument $dom ): array {
+		$css = array();
+		$js = array();
+
+		$xpath = new \DOMXPath( $dom );
+		$links = $xpath->query( '//head//link[@rel="stylesheet"]' );
+		if ( $links ) {
+			foreach ( $links as $node ) {
+				if ( ! ( $node instanceof \DOMElement ) ) {
+					continue;
+				}
+				$href = (string) $node->getAttribute( 'href' );
+				$href = self::normalize_local_asset_path( $href );
+				if ( $href === '' ) {
+					continue;
+				}
+				if ( strpos( $href, 'http://' ) === 0 || strpos( $href, 'https://' ) === 0 ) {
+					continue;
+				}
+				if ( strpos( $href, 'css/' ) !== 0 ) {
+					continue;
+				}
+				$css[] = $href;
+			}
+		}
+
+		$scripts = $xpath->query( '//script[@src]' );
+		if ( $scripts ) {
+			foreach ( $scripts as $node ) {
+				if ( ! ( $node instanceof \DOMElement ) ) {
+					continue;
+				}
+				$src = (string) $node->getAttribute( 'src' );
+				$src = self::normalize_local_asset_path( $src );
+				if ( $src === '' ) {
+					continue;
+				}
+				if ( strpos( $src, 'http://' ) === 0 || strpos( $src, 'https://' ) === 0 ) {
+					continue;
+				}
+				if ( strpos( $src, 'js/' ) !== 0 ) {
+					continue;
+				}
+
+				$js[] = array(
+					'src' => $src,
+					'defer' => $node->hasAttribute( 'defer' ),
+					'async' => $node->hasAttribute( 'async' ),
+					'type' => (string) $node->getAttribute( 'type' ),
+				);
+			}
+		}
+
+		return array(
+			'css' => array_values( array_unique( $css ) ),
+			'js' => $js,
+		);
+	}
+
+	public static function copy_assets_to_plugin_folder( string $staging_root ): void {
+		$assets_base = $staging_root . '/assets';
+		$plugin_dir = defined( 'VIBECODE_DEPLOY_PLUGIN_DIR' ) ? rtrim( (string) VIBECODE_DEPLOY_PLUGIN_DIR, '/\\' ) : '';
+		if ( $plugin_dir === '' ) {
+			return;
+		}
+		$target_dir = $plugin_dir . '/assets';
+		wp_mkdir_p( $target_dir );
+
+		$folders = array( 'css', 'js', 'resources' );
+		foreach ( $folders as $folder ) {
+			$src = $assets_base . '/' . $folder;
+			$dst = $target_dir . '/' . $folder;
+			if ( is_dir( $src ) ) {
+				self::rrcopy( $src, $dst );
+			}
+		}
+	}
+
+	private static function rrcopy( string $src, string $dst ): void {
+		if ( ! is_dir( $dst ) ) {
+			wp_mkdir_p( $dst );
+		}
+		$iterator = new \RecursiveIteratorIterator(
+			new \RecursiveDirectoryIterator( $src, \RecursiveDirectoryIterator::SKIP_DOTS ),
+			\RecursiveIteratorIterator::SELF_FIRST
+		);
+		foreach ( $iterator as $item ) {
+			$relative_path = $iterator->getSubPathName();
+			$target = $dst . '/' . $relative_path;
+			if ( $item->isDir() ) {
+				wp_mkdir_p( $target );
+			} else {
+				copy( $item->getPathname(), $target );
+			}
+		}
+	}
+
+	public static function rewrite_asset_urls( string $html, string $project_slug ): string {
+		$plugin_url = plugins_url( 'assets', VIBECODE_DEPLOY_PLUGIN_FILE );
+		$pattern = '/(href|src)="(css|js|resources)\/([^"]+)"/';
+		$replacement = '$1="' . $plugin_url . '/$2/$3"';
+		return preg_replace( $pattern, $replacement, $html );
+	}
+}
