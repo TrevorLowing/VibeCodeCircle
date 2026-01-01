@@ -62,11 +62,46 @@ final class EnvService {
 
 		$theme = function_exists( 'wp_get_theme' ) ? wp_get_theme() : null;
 		$template = $theme && method_exists( $theme, 'get_template' ) ? (string) $theme->get_template() : '';
-		if ( $template !== '' && $template !== 'etch-theme' ) {
-			$warnings[] = 'Active theme is not based on etch-theme. Current template: ' . $template . '.';
+		$stylesheet = $theme && method_exists( $theme, 'get_stylesheet' ) ? (string) $theme->get_stylesheet() : '';
+		
+		// Check if active theme is etch-theme or a child theme of it
+		$is_etch_theme = false;
+		if ( $template === 'etch-theme' ) {
+			$is_etch_theme = true;
+		}
+		
+		if ( ! $is_etch_theme ) {
+			$warnings[] = 'Active theme is not etch-theme or a child theme. Current template: ' . $template . '. Styling may not work correctly.';
+		}
+		
+		// Check for CFA child theme specifically (optional)
+		if ( $stylesheet !== 'cfa-etch-child' ) {
+			$warnings[] = 'CFA child theme (cfa-etch-child) is not active. Using ' . $stylesheet . ' instead. Some features may not work as expected.';
 		}
 
 		return $warnings;
+	}
+	
+	public static function get_critical_errors(): array {
+		$errors = array();
+		
+		$etch_theme_dir = '';
+		if ( defined( 'WP_CONTENT_DIR' ) ) {
+			$etch_theme_dir = WP_CONTENT_DIR . '/themes/etch-theme';
+		}
+		$etch_theme_installed = $etch_theme_dir !== '' ? is_dir( $etch_theme_dir ) : false;
+		if ( ! $etch_theme_installed ) {
+			$errors[] = 'Etch theme (etch-theme) is required but not installed.';
+		}
+		
+		$theme = function_exists( 'wp_get_theme' ) ? wp_get_theme() : null;
+		$template = $theme && method_exists( $theme, 'get_template' ) ? (string) $theme->get_template() : '';
+		
+		if ( $template !== 'etch-theme' ) {
+			$errors[] = 'Active theme must be etch-theme or a child theme. Current: ' . $template;
+		}
+		
+		return $errors;
 	}
 
 	public static function render_admin_notice(): void {

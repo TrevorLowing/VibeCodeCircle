@@ -41,21 +41,41 @@ It is derived from the CFA repo’s `.cursorrules` and focuses on the rules that
 
 ### Page wrapper + semantic structure
 
-All pages must use a single wrapper and semantic regions:
+All pages must use a single wrapper and semantic regions. **Important:** The skip link must be the first element, and any elements that appear on EVERY page header should be INSIDE the header element.
 
 ```html
 <body>
+    <!-- Skip link (first element, before header) -->
+    <a class="cfa-skip-link" href="#main" aria-label="Skip to main content">Skip to main content</a>
+    
     <div class="cfa-page-content">
+        <!-- Header (extracted as template part) -->
         <header class="cfa-header" role="banner">
+            <!-- Elements repeated on every page (e.g., top bar, announcements) -->
+            <div class="cfa-top-bar">
+                <div class="cfa-top-bar__container">
+                    <span>Established 2024</span>
+                    <div class="cfa-top-bar__links">
+                        <a href="advisories" class="cfa-top-bar__link">Press Room</a>
+                        <a href="membership" class="cfa-top-bar__link">Fund the Mission</a>
+                        <a href="/wp-login.php" class="cfa-top-bar__link">Members</a>
+                        <a href="secure-drop" class="cfa-top-bar__link">Secure Drop</a>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main header content -->
             <div class="header__container cfa-header__container">
                 <!-- header content -->
             </div>
         </header>
 
-        <main class="cfa-main">
+        <!-- Main content (imported as page content) -->
+        <main id="main" class="cfa-main">
             <!-- page content -->
         </main>
 
+        <!-- Footer (extracted as template part) -->
         <footer class="cfa-footer" role="contentinfo">
             <!-- footer content -->
         </footer>
@@ -65,6 +85,12 @@ All pages must use a single wrapper and semantic regions:
     <script src="js/main.js"></script>
 </body>
 ```
+
+**Key points:**
+- Skip link is the VERY FIRST element inside `body`
+- Elements repeated on every page header should be INSIDE `<header>` (part of header template part)
+- Only `<header>` and `<footer>` are extracted as template parts
+- Only `<main>` content is imported as page content
 
 ### BEM naming + WordPress-safe naming
 

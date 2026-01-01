@@ -263,6 +263,18 @@ final class ImportPage {
 			echo '</form>';
 
 			if ( is_array( $preflight ) && ! empty( $preflight['items'] ) ) {
+				// Check for critical errors first
+				if ( isset( $preflight['errors'] ) && is_array( $preflight['errors'] ) && ! empty( $preflight['errors'] ) ) {
+					echo '<div class="notice notice-error"><p><strong>Deployment blocked:</strong></p>';
+					echo '<ul style="list-style: disc; padding-left: 22px;">';
+					foreach ( $preflight['errors'] as $error ) {
+						echo '<li>' . esc_html( $error ) . '</li>';
+					}
+					echo '</ul>';
+					echo '<p>Please fix these issues before attempting to deploy.</p></div>';
+					return;
+				}
+				
 				$create = 0;
 				$update = 0;
 				$skip = 0;

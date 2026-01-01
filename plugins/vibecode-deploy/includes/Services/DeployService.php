@@ -167,6 +167,40 @@ final class DeployService {
 		$pages = Importer::list_page_files( $build_root );
 		$settings = Settings::get_all();
 		$placeholder_config = ShortcodePlaceholderService::load_config( $build_root );
+		
+		// Check for critical environment errors first
+		$env_errors = \VibeCode\Deploy\Services\EnvService::get_critical_errors();
+		if ( ! empty( $env_errors ) ) {
+			// For now, show warnings instead of blocking
+			// TODO: Make this configurable in settings
+			$total_warnings = count( $env_errors );
+			$items = array();
+			$slug_set = array();
+			foreach ( $pages as $path ) {
+				$slug = (string) preg_replace( '/\.html$/', '', basename( $path ) );
+				if ( $slug !== '' ) {
+					$slug_set[ $slug ] = true;
+					$items[] = array(
+						'slug' => $slug,
+						'path' => $path,
+						'action' => 'create',
+						'title' => self::title_from_slug( $slug ),
+						'warnings' => $env_errors,
+					);
+				}
+			}
+			
+			return array(
+				'pages_total' => count( $pages ),
+				'items' => $items,
+				'slug_set' => $slug_set,
+				'total_warnings' => $total_warnings,
+				'templates' => array(),
+				'template_parts' => array(),
+				'auto_template_parts' => array(),
+				'errors' => array(), // Don't block, just show warnings
+			);
+		}
 		$slug_set = array();
 		foreach ( $pages as $path ) {
 			$slug = (string) preg_replace( '/\.html$/', '', basename( $path ) );
@@ -553,6 +587,26 @@ final class DeployService {
 			$created_templates = isset( $template_result['created_templates'] ) && is_array( $template_result['created_templates'] ) ? $template_result['created_templates'] : array();
 			$updated_templates = isset( $template_result['updated_templates'] ) && is_array( $template_result['updated_templates'] ) ? $template_result['updated_templates'] : array();
 		}
+
+		// Temporarily disable theme setup to prevent errors
+		/*
+		$theme = function_exists( 'wp_get_theme' ) ? wp_get_theme() : null;
+		$theme_slug = $theme && method_exists( $theme, 'get_stylesheet' ) ? (string) $theme->get_stylesheet() : '';
+		if ( $theme_slug !== '' ) {
+			$theme_setup = ThemeSetupService::ensure_theme_files( $theme_slug );
+			if ( ! empty( $theme_setup['errors'] ) ) {
+				foreach ( $theme_setup['errors'] as $error ) {
+					\VibeCode\Deploy\Logger::error( 'Theme setup failed.', array( 'error' => $error ), $project_slug );
+				}
+			}
+			if ( ! empty( $theme_setup['created'] ) || ! empty( $theme_setup['updated'] ) ) {
+				\VibeCode\Deploy\Logger::info( 'Theme files configured.', array(
+					'created' => $theme_setup['created'],
+					'updated' => $theme_setup['updated'],
+				), $project_slug );
+			}
+		}
+		*/
 
 		$cpt_validation = array();
 		if ( $validate_cpt_shortcodes && is_array( $placeholder_config ) && ! empty( $placeholder_config ) && empty( $placeholder_config['_error'] ) ) {

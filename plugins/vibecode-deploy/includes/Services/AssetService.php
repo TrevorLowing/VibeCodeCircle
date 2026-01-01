@@ -76,7 +76,6 @@ final class AssetService {
 	}
 
 	public static function copy_assets_to_plugin_folder( string $staging_root ): void {
-		$assets_base = $staging_root . '/assets';
 		$plugin_dir = defined( 'VIBECODE_DEPLOY_PLUGIN_DIR' ) ? rtrim( (string) VIBECODE_DEPLOY_PLUGIN_DIR, '/\\' ) : '';
 		if ( $plugin_dir === '' ) {
 			return;
@@ -84,12 +83,25 @@ final class AssetService {
 		$target_dir = $plugin_dir . '/assets';
 		wp_mkdir_p( $target_dir );
 
+		// Copy from root level (css/, js/, resources/ folders)
 		$folders = array( 'css', 'js', 'resources' );
 		foreach ( $folders as $folder ) {
-			$src = $assets_base . '/' . $folder;
+			$src = $staging_root . '/' . $folder;
 			$dst = $target_dir . '/' . $folder;
 			if ( is_dir( $src ) ) {
 				self::rrcopy( $src, $dst );
+			}
+		}
+		
+		// Also check if there's an assets subfolder (for backward compatibility)
+		$assets_base = $staging_root . '/assets';
+		if ( is_dir( $assets_base ) ) {
+			foreach ( $folders as $folder ) {
+				$src = $assets_base . '/' . $folder;
+				$dst = $target_dir . '/' . $folder;
+				if ( is_dir( $src ) ) {
+					self::rrcopy( $src, $dst );
+				}
 			}
 		}
 	}
@@ -103,7 +115,7 @@ final class AssetService {
 			\RecursiveIteratorIterator::SELF_FIRST
 		);
 		foreach ( $iterator as $item ) {
-			$relative_path = $iterator->getSubPathName();
+			$relative_path = str_replace( $src . '/', '', $item->getPathname() );
 			$target = $dst . '/' . $relative_path;
 			if ( $item->isDir() ) {
 				wp_mkdir_p( $target );
