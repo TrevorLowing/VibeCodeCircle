@@ -170,7 +170,7 @@ If a page needs dynamic WordPress content, do **not** paste raw `[shortcode]` te
 Use an HTML comment placeholder that the deploy pipeline converts into a Gutenberg `core/shortcode` block:
 
 - Placeholder example
-- `<!-- CFA_SHORTCODE cfa_foia_index paginate="1" per_page="20" -->`
+- `<!-- VIBECODE_SHORTCODE cfa_foia_index paginate="1" per_page="20" -->`
 
 Converted to:
 

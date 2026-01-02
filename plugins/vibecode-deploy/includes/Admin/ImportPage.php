@@ -466,7 +466,7 @@ final class ImportPage {
 				echo '</label>';
 				echo '<label style="display:block; margin: 8px 0;">';
 				echo '<input type="hidden" name="vibecode_deploy_deploy_template_parts" value="0" />';
-				echo '<input type="checkbox" name="vibecode_deploy_deploy_template_parts" value="1" /> Extract header/footer from home.html into template parts (recommended for block themes)';
+				echo '<input type="checkbox" name="vibecode_deploy_deploy_template_parts" value="1" checked /> Extract header/footer from home.html into template parts (recommended for block themes)';
 				echo '</label>';
 				echo '<label style="display:block; margin: 8px 0;">';
 				echo '<input type="hidden" name="vibecode_deploy_generate_404_template" value="0" />';

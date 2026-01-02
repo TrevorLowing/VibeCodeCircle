@@ -87,6 +87,7 @@ final class Importer {
 		}
 
 		// 2) Global active-build assets (archives, non-owned pages like Secure Drop, etc.).
+		// Always enqueue global assets to ensure styling works even if per-page assets are missing.
 		$settings = Settings::get_all();
 		$default_project_slug = isset( $settings['project_slug'] ) && is_string( $settings['project_slug'] ) ? (string) $settings['project_slug'] : '';
 		$default_project_slug = sanitize_key( $default_project_slug );
@@ -94,7 +95,24 @@ final class Importer {
 			$default_project_slug = 'default';
 		}
 
-		$active_fingerprint = BuildService::get_active_fingerprint( $default_project_slug );
+		// Determine which fingerprint to use for global assets
+		$active_fingerprint = '';
+		if ( is_singular( 'page' ) ) {
+			$post_id = (int) get_queried_object_id();
+			if ( $post_id > 0 ) {
+				$page_project_slug = (string) get_post_meta( $post_id, self::META_PROJECT_SLUG, true );
+				$page_fingerprint = (string) get_post_meta( $post_id, self::META_FINGERPRINT, true );
+				// Use page's fingerprint if it matches the default project slug
+				if ( $page_project_slug === $default_project_slug && $page_fingerprint !== '' ) {
+					$active_fingerprint = $page_fingerprint;
+				}
+			}
+		}
+
+		// Fall back to active fingerprint if page doesn't have one
+		if ( $active_fingerprint === '' ) {
+			$active_fingerprint = BuildService::get_active_fingerprint( $default_project_slug );
+		}
 		if ( $active_fingerprint === '' ) {
 			$fingerprints = BuildService::list_build_fingerprints( $default_project_slug );
 			if ( ! empty( $fingerprints ) && is_string( $fingerprints[0] ?? null ) ) {
@@ -107,11 +125,13 @@ final class Importer {
 			$base_url = rtrim( (string) $uploads['baseurl'], '/\\' ) . '/vibecode-deploy/staging/' . rawurlencode( $default_project_slug ) . '/' . rawurlencode( $active_fingerprint ) . '/';
 			$base_dir = BuildService::build_root_path( $default_project_slug, $active_fingerprint );
 
+			// Always enqueue global CSS (even if per-page assets exist, ensure base styles load)
 			$global_css = array(
 				'css/icons.css',
 				'css/styles.css',
 			);
 			foreach ( $global_css as $href ) {
+				// Check if already enqueued as per-page asset
 				if ( in_array( $href, $enqueued_css_paths, true ) ) {
 					continue;
 				}
@@ -123,6 +143,7 @@ final class Importer {
 				wp_enqueue_style( $handle, $base_url . ltrim( $href, '/' ), array(), null );
 			}
 
+			// Always enqueue global JS (even if per-page assets exist, ensure base scripts load)
 			$global_js = array(
 				array( 'src' => 'js/route-adapter.js', 'defer' => true ),
 				array( 'src' => 'js/icons.js', 'defer' => true ),
@@ -318,6 +339,25 @@ final class Importer {
 			$etch_data['styles'] = $styles;
 		}
 
+		// Preserve original classes in the wrapper div
+		$class_attr = '';
+		if ( isset( $attrs['class'] ) && is_string( $attrs['class'] ) && $attrs['class'] !== '' ) {
+			$class_attr = ' class="' . esc_attr( $attrs['class'] ) . ' wp-block-group"';
+		} else {
+			$class_attr = ' class="wp-block-group"';
+		}
+
+		// Build additional attributes string (id, data-*, etc.)
+		$additional_attrs = '';
+		foreach ( $attrs as $key => $value ) {
+			if ( $key === 'class' ) {
+				continue; // Already handled above
+			}
+			if ( is_string( $value ) && $value !== '' ) {
+				$additional_attrs .= ' ' . esc_attr( $key ) . '="' . esc_attr( $value ) . '"';
+			}
+		}
+
 		return self::block_open(
 			'group',
 			array(
@@ -327,7 +367,7 @@ final class Importer {
 				),
 			)
 		) . "\n" .
-			'<div class="wp-block-group">' . "\n" .
+			'<div' . $class_attr . $additional_attrs . '>' . "\n" .
 			$inner .
 			'</div>' . "\n" .
 			self::block_close( 'group' ) . "\n";

@@ -77,6 +77,22 @@ final class SettingsPage {
 		);
 
 		add_settings_field(
+			'vibecode_deploy_placeholder_prefix',
+			'Placeholder Prefix',
+			array( __CLASS__, 'field_placeholder_prefix' ),
+			'vibecode_deploy',
+			'vibecode_deploy_main'
+		);
+
+		add_settings_field(
+			'vibecode_deploy_env_errors_mode',
+			'Environment Errors Mode',
+			array( __CLASS__, 'field_env_errors_mode' ),
+			'vibecode_deploy',
+			'vibecode_deploy_main'
+		);
+
+		add_settings_field(
 			'vibecode_deploy_on_missing_required',
 			'Placeholder Strict Mode (Required)',
 			array( __CLASS__, 'field_on_missing_required' ),
@@ -323,15 +339,32 @@ final class SettingsPage {
 		echo '<p class="description">' . esc_html( $description ) . '</p>';
 	}
 
+	public static function field_placeholder_prefix(): void {
+		$settings = Settings::get_all();
+		$value = isset( $settings['placeholder_prefix'] ) ? esc_attr( (string) $settings['placeholder_prefix'] ) : 'VIBECODE_SHORTCODE';
+		echo '<input type="text" name="' . esc_attr( Settings::OPTION_NAME ) . '[placeholder_prefix]" value="' . $value . '" class="regular-text" pattern="[A-Z0-9_]+" />';
+		echo '<p class="description">Prefix for shortcode placeholder comments in HTML (e.g., VIBECODE_SHORTCODE). Use uppercase letters, numbers, and underscores only.</p>';
+	}
+
+	public static function field_env_errors_mode(): void {
+		self::render_mode_select( 'env_errors_mode', 'How to handle critical environment errors (missing theme, unsupported WordPress version, etc.) during preflight.' );
+	}
+
 	public static function field_on_missing_required(): void {
-		self::render_mode_select( 'on_missing_required', 'When a page is missing a required CFA_SHORTCODE placeholder (as defined in vibecode-deploy-shortcodes.json).' );
+		$settings = Settings::get_all();
+		$prefix = isset( $settings['placeholder_prefix'] ) ? (string) $settings['placeholder_prefix'] : 'VIBECODE_SHORTCODE';
+		self::render_mode_select( 'on_missing_required', 'When a page is missing a required ' . $prefix . ' placeholder (as defined in vibecode-deploy-shortcodes.json).' );
 	}
 
 	public static function field_on_missing_recommended(): void {
-		self::render_mode_select( 'on_missing_recommended', 'When a page is missing a recommended CFA_SHORTCODE placeholder (as defined in vibecode-deploy-shortcodes.json).' );
+		$settings = Settings::get_all();
+		$prefix = isset( $settings['placeholder_prefix'] ) ? (string) $settings['placeholder_prefix'] : 'VIBECODE_SHORTCODE';
+		self::render_mode_select( 'on_missing_recommended', 'When a page is missing a recommended ' . $prefix . ' placeholder (as defined in vibecode-deploy-shortcodes.json).' );
 	}
 
 	public static function field_on_unknown_placeholder(): void {
-		self::render_mode_select( 'on_unknown_placeholder', 'When an invalid/unparseable CFA_SHORTCODE placeholder is encountered in HTML.' );
+		$settings = Settings::get_all();
+		$prefix = isset( $settings['placeholder_prefix'] ) ? (string) $settings['placeholder_prefix'] : 'VIBECODE_SHORTCODE';
+		self::render_mode_select( 'on_unknown_placeholder', 'When an invalid/unparseable ' . $prefix . ' placeholder is encountered in HTML.' );
 	}
 }

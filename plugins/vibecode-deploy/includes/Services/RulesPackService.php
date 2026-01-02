@@ -52,7 +52,9 @@ final class RulesPackService {
 		$out .= "### Dynamic content placeholders (shortcodes)\n\n";
 		$out .= "If a page needs to render WordPress dynamic content (CPT lists, indexes, etc.), do **not** paste raw `[shortcode]` text into the HTML. During import, Vibe Code Deploy escapes text nodes.\n\n";
 		$out .= "Instead, use an HTML comment placeholder that Vibe Code Deploy converts into a real Gutenberg `core/shortcode` block during deploy:\n\n";
-		$out .= "- Example: `<!-- CFA_SHORTCODE cfa_foia_index paginate=\"1\" per_page=\"20\" -->`\n\n";
+		$settings = \VibeCode\Deploy\Settings::get_all();
+		$prefix = isset( $settings['placeholder_prefix'] ) ? (string) $settings['placeholder_prefix'] : 'VIBECODE_SHORTCODE';
+		$out .= "- Example: `<!-- " . $prefix . " cfa_foia_index paginate=\"1\" per_page=\"20\" -->`\n\n";
 		$out .= "Vibe Code Deploy will convert that placeholder into:\n\n";
 		$out .= "- `<!-- wp:shortcode -->[cfa_foia_index paginate=\"1\" per_page=\"20\"]<!-- /wp:shortcode -->`\n\n";
 		$out .= "### Placeholder rules config (optional but recommended)\n\n";

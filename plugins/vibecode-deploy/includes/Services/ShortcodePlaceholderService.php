@@ -6,10 +6,37 @@ use VibeCode\Deploy\Logger;
 
 defined( 'ABSPATH' ) || exit;
 
+/**
+ * Service for handling shortcode placeholder comments in HTML.
+ *
+ * Converts HTML comment placeholders (e.g., `<!-- VIBECODE_SHORTCODE shortcode_name -->`)
+ * into Gutenberg shortcode blocks during deployment.
+ *
+ * @package VibeCode\Deploy\Services
+ */
 final class ShortcodePlaceholderService {
+	/** @var string Configuration filename for shortcode rules. */
 	public const CONFIG_FILENAME = 'vibecode-deploy-shortcodes.json';
-	public const PLACEHOLDER_PREFIX = 'CFA_SHORTCODE';
+	
+	/**
+	 * Get the placeholder prefix from settings or use default.
+	 *
+	 * @return string Placeholder prefix (e.g., 'VIBECODE_SHORTCODE').
+	 */
+	public static function get_placeholder_prefix(): string {
+		$settings = \VibeCode\Deploy\Settings::get_all();
+		$prefix = isset( $settings['placeholder_prefix'] ) && is_string( $settings['placeholder_prefix'] ) 
+			? trim( (string) $settings['placeholder_prefix'] ) 
+			: 'VIBECODE_SHORTCODE';
+		return $prefix !== '' ? $prefix : 'VIBECODE_SHORTCODE';
+	}
 
+	/**
+	 * Load shortcode configuration from build root.
+	 *
+	 * @param string $build_root Path to build root directory.
+	 * @return array Configuration array or empty array if file not found/invalid.
+	 */
 	public static function load_config( string $build_root ): array {
 		$path = rtrim( $build_root, '/\\' ) . DIRECTORY_SEPARATOR . self::CONFIG_FILENAME;
 		if ( ! is_file( $path ) || ! is_readable( $path ) ) {
@@ -29,6 +56,15 @@ final class ShortcodePlaceholderService {
 		return $decoded;
 	}
 
+	/**
+	 * Get validation mode from config or settings.
+	 *
+	 * @param array  $config   Configuration array.
+	 * @param array  $settings  Plugin settings.
+	 * @param string $key       Setting key to retrieve.
+	 * @param string $fallback  Fallback value if not found.
+	 * @return string Mode: 'warn' or 'fail'.
+	 */
 	public static function get_mode( array $config, array $settings, string $key, string $fallback = 'warn' ): string {
 		$mode = '';
 
@@ -50,18 +86,35 @@ final class ShortcodePlaceholderService {
 		return $mode;
 	}
 
+	/**
+	 * Check if a comment is a shortcode placeholder.
+	 *
+	 * @param string $comment HTML comment text.
+	 * @return bool True if comment is a placeholder.
+	 */
 	public static function is_placeholder_comment( string $comment ): bool {
 		$comment = trim( $comment );
-		return $comment !== '' && stripos( $comment, self::PLACEHOLDER_PREFIX ) === 0;
+		if ( $comment === '' ) {
+			return false;
+		}
+		$prefix = self::get_placeholder_prefix();
+		return stripos( $comment, $prefix ) === 0;
 	}
 
+	/**
+	 * Parse a placeholder comment into shortcode name and attributes.
+	 *
+	 * @param string $comment HTML comment text.
+	 * @return array Parsed data with 'ok', 'name', 'attrs' keys, or 'ok' => false on error.
+	 */
 	public static function parse_placeholder_comment( string $comment ): array {
 		$comment = trim( $comment );
 		if ( ! self::is_placeholder_comment( $comment ) ) {
 			return array( 'ok' => false );
 		}
 
-		$rest = preg_replace( '/^' . preg_quote( self::PLACEHOLDER_PREFIX, '/' ) . '\b\s*/i', '', $comment );
+		$prefix = self::get_placeholder_prefix();
+		$rest = preg_replace( '/^' . preg_quote( $prefix, '/' ) . '\b\s*/i', '', $comment );
 		$rest = is_string( $rest ) ? trim( $rest ) : '';
 		if ( $rest === '' ) {
 			return array( 'ok' => false, 'error' => 'Missing shortcode name.' );
@@ -99,6 +152,13 @@ final class ShortcodePlaceholderService {
 		);
 	}
 
+	/**
+	 * Build shortcode text from name and attributes.
+	 *
+	 * @param string $name  Shortcode name.
+	 * @param array  $attrs Shortcode attributes.
+	 * @return string Shortcode text (e.g., '[shortcode attr="value"]').
+	 */
 	public static function build_shortcode_text( string $name, array $attrs ): string {
 		$name = sanitize_key( $name );
 		if ( $name === '' ) {
@@ -123,11 +183,19 @@ final class ShortcodePlaceholderService {
 		return $out;
 	}
 
+	/**
+	 * Convert a placeholder comment to a Gutenberg shortcode block.
+	 *
+	 * @param string $comment            HTML comment text.
+	 * @param string $project_slug_for_logs Project slug for logging.
+	 * @return string|null Gutenberg shortcode block HTML or null on error.
+	 */
 	public static function comment_to_shortcode_block( string $comment, string $project_slug_for_logs = '' ): ?string {
 		$parsed = self::parse_placeholder_comment( $comment );
 		if ( empty( $parsed['ok'] ) ) {
 			if ( self::is_placeholder_comment( $comment ) ) {
-				Logger::error( 'Invalid CFA_SHORTCODE placeholder.', array( 'comment' => $comment, 'error' => $parsed['error'] ?? '' ), $project_slug_for_logs );
+				$prefix = self::get_placeholder_prefix();
+				Logger::error( 'Invalid ' . $prefix . ' placeholder.', array( 'comment' => $comment, 'error' => $parsed['error'] ?? '' ), $project_slug_for_logs );
 			}
 			return null;
 		}

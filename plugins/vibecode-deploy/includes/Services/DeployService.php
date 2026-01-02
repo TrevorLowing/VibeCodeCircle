@@ -162,6 +162,16 @@ final class DeployService {
 		return ucwords( trim( (string) $slug ) );
 	}
 
+	/**
+	 * Run preflight validation before deployment.
+	 *
+	 * Validates environment, checks pages, validates shortcode placeholders,
+	 * and returns a report of what will be deployed.
+	 *
+	 * @param string $project_slug Project identifier.
+	 * @param string $build_root   Path to build root directory.
+	 * @return array Preflight results with 'pages_total', 'items', 'warnings', 'errors', etc.
+	 */
 	public static function preflight( string $project_slug, string $build_root ): array {
 		$project_slug = sanitize_key( $project_slug );
 		$pages = Importer::list_page_files( $build_root );
@@ -171,8 +181,8 @@ final class DeployService {
 		// Check for critical environment errors first
 		$env_errors = \VibeCode\Deploy\Services\EnvService::get_critical_errors();
 		if ( ! empty( $env_errors ) ) {
-			// For now, show warnings instead of blocking
-			// TODO: Make this configurable in settings
+			$settings = \VibeCode\Deploy\Settings::get_all();
+			$env_errors_mode = isset( $settings['env_errors_mode'] ) && $settings['env_errors_mode'] === 'fail' ? 'fail' : 'warn';
 			$total_warnings = count( $env_errors );
 			$items = array();
 			$slug_set = array();
@@ -190,6 +200,11 @@ final class DeployService {
 				}
 			}
 			
+			$errors = array();
+			if ( $env_errors_mode === 'fail' ) {
+				$errors = $env_errors;
+			}
+			
 			return array(
 				'pages_total' => count( $pages ),
 				'items' => $items,
@@ -198,7 +213,7 @@ final class DeployService {
 				'templates' => array(),
 				'template_parts' => array(),
 				'auto_template_parts' => array(),
-				'errors' => array(), // Don't block, just show warnings
+				'errors' => $errors,
 			);
 		}
 		$slug_set = array();
@@ -256,11 +271,12 @@ final class DeployService {
 
 						if ( ! empty( $invalid ) ) {
 							$invalid_mode = ShortcodePlaceholderService::get_mode( $placeholder_config, $settings, 'on_unknown_placeholder', 'warn' );
+							$prefix = ShortcodePlaceholderService::get_placeholder_prefix();
 							foreach ( $invalid as $bad ) {
 								if ( ! is_string( $bad ) || $bad === '' ) {
 									continue;
 								}
-								$msg = 'Invalid CFA_SHORTCODE placeholder for page "' . $slug . '": ' . $bad;
+								$msg = 'Invalid ' . $prefix . ' placeholder for page "' . $slug . '": ' . $bad;
 								$warnings[] = ( $invalid_mode === 'fail' ) ? ( 'ERROR: ' . $msg ) : $msg;
 							}
 						}
@@ -364,6 +380,22 @@ final class DeployService {
 		);
 	}
 
+	/**
+	 * Run the deployment import process.
+	 *
+	 * Creates/updates pages, extracts templates, copies assets, and generates manifests.
+	 *
+	 * @param string $project_slug           Project identifier.
+	 * @param string $fingerprint            Build fingerprint.
+	 * @param string $build_root             Path to build root directory.
+	 * @param bool   $set_front_page        Whether to set home.html as front page.
+	 * @param bool   $force_claim_unowned   Whether to claim pages not owned by this project.
+	 * @param bool   $deploy_template_parts Whether to extract header/footer from home.html.
+	 * @param bool   $generate_404_template  Whether to generate 404 template.
+	 * @param bool   $force_claim_templates Whether to claim templates not owned by this project.
+	 * @param bool   $validate_cpt_shortcodes Whether to validate CPT shortcode coverage.
+	 * @return array Deployment results with 'pages_created', 'pages_updated', 'templates_created', etc.
+	 */
 	public static function run_import( string $project_slug, string $fingerprint, string $build_root, bool $set_front_page, bool $force_claim_unowned, bool $deploy_template_parts = true, bool $generate_404_template = true, bool $force_claim_templates = false, bool $validate_cpt_shortcodes = false ): array {
 		AssetService::copy_assets_to_plugin_folder( $build_root );
 		$active_before = BuildService::get_active_fingerprint( $project_slug );
@@ -450,11 +482,12 @@ final class DeployService {
 
 				if ( ! empty( $invalid ) ) {
 					$invalid_mode = ShortcodePlaceholderService::get_mode( $placeholder_config, $settings, 'on_unknown_placeholder', 'warn' );
+					$prefix = ShortcodePlaceholderService::get_placeholder_prefix();
 					foreach ( $invalid as $bad ) {
 						if ( ! is_string( $bad ) || $bad === '' ) {
 							continue;
 						}
-						$msg = 'Invalid CFA_SHORTCODE placeholder for page "' . $slug . '": ' . $bad;
+						$msg = 'Invalid ' . $prefix . ' placeholder for page "' . $slug . '": ' . $bad;
 						if ( $invalid_mode === 'fail' ) {
 							$page_errors[] = $msg;
 						} else {

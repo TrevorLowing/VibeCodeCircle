@@ -565,6 +565,30 @@ final class TemplateService {
 		);
 	}
 
+	private static function build_page_template_blocks( string $header_slug, string $footer_slug ): string {
+		$header_slug = sanitize_key( $header_slug );
+		$footer_slug = sanitize_key( $footer_slug );
+
+		$out = '';
+		if ( $header_slug !== '' ) {
+			$attrs = array( 'slug' => $header_slug, 'tagName' => 'header' );
+			$out .= '<!-- wp:template-part ' . wp_json_encode( $attrs ) . ' /-->' . "\n\n";
+		}
+
+		$out .= '<!-- wp:group {"tagName":"main","layout":{"type":"constrained"}} -->' . "\n";
+		$out .= '<main class="wp-block-group">' . "\n";
+		$out .= '<!-- wp:post-content {"layout":{"type":"constrained"}} /-->' . "\n";
+		$out .= '</main>' . "\n";
+		$out .= '<!-- /wp:group -->' . "\n\n";
+
+		if ( $footer_slug !== '' ) {
+			$attrs = array( 'slug' => $footer_slug, 'tagName' => 'footer' );
+			$out .= '<!-- wp:template-part ' . wp_json_encode( $attrs ) . ' /-->' . "\n";
+		}
+
+		return $out;
+	}
+
 	private static function build_404_template_blocks( string $header_slug, string $footer_slug ): string {
 		$header_slug = sanitize_key( $header_slug );
 		$footer_slug = sanitize_key( $footer_slug );
@@ -788,6 +812,41 @@ final class TemplateService {
 				}
 
 				if ( ! empty( $res['created'] ) ) {
+					$created++;
+					$created_templates[] = array( 'post_id' => (int) $res['post_id'], 'slug' => (string) $res['slug'], 'post_name' => (string) ( $res['post_name'] ?? '' ) );
+				} else {
+					$updated++;
+					$updated_templates[] = array(
+						'post_id' => (int) $res['post_id'],
+						'slug' => (string) $res['slug'],
+						'post_name' => (string) ( $res['post_name'] ?? '' ),
+						'before' => is_array( $res['before'] ?? null ) ? $res['before'] : array(),
+						'before_meta' => is_array( $res['before_meta'] ?? null ) ? $res['before_meta'] : array(),
+					);
+				}
+			}
+		}
+
+		// Create/update page.html template to include header/footer template parts
+		$header_slug = 'header';
+		$footer_slug = 'footer';
+		$header_part = self::get_template_part_by_slug( 'header' );
+		$footer_part = self::get_template_part_by_slug( 'footer' );
+		
+		// Only create page template if header/footer template parts exist and are owned by this project
+		if ( $header_part && isset( $header_part->ID ) && $footer_part && isset( $footer_part->ID ) ) {
+			$header_owner = (string) get_post_meta( (int) $header_part->ID, Importer::META_PROJECT_SLUG, true );
+			$footer_owner = (string) get_post_meta( (int) $footer_part->ID, Importer::META_PROJECT_SLUG, true );
+			
+			if ( $header_owner === $project_slug && $footer_owner === $project_slug ) {
+				$content = self::build_page_template_blocks( $header_slug, $footer_slug );
+				$res = self::upsert_template( $project_slug, $fingerprint, 'page', $content, $force_claim_templates );
+				if ( empty( $res['ok'] ) ) {
+					$errors++;
+					$error_messages[] = isset( $res['error'] ) && is_string( $res['error'] ) ? $res['error'] : 'Page template upsert failed.';
+				} elseif ( ! empty( $res['skipped'] ) ) {
+					$skipped++;
+				} elseif ( ! empty( $res['created'] ) ) {
 					$created++;
 					$created_templates[] = array( 'post_id' => (int) $res['post_id'], 'slug' => (string) $res['slug'], 'post_name' => (string) ( $res['post_name'] ?? '' ) );
 				} else {

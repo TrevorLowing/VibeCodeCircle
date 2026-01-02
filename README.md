@@ -143,17 +143,24 @@ wp vibecode-deploy purge --type=template-parts
 
 ## Documentation
 
-See the **Help** page in the plugin admin area for:
-- System status checker
-- Detailed troubleshooting guide
-- Feature reference
-- Best practices
+### User Documentation
+- **Deployment Guide**: See `DEPLOYMENT-GUIDE.md` for step-by-step instructions
+- **Help Page**: See the **Help** page in the plugin admin area for:
+  - System status checker
+  - Detailed troubleshooting guide
+  - Feature reference
+  - Best practices
+
+### Developer Documentation
+- **Developer Guide**: See `docs/DEVELOPER_GUIDE.md` for extending the plugin
+- **API Reference**: See `docs/API_REFERENCE.md` for service class documentation
+- **Product Requirements**: See `PRD-VibeCodeDeploy.md` for complete requirements
 
 ## Support
 
 - **GitHub Repository**: https://github.com/VibeCodeCircle/vibecode-deploy
 - **Issues**: https://github.com/VibeCodeCircle/vibecode-deploy/issues
-- **Documentation**: See Help page in plugin admin
+- **Documentation**: See Help page in plugin admin or `docs/` directory
 
 ## License
 

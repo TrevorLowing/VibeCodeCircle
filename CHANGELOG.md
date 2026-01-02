@@ -5,20 +5,29 @@ All notable changes to Vibe Code Deploy will be documented in this file.
 ## [Unreleased]
 ### Added
 - Comprehensive Help page with system status checker
-- ThemeSetupService for automatic theme configuration (temporarily disabled)
+- ThemeSetupService for automatic theme configuration
 - Asset copying fixes for root-level assets
 - Preflight warnings instead of blocking for missing theme
+- Configurable placeholder prefix (default: VIBECODE_SHORTCODE)
+- Environment errors mode setting (warn/fail)
+- PHPDoc comments to service classes
+- Architecture documentation
 
 ### Fixed
 - Asset 404 errors by checking both root and /assets subfolder
 - Preflight silently failing when Etch theme not active
 - ThemeSetupService lint errors
 - Plugin zip structure for WordPress installation
+- CFA-specific constant replaced with configurable prefix
+- TODO in DeployService resolved (env errors mode now configurable)
+- Architecture.md renamed to EXTERNAL_TOOLS.md, new Architecture.md created
 
 ### Changed
-- Preflight shows warnings instead of blocking when theme requirements not met
+- Preflight shows warnings instead of blocking when theme requirements not met (configurable)
 - Improved error handling and logging
 - Updated documentation with troubleshooting guides
+- Placeholder prefix now configurable in settings (was hardcoded CFA_SHORTCODE)
+- Environment errors handling now respects settings (was hardcoded to warn)
 
 ### Security
 - Added file validation for staging zip uploads

@@ -4,20 +4,40 @@ namespace VibeCode\Deploy;
 
 defined( 'ABSPATH' ) || exit;
 
+/**
+ * Plugin settings management.
+ *
+ * Handles default settings, retrieval, and sanitization of plugin configuration.
+ *
+ * @package VibeCode\Deploy
+ */
 final class Settings {
+	/** @var string WordPress option name for plugin settings. */
 	public const OPTION_NAME = 'vibecode_deploy_settings';
 
+	/**
+	 * Get default settings.
+	 *
+	 * @return array Default settings array.
+	 */
 	public static function defaults(): array {
 		return array(
 			'project_slug' => '',
 			'class_prefix' => '',
 			'staging_dir'  => 'vibecode-deploy-staging',
+			'placeholder_prefix' => 'VIBECODE_SHORTCODE',
+			'env_errors_mode' => 'warn',
 			'on_missing_required' => 'warn',
 			'on_missing_recommended' => 'warn',
 			'on_unknown_placeholder' => 'warn',
 		);
 	}
 
+	/**
+	 * Get all settings with defaults merged.
+	 *
+	 * @return array Settings array with defaults applied.
+	 */
 	public static function get_all(): array {
 		$raw = get_option( self::OPTION_NAME, array() );
 		if ( ! is_array( $raw ) ) {
@@ -26,6 +46,12 @@ final class Settings {
 		return array_merge( self::defaults(), $raw );
 	}
 
+	/**
+	 * Sanitize and validate settings input.
+	 *
+	 * @param mixed $input Raw input from form.
+	 * @return array Sanitized settings array.
+	 */
 	public static function sanitize( $input ): array {
 		$input = is_array( $input ) ? $input : array();
 
@@ -54,6 +80,17 @@ final class Settings {
 			$dir = trim( (string) $input['staging_dir'] );
 			$dir = preg_replace( '/[^a-zA-Z0-9._-]/', '', $dir );
 			$out['staging_dir'] = $dir !== '' ? $dir : 'vibecode-deploy-staging';
+		}
+
+		if ( isset( $input['placeholder_prefix'] ) ) {
+			$prefix = trim( (string) $input['placeholder_prefix'] );
+			$prefix = preg_replace( '/[^A-Z0-9_]/', '', strtoupper( $prefix ) );
+			$out['placeholder_prefix'] = $prefix !== '' ? $prefix : 'VIBECODE_SHORTCODE';
+		}
+
+		if ( isset( $input['env_errors_mode'] ) ) {
+			$mode = strtolower( trim( (string) $input['env_errors_mode'] ) );
+			$out['env_errors_mode'] = ( $mode === 'fail' ) ? 'fail' : 'warn';
 		}
 
 		foreach ( $mode_keys as $k ) {
