@@ -1,8 +1,8 @@
-# Rules Pack (CFA-derived)
+# Rules Pack
 
 This file is included with the Vibe Code Deploy plugin install as the **rules pack content**.
 
-It is derived from the CFA repo’s `.cursorrules` and focuses on the rules that most directly impact **Vibe-coded HTML/CSS/JS packaging** and **WordPress/Gutenberg deployment**.
+It focuses on the rules that most directly impact **Vibe-coded HTML/CSS/JS packaging** and **WordPress/Gutenberg deployment**.
 
 ---
 
@@ -46,37 +46,37 @@ All pages must use a single wrapper and semantic regions. **Important:** The ski
 ```html
 <body>
     <!-- Skip link (first element, before header) -->
-    <a class="cfa-skip-link" href="#main" aria-label="Skip to main content">Skip to main content</a>
+    <a class="{project-prefix}-skip-link" href="#main" aria-label="Skip to main content">Skip to main content</a>
     
-    <div class="cfa-page-content">
+    <div class="{project-prefix}-page-content">
         <!-- Header (extracted as template part) -->
-        <header class="cfa-header" role="banner">
+        <header class="{project-prefix}-header" role="banner">
             <!-- Elements repeated on every page (e.g., top bar, announcements) -->
-            <div class="cfa-top-bar">
-                <div class="cfa-top-bar__container">
+            <div class="{project-prefix}-top-bar">
+                <div class="{project-prefix}-top-bar__container">
                     <span>Established 2024</span>
-                    <div class="cfa-top-bar__links">
-                        <a href="advisories" class="cfa-top-bar__link">Press Room</a>
-                        <a href="membership" class="cfa-top-bar__link">Fund the Mission</a>
-                        <a href="/wp-login.php" class="cfa-top-bar__link">Members</a>
-                        <a href="secure-drop" class="cfa-top-bar__link">Secure Drop</a>
+                    <div class="{project-prefix}-top-bar__links">
+                        <a href="about" class="{project-prefix}-top-bar__link">About</a>
+                        <a href="services" class="{project-prefix}-top-bar__link">Services</a>
+                        <a href="/wp-login.php" class="{project-prefix}-top-bar__link">Login</a>
+                        <a href="contact" class="{project-prefix}-top-bar__link">Contact</a>
                     </div>
                 </div>
             </div>
             
             <!-- Main header content -->
-            <div class="header__container cfa-header__container">
+            <div class="header__container {project-prefix}-header__container">
                 <!-- header content -->
             </div>
         </header>
 
         <!-- Main content (imported as page content) -->
-        <main id="main" class="cfa-main">
+        <main id="main" class="{project-prefix}-main">
             <!-- page content -->
         </main>
 
         <!-- Footer (extracted as template part) -->
-        <footer class="cfa-footer" role="contentinfo">
+        <footer class="{project-prefix}-footer" role="contentinfo">
             <!-- footer content -->
         </footer>
     </div>
@@ -105,9 +105,9 @@ Examples:
 - `.sidebar`
 
 - Prefer
-- `.cfa-site-header__nav`
-- `.cfa-page-content`
-- `.cfa-widget-sidebar`
+- `.{project-prefix}-site-header__nav`
+- `.{project-prefix}-page-content`
+- `.{project-prefix}-widget-sidebar`
 
 ---
 
@@ -170,11 +170,11 @@ If a page needs dynamic WordPress content, do **not** paste raw `[shortcode]` te
 Use an HTML comment placeholder that the deploy pipeline converts into a Gutenberg `core/shortcode` block:
 
 - Placeholder example
-- `<!-- VIBECODE_SHORTCODE cfa_foia_index paginate="1" per_page="20" -->`
+- `<!-- VIBECODE_SHORTCODE my_content_index paginate="1" per_page="20" -->`
 
 Converted to:
 
-- `<!-- wp:shortcode -->[cfa_foia_index paginate="1" per_page="20"]<!-- /wp:shortcode -->`
+- `<!-- wp:shortcode -->[my_content_index paginate="1" per_page="20"]<!-- /wp:shortcode -->`
 
 ---
 

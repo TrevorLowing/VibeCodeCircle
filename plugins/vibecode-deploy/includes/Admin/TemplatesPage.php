@@ -17,8 +17,8 @@ final class TemplatesPage {
 	public static function add_admin_menu(): void {
 		add_submenu_page(
 			'vibecode-deploy',
-			'Templates',
-			'Templates',
+			__( 'Templates', 'vibecode-deploy' ),
+			__( 'Templates', 'vibecode-deploy' ),
 			'manage_options',
 			'vibecode-deploy-templates',
 			array( __CLASS__, 'render' )
@@ -27,19 +27,19 @@ final class TemplatesPage {
 
 	public static function render(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Forbidden.' );
+			wp_die( esc_html__( 'Forbidden.', 'vibecode-deploy' ) );
 		}
 		?>
 		<div class="wrap">
-			<h1>Vibe Code Deploy Templates</h1>
+			<h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
 			<?php
 			if ( ( isset( $_POST['vibecode_deploy_purge_templates'] ) || isset( $_POST['vibecode_deploy_purge_template_parts'] ) ) && check_admin_referer( 'vibecode_deploy_purge_templates' ) ) {
 				self::handle_purge();
 			}
 			?>
 			<div class="card" style="max-width: 1100px;">
-				<h2 class="title">Manage Plugin-Owned Templates</h2>
-				<p>This page lists all block templates and template parts owned by Vibe Code Deploy for the current project. You can purge them to clean up before a fresh deploy.</p>
+				<h2 class="title"><?php echo esc_html__( 'Manage Plugin-Owned Templates', 'vibecode-deploy' ); ?></h2>
+				<p><?php echo esc_html__( 'This page lists all block templates and template parts owned by Vibe Code Deploy for the current project. You can purge them to clean up before a fresh deploy.', 'vibecode-deploy' ); ?></p>
 			</div>
 
 			<?php self::render_template_parts_table(); ?>
@@ -52,7 +52,7 @@ final class TemplatesPage {
 		$settings = Settings::get_all();
 		$project_slug = (string) $settings['project_slug'];
 		if ( $project_slug === '' ) {
-			echo '<div class="notice notice-warning"><p>Project Slug not set. Configure it in Vibe Code Deploy → Settings.</p></div>';
+			echo '<div class="notice notice-warning"><p>' . esc_html__( 'Project Slug not set. Configure it in', 'vibecode-deploy' ) . ' ' . esc_html__( 'Vibe Code Deploy', 'vibecode-deploy' ) . ' → ' . esc_html__( 'Settings', 'vibecode-deploy' ) . '.</p></div>';
 			return;
 		}
 
@@ -76,18 +76,19 @@ final class TemplatesPage {
 		);
 
 		if ( empty( $posts ) ) {
-			echo '<div class="card"><p>No plugin-owned template parts found.</p></div>';
+			echo '<div class="card"><p>' . esc_html__( 'No plugin-owned template parts found.', 'vibecode-deploy' ) . '</p></div>';
 			return;
 		}
 
 		echo '<div class="card">';
-		echo '<h2 class="title">Template Parts (wp_template_part)</h2>';
+		echo '<h2 class="title">' . esc_html__( 'Template Parts (wp_template_part)', 'vibecode-deploy' ) . '</h2>';
 		echo '<form method="post">';
 		wp_nonce_field( 'vibecode_deploy_purge_templates' );
-		echo '<p><input type="submit" name="vibecode_deploy_purge_template_parts" class="button button-secondary" value="Purge All Template Parts" onclick="return confirm(\'Delete all template parts owned by this project? This cannot be undone.\');" /></p>';
+		$purge_parts_confirm = esc_js( __( 'Delete all template parts owned by this project? This cannot be undone.', 'vibecode-deploy' ) );
+		echo '<p><input type="submit" name="vibecode_deploy_purge_template_parts" class="button button-secondary" value="' . esc_attr__( 'Purge All Template Parts', 'vibecode-deploy' ) . '" onclick="return confirm(\'' . $purge_parts_confirm . '\');" /></p>';
 		echo '</form>';
 		echo '<table class="widefat striped">';
-		echo '<thead><tr><th>ID</th><th>Slug</th><th>Title</th><th>Status</th><th>Fingerprint</th></tr></thead><tbody>';
+		echo '<thead><tr><th>' . esc_html__( 'ID', 'vibecode-deploy' ) . '</th><th>' . esc_html__( 'Slug', 'vibecode-deploy' ) . '</th><th>' . esc_html__( 'Title', 'vibecode-deploy' ) . '</th><th>' . esc_html__( 'Status', 'vibecode-deploy' ) . '</th><th>' . esc_html__( 'Fingerprint', 'vibecode-deploy' ) . '</th></tr></thead><tbody>';
 		foreach ( $posts as $p ) {
 			echo '<tr>';
 			echo '<td>' . (int) $p->ID . '</td>';
@@ -128,18 +129,19 @@ final class TemplatesPage {
 		);
 
 		if ( empty( $posts ) ) {
-			echo '<div class="card"><p>No plugin-owned templates found.</p></div>';
+			echo '<div class="card"><p>' . esc_html__( 'No plugin-owned templates found.', 'vibecode-deploy' ) . '</p></div>';
 			return;
 		}
 
 		echo '<div class="card">';
-		echo '<h2 class="title">Templates (wp_template)</h2>';
+		echo '<h2 class="title">' . esc_html__( 'Templates (wp_template)', 'vibecode-deploy' ) . '</h2>';
 		echo '<form method="post">';
 		wp_nonce_field( 'vibecode_deploy_purge_templates' );
-		echo '<p><input type="submit" name="vibecode_deploy_purge_templates" class="button button-secondary" value="Purge All Templates" onclick="return confirm(\'Delete all templates owned by this project? This cannot be undone.\');" /></p>';
+		$purge_templates_confirm = esc_js( __( 'Delete all templates owned by this project? This cannot be undone.', 'vibecode-deploy' ) );
+		echo '<p><input type="submit" name="vibecode_deploy_purge_templates" class="button button-secondary" value="' . esc_attr__( 'Purge All Templates', 'vibecode-deploy' ) . '" onclick="return confirm(\'' . $purge_templates_confirm . '\');" /></p>';
 		echo '</form>';
 		echo '<table class="widefat striped">';
-		echo '<thead><tr><th>ID</th><th>Slug</th><th>Title</th><th>Status</th><th>Fingerprint</th></tr></thead><tbody>';
+		echo '<thead><tr><th>' . esc_html__( 'ID', 'vibecode-deploy' ) . '</th><th>' . esc_html__( 'Slug', 'vibecode-deploy' ) . '</th><th>' . esc_html__( 'Title', 'vibecode-deploy' ) . '</th><th>' . esc_html__( 'Status', 'vibecode-deploy' ) . '</th><th>' . esc_html__( 'Fingerprint', 'vibecode-deploy' ) . '</th></tr></thead><tbody>';
 		foreach ( $posts as $p ) {
 			echo '<tr>';
 			echo '<td>' . (int) $p->ID . '</td>';
@@ -157,7 +159,7 @@ final class TemplatesPage {
 		$settings = Settings::get_all();
 		$project_slug = (string) $settings['project_slug'];
 		if ( $project_slug === '' ) {
-			echo '<div class="notice notice-error"><p>Project Slug not set.</p></div>';
+			echo '<div class="notice notice-error"><p>' . esc_html__( 'Project Slug not set.', 'vibecode-deploy' ) . '</p></div>';
 			return;
 		}
 
@@ -223,10 +225,12 @@ final class TemplatesPage {
 
 		$msg = array();
 		if ( $purge_parts ) {
-			$msg[] = 'Purged ' . (int) $deleted_parts . ' template parts.';
+			/* translators: %s: Count */
+			$msg[] = sprintf( __( 'Purged %s template parts.', 'vibecode-deploy' ), (int) $deleted_parts );
 		}
 		if ( $purge_templates ) {
-			$msg[] = 'Purged ' . (int) $deleted_templates . ' templates.';
+			/* translators: %s: Count */
+			$msg[] = sprintf( __( 'Purged %s templates.', 'vibecode-deploy' ), (int) $deleted_templates );
 		}
 		echo '<div class="notice notice-success"><p>' . esc_html( implode( ' ', $msg ) ) . '</p></div>';
 	}

@@ -25,8 +25,8 @@ final class RulesPackPage {
 	public static function register_menu(): void {
 		add_submenu_page(
 			'vibecode-deploy',
-			'Rules Pack',
-			'Rules Pack',
+			__( 'Rules Pack', 'vibecode-deploy' ),
+			__( 'Rules Pack', 'vibecode-deploy' ),
 			'manage_options',
 			'vibecode-deploy-rules-pack',
 			array( __CLASS__, 'render' )
@@ -51,45 +51,47 @@ final class RulesPackPage {
 		$readme_md_content = \VibeCode\Deploy\Services\RulesPackService::generate_readme_markdown();
 
 		echo '<div class="wrap">';
-		echo '<h1>Vibe Code Deploy Rules Pack</h1>';
+		echo '<h1>' . esc_html( get_admin_page_title() ) . '</h1>';
 		EnvService::render_admin_notice();
 
 		echo '<div class="card" style="max-width: 1100px;">';
-		echo '<p>Download a rules pack for use in AI IDE tools (Cursor, Windsurf, VS Code extensions). This pack contains <code>RULES.md</code> plus a brief <code>README.md</code>.</p>';
+		echo '<p>' . esc_html__( 'Download a rules pack for use in AI IDE tools (Cursor, Windsurf, VS Code extensions). This pack contains', 'vibecode-deploy' ) . ' <code>RULES.md</code> ' . esc_html__( 'plus a brief', 'vibecode-deploy' ) . ' <code>README.md</code>.</p>';
 		echo '</div>';
 
 		echo '<div class="card" style="max-width: 1100px;">';
-		echo '<h2 class="title">Detected files</h2>';
+		echo '<h2 class="title">' . esc_html__( 'Detected files', 'vibecode-deploy' ) . '</h2>';
 		echo '<table class="widefat striped">';
 		echo '<tbody>';
-		echo '<tr><th style="width:220px;">RULES.md</th><td>' . ( $rules_md_path !== '' && is_file( $rules_md_path ) ? '<code>' . esc_html( $rules_md_path ) . '</code>' : '<em>Not found</em>' ) . '</td></tr>';
+		echo '<tr><th style="width:220px;">RULES.md</th><td>' . ( $rules_md_path !== '' && is_file( $rules_md_path ) ? '<code>' . esc_html( $rules_md_path ) . '</code>' : '<em>' . esc_html__( 'Not found', 'vibecode-deploy' ) . '</em>' ) . '</td></tr>';
 		echo '</tbody>';
 		echo '</table>';
 		echo '</div>';
 
 		echo '<div class="card" style="max-width: 1100px;">';
-		echo '<h2 class="title">Pack contents</h2>';
+		echo '<h2 class="title">' . esc_html__( 'Pack contents', 'vibecode-deploy' ) . '</h2>';
 		echo '<ul style="list-style: disc; padding-left: 22px;">';
-		echo '<li><code>RULES.md</code> (project rules)</li>';
+		echo '<li><code>RULES.md</code> (' . esc_html__( 'project rules', 'vibecode-deploy' ) . ')</li>';
 		echo '<li><code>README.md</code></li>';
 		echo '</ul>';
 		echo '</div>';
 
 		echo '<div class="card" style="max-width: 1100px;">';
-		echo '<h2 class="title">Current project settings</h2>';
-		echo '<p>Project slug: <code>' . esc_html( $project_slug ) . '</code></p>';
-		echo '<p>Class prefix: <code>' . esc_html( $class_prefix ) . '</code></p>';
+		echo '<h2 class="title">' . esc_html__( 'Current project settings', 'vibecode-deploy' ) . '</h2>';
+		/* translators: %s: Project slug */
+		echo '<p>' . sprintf( esc_html__( 'Project slug: %s', 'vibecode-deploy' ), '<code>' . esc_html( $project_slug ) . '</code>' ) . '</p>';
+		/* translators: %s: Class prefix */
+		echo '<p>' . sprintf( esc_html__( 'Class prefix: %s', 'vibecode-deploy' ), '<code>' . esc_html( $class_prefix ) . '</code>' ) . '</p>';
 
-		echo '<p><a class="button button-primary" href="' . esc_url( $download_url ) . '">Download Rules Pack (zip)</a></p>';
+		echo '<p><a class="button button-primary" href="' . esc_url( $download_url ) . '">' . esc_html__( 'Download Rules Pack (zip)', 'vibecode-deploy' ) . '</a></p>';
 		echo '</div>';
 
 		echo '<div class="card" style="max-width: 1100px;">';
-		echo '<h2 class="title">Preview</h2>';
-		echo '<p>Review the rules pack contents below before downloading.</p>';
+		echo '<h2 class="title">' . esc_html__( 'Preview', 'vibecode-deploy' ) . '</h2>';
+		echo '<p>' . esc_html__( 'Review the rules pack contents below before downloading.', 'vibecode-deploy' ) . '</p>';
 
 		echo '<h3 style="margin-top: 18px;">RULES.md</h3>';
 		if ( $rules_md_content === '' ) {
-			echo '<div class="notice notice-warning"><p><strong>RULES.md not found or unreadable.</strong></p></div>';
+			echo '<div class="notice notice-warning"><p><strong>' . esc_html__( 'RULES.md not found or unreadable.', 'vibecode-deploy' ) . '</strong></p></div>';
 		} else {
 			echo '<pre style="max-height: 520px; overflow: auto; white-space: pre-wrap; border: 1px solid #c3c4c7; background: #fff; padding: 12px;">' . esc_html( $rules_md_content ) . '</pre>';
 		}
@@ -99,9 +101,9 @@ final class RulesPackPage {
 		echo '</div>';
 
 		echo '<div class="card" style="max-width: 1100px;">';
-		echo '<h2 class="title">Etch disclaimer</h2>';
-		echo '<p>Vibe Code Deploy is a separate plugin that integrates with Etch (plugin) and etch-theme. Etch and etch-theme are owned and licensed by their respective authors.</p>';
-		echo '<p>This rules pack does not include Etch source code. If your workflow uses Etch or Etch theme assets/templates, ensure your usage complies with Etch\'s license and terms.</p>';
+		echo '<h2 class="title">' . esc_html__( 'Etch disclaimer', 'vibecode-deploy' ) . '</h2>';
+		echo '<p>' . esc_html__( 'Vibe Code Deploy is a separate plugin that integrates with Etch (plugin) and etch-theme. Etch and etch-theme are owned and licensed by their respective authors.', 'vibecode-deploy' ) . '</p>';
+		echo '<p>' . esc_html__( 'This rules pack does not include Etch source code. If your workflow uses Etch or Etch theme assets/templates, ensure your usage complies with Etch\'s license and terms.', 'vibecode-deploy' ) . '</p>';
 		echo '</div>';
 
 		echo '</div>';
@@ -109,7 +111,7 @@ final class RulesPackPage {
 
 	public static function download_rules_pack(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Forbidden.' );
+			wp_die( esc_html__( 'Forbidden.', 'vibecode-deploy' ) );
 		}
 
 		check_admin_referer( 'vibecode_deploy_download_rules_pack' );

@@ -19,6 +19,17 @@ A WordPress plugin that converts static HTML websites into Gutenberg-based WordP
 - EtchWP plugin (recommended for full functionality)
 - Etch theme or child theme (recommended for full functionality)
 
+### Etch Theme Compatibility
+
+This plugin is designed to work with the official **Etch theme** and child themes. The plugin ensures child themes remain compatible with official Etch theme updates.
+
+- **Official Etch Child Theme Repository**: https://github.com/Digital-Gravy/etch-child-theme
+- **Etch Theme Documentation**: https://etchwp.com/
+
+When deploying theme files (functions.php, ACF JSON), the plugin uses smart merge to preserve existing code while updating CPT registrations and shortcodes, ensuring compatibility with the parent Etch theme.
+
+**For Developers**: See the [Developer Guide](docs/DEVELOPER_GUIDE.md#etch-theme-compatibility) for detailed information on monitoring the official Etch theme repository for compatibility and maintaining compatibility with official updates.
+
 ## Installation
 
 1. Download the **plugin ZIP file** (`vibecode-deploy.zip`)
@@ -65,6 +76,10 @@ your-staging.zip
     │   └── main.js
     ├── resources/
     │   └── images/
+    ├── theme/                     # Optional: Theme files
+    │   ├── functions.php          # Smart merge with existing
+    │   └── acf-json/              # ACF field group definitions
+    │       └── group_*.json
     └── rules.md                   # Optional
 ```
 
@@ -78,24 +93,24 @@ For best results, follow these rules:
 
 1. **Skip Link**: Must be first element in body
    ```html
-   <a class="cfa-skip-link" href="#main">Skip to main content</a>
+   <a class="{project-prefix}-skip-link" href="#main">Skip to main content</a>
    ```
 
 2. **Header**: Elements repeated on every page should be inside header
    ```html
-   <header class="cfa-header" role="banner">
+   <header class="{project-prefix}-header" role="banner">
        <!-- Top bar, navigation, logo -->
    </header>
    ```
 
 3. **Main Content**: Only this content is imported as page content
    ```html
-   <main id="main" class="cfa-main" role="main">
+   <main id="main" class="{project-prefix}-main" role="main">
        <!-- Page content -->
    </main>
    ```
 
-4. **CSS Classes**: Use BEM naming convention with project prefix (e.g., `cfa-`)
+4. **CSS Classes**: Use BEM naming convention with project prefix (e.g., `my-site-` or configure in plugin settings)
 
 ## Troubleshooting
 
@@ -153,6 +168,8 @@ wp vibecode-deploy purge --type=template-parts
 
 ### Developer Documentation
 - **Developer Guide**: See `docs/DEVELOPER_GUIDE.md` for extending the plugin
+  - **Etch Theme Compatibility**: See [Monitoring for Compatibility](docs/DEVELOPER_GUIDE.md#monitoring-for-compatibility) section for maintaining compatibility with official Etch theme updates
+- **WordPress Plugin Best Practices**: See `docs/WORDPRESS_PLUGIN_BEST_PRACTICES.md` for comprehensive WordPress plugin development guidelines
 - **API Reference**: See `docs/API_REFERENCE.md` for service class documentation
 - **Product Requirements**: See `PRD-VibeCodeDeploy.md` for complete requirements
 

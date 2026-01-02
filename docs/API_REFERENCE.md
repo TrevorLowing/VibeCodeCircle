@@ -59,7 +59,7 @@ Plugin settings management.
 #### Settings Keys
 
 - `project_slug`: Project identifier
-- `class_prefix`: CSS class prefix (e.g., 'cfa-')
+- `class_prefix`: CSS class prefix (e.g., 'my-site-')
 - `staging_dir`: Staging folder name
 - `placeholder_prefix`: Shortcode placeholder prefix
 - `env_errors_mode`: How to handle environment errors ('warn' or 'fail')

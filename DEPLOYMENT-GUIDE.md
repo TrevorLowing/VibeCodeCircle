@@ -23,20 +23,20 @@ Each HTML page must follow this structure:
 </head>
 <body>
     <!-- Skip Link (Required) -->
-    <a class="cfa-skip-link" href="#main">Skip to main content</a>
+    <a class="{project-prefix}-skip-link" href="#main">Skip to main content</a>
     
     <!-- Header (repeated elements) -->
-    <header class="cfa-header" role="banner">
+    <header class="{project-prefix}-header" role="banner">
         <!-- Navigation, logo, top bar -->
     </header>
     
     <!-- Main Content (only this is imported) -->
-    <main id="main" class="cfa-main" role="main">
+    <main id="main" class="{project-prefix}-main" role="main">
         <!-- Page content -->
     </main>
     
     <!-- Footer -->
-    <footer class="cfa-footer" role="contentinfo">
+    <footer class="{project-prefix}-footer" role="contentinfo">
         <!-- Footer content -->
     </footer>
 </body>
@@ -47,7 +47,7 @@ Each HTML page must follow this structure:
 1. **Skip Link**: Must be the first element in `<body>`
 2. **Header**: Elements repeated on every page must be INSIDE `<header>`
 3. **Main**: Only content inside `<main>` becomes page content
-4. **CSS Classes**: Use BEM naming with project prefix (e.g., `cfa-*`)
+4. **CSS Classes**: Use BEM naming with project prefix (e.g., `my-site-*` or configure in plugin settings)
 
 ## Step 2: Create Staging ZIP
 

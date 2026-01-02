@@ -54,9 +54,9 @@ final class RulesPackService {
 		$out .= "Instead, use an HTML comment placeholder that Vibe Code Deploy converts into a real Gutenberg `core/shortcode` block during deploy:\n\n";
 		$settings = \VibeCode\Deploy\Settings::get_all();
 		$prefix = isset( $settings['placeholder_prefix'] ) ? (string) $settings['placeholder_prefix'] : 'VIBECODE_SHORTCODE';
-		$out .= "- Example: `<!-- " . $prefix . " cfa_foia_index paginate=\"1\" per_page=\"20\" -->`\n\n";
+		$out .= "- Example: `<!-- " . $prefix . " my_content_index paginate=\"1\" per_page=\"20\" -->`\n\n";
 		$out .= "Vibe Code Deploy will convert that placeholder into:\n\n";
-		$out .= "- `<!-- wp:shortcode -->[cfa_foia_index paginate=\"1\" per_page=\"20\"]<!-- /wp:shortcode -->`\n\n";
+		$out .= "- `<!-- wp:shortcode -->[my_content_index paginate=\"1\" per_page=\"20\"]<!-- /wp:shortcode -->`\n\n";
 		$out .= "### Placeholder rules config (optional but recommended)\n\n";
 		$out .= "Add `vibecode-deploy-staging/vibecode-deploy-shortcodes.json` to define which page slugs must include which placeholders.\n\n";
 		$out .= "- Validation ignores shortcode attributes (attrs are only defaults for insertion).\n";

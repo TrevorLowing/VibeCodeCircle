@@ -25,8 +25,8 @@ final class BuildsPage {
 	public static function register_menu(): void {
 		add_submenu_page(
 			'vibecode-deploy',
-			'Builds',
-			'Builds',
+			__( 'Builds', 'vibecode-deploy' ),
+			__( 'Builds', 'vibecode-deploy' ),
 			'manage_options',
 			'vibecode-deploy-builds',
 			array( __CLASS__, 'render' )
@@ -51,42 +51,48 @@ final class BuildsPage {
 		$failed = isset( $_GET['failed'] ) ? sanitize_text_field( (string) $_GET['failed'] ) : '';
 
 		echo '<div class="wrap">';
-		echo '<h1>Vibe Code Deploy Builds</h1>';
+		echo '<h1>' . esc_html( get_admin_page_title() ) . '</h1>';
 		EnvService::render_admin_notice();
 
 		if ( $deleted !== '' ) {
-			echo '<div class="notice notice-success"><p>Build deleted: <code>' . esc_html( $deleted ) . '</code></p></div>';
+			/* translators: %s: Fingerprint */
+			echo '<div class="notice notice-success"><p>' . sprintf( esc_html__( 'Build deleted: %s', 'vibecode-deploy' ), '<code>' . esc_html( $deleted ) . '</code>' ) . '</p></div>';
 		} elseif ( $bulk_deleted > 0 ) {
-			echo '<div class="notice notice-success"><p>Builds deleted: <strong>' . esc_html( (string) $bulk_deleted ) . '</strong></p></div>';
+			/* translators: %s: Count */
+			echo '<div class="notice notice-success"><p>' . sprintf( esc_html__( 'Builds deleted: %s', 'vibecode-deploy' ), '<strong>' . esc_html( (string) $bulk_deleted ) . '</strong>' ) . '</p></div>';
 		} elseif ( $rolled_back !== '' ) {
-			echo '<div class="notice notice-success"><p>Rollback complete: <code>' . esc_html( $rolled_back ) . '</code>. Restored: <strong>' . esc_html( (string) $rolled_back_restored ) . '</strong>. Deleted: <strong>' . esc_html( (string) $rolled_back_deleted ) . '</strong>.</p></div>';
+			/* translators: %1$s: Fingerprint, %2$s: Restored count, %3$s: Deleted count */
+			echo '<div class="notice notice-success"><p>' . sprintf( esc_html__( 'Rollback complete: %1$s. Restored: %2$s. Deleted: %3$s.', 'vibecode-deploy' ), '<code>' . esc_html( $rolled_back ) . '</code>', '<strong>' . esc_html( (string) $rolled_back_restored ) . '</strong>', '<strong>' . esc_html( (string) $rolled_back_deleted ) . '</strong>' ) . '</p></div>';
 		} elseif ( $failed !== '' ) {
-			echo '<div class="notice notice-error"><p>Build action failed: <code>' . esc_html( $failed ) . '</code>. Check Vibe Code Deploy → Logs.</p></div>';
+			/* translators: %s: Error message */
+			echo '<div class="notice notice-error"><p>' . sprintf( esc_html__( 'Build action failed: %s. Check', 'vibecode-deploy' ), '<code>' . esc_html( $failed ) . '</code>' ) . ' ' . esc_html__( 'Vibe Code Deploy', 'vibecode-deploy' ) . ' → ' . esc_html__( 'Logs', 'vibecode-deploy' ) . '.</p></div>';
 		}
 
 		if ( $project_slug === '' ) {
-			echo '<p><strong>Project Slug is required.</strong> Set it in Vibe Code Deploy → Configuration.</p>';
+			echo '<p><strong>' . esc_html__( 'Project Slug is required.', 'vibecode-deploy' ) . '</strong> ' . esc_html__( 'Set it in', 'vibecode-deploy' ) . ' ' . esc_html__( 'Vibe Code Deploy', 'vibecode-deploy' ) . ' → ' . esc_html__( 'Configuration', 'vibecode-deploy' ) . '.</p>';
 			echo '</div>';
 			return;
 		}
 
 		if ( empty( $fingerprints ) ) {
 			echo '<div class="card" style="max-width: 1100px;">';
-			echo '<p>No staging builds found yet. Upload a staging zip in Vibe Code Deploy → Deploy.</p>';
+			echo '<p>' . esc_html__( 'No staging builds found yet. Upload a staging zip in', 'vibecode-deploy' ) . ' ' . esc_html__( 'Vibe Code Deploy', 'vibecode-deploy' ) . ' → ' . esc_html__( 'Deploy', 'vibecode-deploy' ) . '.</p>';
 			echo '</div>';
 			echo '</div>';
 			return;
 		}
 
 		echo '<div class="card" style="max-width: 1100px;">';
-		echo '<h2 class="title">Builds</h2>';
-		echo '<p>Project: <code>' . esc_html( $project_slug ) . '</code></p>';
+		echo '<h2 class="title">' . esc_html__( 'Builds', 'vibecode-deploy' ) . '</h2>';
+		/* translators: %s: Project slug */
+		echo '<p>' . sprintf( esc_html__( 'Project: %s', 'vibecode-deploy' ), '<code>' . esc_html( $project_slug ) . '</code>' ) . '</p>';
 		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
 		echo '<input type="hidden" name="action" value="vibecode_deploy_bulk_delete_builds" />';
 		wp_nonce_field( 'vibecode_deploy_bulk_delete_builds', 'vibecode_deploy_bulk_nonce' );
-		echo '<p><input type="submit" class="button" value="Delete Selected" onclick="return confirm(\'Delete selected builds? This cannot be undone.\');" /></p>';
+		$delete_confirm = esc_js( __( 'Delete selected builds? This cannot be undone.', 'vibecode-deploy' ) );
+		echo '<p><input type="submit" class="button" value="' . esc_attr__( 'Delete Selected', 'vibecode-deploy' ) . '" onclick="return confirm(\'' . $delete_confirm . '\');" /></p>';
 		echo '<table class="widefat striped">';
-		echo '<thead><tr><th style="width: 26px;"><input type="checkbox" id="vibecode-deploy-builds-select-all" aria-label="Select all builds" /></th><th>Fingerprint</th><th>Status</th><th>Pages</th><th>Files</th><th>Size</th><th>Actions</th></tr></thead><tbody>';
+		echo '<thead><tr><th style="width: 26px;"><input type="checkbox" id="vibecode-deploy-builds-select-all" aria-label="' . esc_attr__( 'Select all builds', 'vibecode-deploy' ) . '" /></th><th>' . esc_html__( 'Fingerprint', 'vibecode-deploy' ) . '</th><th>' . esc_html__( 'Status', 'vibecode-deploy' ) . '</th><th>' . esc_html__( 'Pages', 'vibecode-deploy' ) . '</th><th>' . esc_html__( 'Files', 'vibecode-deploy' ) . '</th><th>' . esc_html__( 'Size', 'vibecode-deploy' ) . '</th><th>' . esc_html__( 'Actions', 'vibecode-deploy' ) . '</th></tr></thead><tbody>';
 
 		foreach ( $fingerprints as $fp ) {
 			$fp = (string) $fp;
@@ -120,20 +126,22 @@ final class BuildsPage {
 			echo '<tr>';
 			echo '<td><input type="checkbox" name="fingerprints[]" value="' . esc_attr( $fp ) . '" /></td>';
 			echo '<td><code>' . esc_html( $fp ) . '</code></td>';
-			echo '<td>' . ( $is_active ? '<strong>Active</strong>' : '' ) . '</td>';
+			echo '<td>' . ( $is_active ? '<strong>' . esc_html__( 'Active', 'vibecode-deploy' ) . '</strong>' : '' ) . '</td>';
 			echo '<td>' . esc_html( (string) $pages ) . '</td>';
 			echo '<td>' . esc_html( (string) $files ) . '</td>';
 			echo '<td>' . esc_html( (string) size_format( $bytes ) ) . '</td>';
 			echo '<td>';
-			echo '<a class="button" href="' . esc_url( $download_url ) . '">Download</a> ';
+			echo '<a class="button" href="' . esc_url( $download_url ) . '">' . esc_html__( 'Download', 'vibecode-deploy' ) . '</a> ';
 			if ( ! $is_active ) {
-				echo '<a class="button" href="' . esc_url( $set_active_url ) . '">Set Active</a> ';
+				echo '<a class="button" href="' . esc_url( $set_active_url ) . '">' . esc_html__( 'Set Active', 'vibecode-deploy' ) . '</a> ';
 			}
 			if ( $has_manifest ) {
-				echo '<a class="button" href="' . esc_url( $rollback_url ) . '" onclick="return confirm(\'Rollback this deploy? This will restore updated pages and delete pages created by this deploy.\');">Rollback</a> ';
-				echo '<a class="button" href="' . esc_url( $view_manifest_url ) . '" target="_blank" rel="noopener">View Manifest</a> ';
+				$rollback_confirm = esc_js( __( 'Rollback this deploy? This will restore updated pages and delete pages created by this deploy.', 'vibecode-deploy' ) );
+				echo '<a class="button" href="' . esc_url( $rollback_url ) . '" onclick="return confirm(\'' . $rollback_confirm . '\');">' . esc_html__( 'Rollback', 'vibecode-deploy' ) . '</a> ';
+				echo '<a class="button" href="' . esc_url( $view_manifest_url ) . '" target="_blank" rel="noopener">' . esc_html__( 'View Manifest', 'vibecode-deploy' ) . '</a> ';
 			}
-			echo '<a class="button" href="' . esc_url( $delete_url ) . '" onclick="return confirm(\'Delete this build? This cannot be undone.\');">Delete</a>';
+			$delete_confirm = esc_js( __( 'Delete this build? This cannot be undone.', 'vibecode-deploy' ) );
+			echo '<a class="button" href="' . esc_url( $delete_url ) . '" onclick="return confirm(\'' . $delete_confirm . '\');">' . esc_html__( 'Delete', 'vibecode-deploy' ) . '</a>';
 			echo '</td>';
 			echo '</tr>';
 		}
@@ -147,7 +155,7 @@ final class BuildsPage {
 
 	public static function rollback_build(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Forbidden.' );
+			wp_die( esc_html__( 'Forbidden.', 'vibecode-deploy' ) );
 		}
 
 		$settings = Settings::get_all();
@@ -177,7 +185,7 @@ final class BuildsPage {
 
 	public static function view_manifest(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Forbidden.' );
+			wp_die( esc_html__( 'Forbidden.', 'vibecode-deploy' ) );
 		}
 
 		$settings = Settings::get_all();
@@ -202,10 +210,12 @@ final class BuildsPage {
 		}
 
 		echo '<div class="wrap">';
-		echo '<h1>Vibe Code Deploy Manifest</h1>';
-		echo '<p>Project: <code>' . esc_html( $project_slug ) . '</code></p>';
-		echo '<p>Fingerprint: <code>' . esc_html( $fingerprint ) . '</code></p>';
-		echo '<p><a href="' . esc_url( admin_url( 'admin.php?page=vibecode-deploy-builds' ) ) . '">← Back to Builds</a></p>';
+		echo '<h1>' . esc_html__( 'Manifest', 'vibecode-deploy' ) . '</h1>';
+		/* translators: %s: Project slug */
+		echo '<p>' . sprintf( esc_html__( 'Project: %s', 'vibecode-deploy' ), '<code>' . esc_html( $project_slug ) . '</code>' ) . '</p>';
+		/* translators: %s: Fingerprint */
+		echo '<p>' . sprintf( esc_html__( 'Fingerprint: %s', 'vibecode-deploy' ), '<code>' . esc_html( $fingerprint ) . '</code>' ) . '</p>';
+		echo '<p><a href="' . esc_url( admin_url( 'admin.php?page=vibecode-deploy-builds' ) ) . '">← ' . esc_html__( 'Back to Builds', 'vibecode-deploy' ) . '</a></p>';
 		echo '<pre style="max-width: 1100px; white-space: pre-wrap; word-wrap: break-word;">' . esc_html( $json ) . '</pre>';
 		echo '</div>';
 		exit;
@@ -213,7 +223,7 @@ final class BuildsPage {
 
 	public static function bulk_delete_builds(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Forbidden.' );
+			wp_die( esc_html__( 'Forbidden.', 'vibecode-deploy' ) );
 		}
 
 		check_admin_referer( 'vibecode_deploy_bulk_delete_builds', 'vibecode_deploy_bulk_nonce' );
@@ -269,7 +279,7 @@ final class BuildsPage {
 
 	public static function delete_build(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Forbidden.' );
+			wp_die( esc_html__( 'Forbidden.', 'vibecode-deploy' ) );
 		}
 
 		$settings = Settings::get_all();
@@ -317,7 +327,7 @@ final class BuildsPage {
 
 	public static function set_active_build(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Forbidden.' );
+			wp_die( esc_html__( 'Forbidden.', 'vibecode-deploy' ) );
 		}
 
 		$settings = Settings::get_all();
@@ -345,7 +355,7 @@ final class BuildsPage {
 
 	public static function download_build(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Forbidden.' );
+			wp_die( esc_html__( 'Forbidden.', 'vibecode-deploy' ) );
 		}
 
 		$settings = Settings::get_all();

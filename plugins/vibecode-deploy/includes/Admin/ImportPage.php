@@ -22,8 +22,8 @@ final class ImportPage {
 	public static function register_menu(): void {
 		add_submenu_page(
 			'vibecode-deploy',
-			'Deploy',
-			'Deploy',
+			__( 'Deploy', 'vibecode-deploy' ),
+			__( 'Deploy', 'vibecode-deploy' ),
 			'manage_options',
 			'vibecode-deploy-import',
 			array( __CLASS__, 'render' )
@@ -50,13 +50,13 @@ final class ImportPage {
 			check_admin_referer( 'vibecode_deploy_upload_zip', 'vibecode_deploy_nonce' );
 
 			if ( $settings['project_slug'] === '' ) {
-				$error = 'Project Slug is required.';
+				$error = __( 'Project Slug is required.', 'vibecode-deploy' );
 				Logger::error( 'Upload blocked: missing project slug.', array(), '' );
 			} elseif ( $settings['class_prefix'] === '' ) {
-				$error = 'Class Prefix is required.';
+				$error = __( 'Class Prefix is required.', 'vibecode-deploy' );
 				Logger::error( 'Upload blocked: missing class prefix.', array( 'project_slug' => (string) $settings['project_slug'] ), (string) $settings['project_slug'] );
 			} elseif ( ! preg_match( '/^[a-z0-9-]+-$/', (string) $settings['class_prefix'] ) ) {
-				$error = 'Class Prefix is invalid.';
+				$error = __( 'Class Prefix is invalid.', 'vibecode-deploy' );
 				Logger::error( 'Upload blocked: invalid class prefix.', array( 'project_slug' => (string) $settings['project_slug'], 'class_prefix' => (string) $settings['class_prefix'] ), (string) $settings['project_slug'] );
 			} elseif ( empty( $_FILES['vibecode_deploy_zip']['tmp_name'] ) || ! is_uploaded_file( (string) $_FILES['vibecode_deploy_zip']['tmp_name'] ) ) {
 				$error = 'No zip file uploaded.';
@@ -151,7 +151,7 @@ final class ImportPage {
 				if ( is_array( $import_result ) && (int) ( $import_result['errors'] ?? 0 ) === 0 ) {
 					BuildService::set_active_fingerprint( (string) $settings['project_slug'], $selected_fingerprint );
 				}
-				$notice = 'Deploy complete.';
+				$notice = __( 'Deploy complete.', 'vibecode-deploy' );
 				Logger::info( 'Import complete.', array( 'project_slug' => (string) $settings['project_slug'], 'fingerprint' => $selected_fingerprint, 'result' => $import_result ), (string) $settings['project_slug'] );
 			}
 		}
@@ -159,13 +159,15 @@ final class ImportPage {
 		$rolled_back = isset( $_GET['rolled_back'] ) ? sanitize_text_field( (string) $_GET['rolled_back'] ) : '';
 
 		echo '<div class="wrap">';
-		echo '<h1>Vibe Code Deploy Deploy</h1>';
+		echo '<h1>' . esc_html( get_admin_page_title() ) . '</h1>';
 		EnvService::render_admin_notice();
 
 		if ( $rolled_back !== '' ) {
-			echo '<div class="notice notice-success"><p>Rollback complete: <code>' . esc_html( $rolled_back ) . '</code>. Restored: <strong>' . esc_html( (string) $rolled_back_restored ) . '</strong>. Deleted: <strong>' . esc_html( (string) $rolled_back_deleted ) . '</strong>.</p></div>';
+			/* translators: %1$s: Fingerprint, %2$s: Restored count, %3$s: Deleted count */
+			echo '<div class="notice notice-success"><p>' . sprintf( esc_html__( 'Rollback complete: %1$s. Restored: %2$s. Deleted: %3$s.', 'vibecode-deploy' ), '<code>' . esc_html( $rolled_back ) . '</code>', '<strong>' . esc_html( (string) $rolled_back_restored ) . '</strong>', '<strong>' . esc_html( (string) $rolled_back_deleted ) . '</strong>' ) . '</p></div>';
 		} elseif ( $failed !== '' ) {
-			echo '<div class="notice notice-error"><p>Rollback failed: <code>' . esc_html( $failed ) . '</code>. Check Vibe Code Deploy → Logs.</p></div>';
+			/* translators: %s: Error message */
+			echo '<div class="notice notice-error"><p>' . sprintf( esc_html__( 'Rollback failed: %s. Check', 'vibecode-deploy' ), '<code>' . esc_html( $failed ) . '</code>' ) . ' ' . esc_html__( 'Vibe Code Deploy', 'vibecode-deploy' ) . ' → ' . esc_html__( 'Logs', 'vibecode-deploy' ) . '.</p></div>';
 		} elseif ( $error !== '' ) {
 			echo '<div class="notice notice-error"><p>' . esc_html( $error ) . '</p></div>';
 		} elseif ( $notice !== '' ) {
@@ -175,14 +177,15 @@ final class ImportPage {
 		$logs_url = admin_url( 'admin.php?page=vibecode-deploy-logs' );
 		$builds_url = admin_url( 'admin.php?page=vibecode-deploy-builds' );
 		echo '<div class="card" style="max-width: 1100px;">';
-		echo '<h2 class="title">Workflow</h2>';
+		echo '<h2 class="title">' . esc_html__( 'Workflow', 'vibecode-deploy' ) . '</h2>';
 		echo '<ol>'; 
-		echo '<li>Upload staging zip</li>';
-		echo '<li>Select build</li>';
-		echo '<li>Preflight (review changes)</li>';
-		echo '<li>Deploy (writes pages and template content)</li>';
+		echo '<li>' . esc_html__( 'Upload staging zip', 'vibecode-deploy' ) . '</li>';
+		echo '<li>' . esc_html__( 'Select build', 'vibecode-deploy' ) . '</li>';
+		echo '<li>' . esc_html__( 'Preflight (review changes)', 'vibecode-deploy' ) . '</li>';
+		echo '<li>' . esc_html__( 'Deploy (writes pages and template content)', 'vibecode-deploy' ) . '</li>';
 		echo '</ol>';
-		echo '<p>If something fails, check <a href="' . esc_url( $logs_url ) . '">Vibe Code Deploy → Logs</a>. To manage builds, use <a href="' . esc_url( $builds_url ) . '">Vibe Code Deploy → Builds</a>.</p>';
+		/* translators: %1$s: Logs link, %2$s: Builds link */
+		echo '<p>' . sprintf( esc_html__( 'If something fails, check %1$s. To manage builds, use %2$s.', 'vibecode-deploy' ), '<a href="' . esc_url( $logs_url ) . '">' . esc_html__( 'Vibe Code Deploy', 'vibecode-deploy' ) . ' → ' . esc_html__( 'Logs', 'vibecode-deploy' ) . '</a>', '<a href="' . esc_url( $builds_url ) . '">' . esc_html__( 'Vibe Code Deploy', 'vibecode-deploy' ) . ' → ' . esc_html__( 'Builds', 'vibecode-deploy' ) . '</a>' ) . '</p>';
 		echo '<details><summary>Staging zip requirements</summary>';
 		echo '<p class="description">Your zip must contain a top-level <code>vibecode-deploy-staging/</code> folder with these subfolders:</p>';
 		echo '<ul style="list-style: disc; padding-left: 22px;">';
@@ -205,26 +208,29 @@ final class ImportPage {
 				'vibecode_deploy_rollback_last_deploy'
 			);
 			echo '<div class="card" style="max-width: 1100px;">';
-			echo '<h2 class="title">Rollback</h2>';
-			echo '<p class="description">Last deploy fingerprint: <code>' . esc_html( $last_deploy_fp ) . '</code></p>';
-			echo '<p><a class="button" href="' . esc_url( $rollback_url ) . '" onclick="return confirm(\'Rollback the last deploy? This will restore updated pages and delete pages created by that deploy.\');">Rollback Last Deploy</a></p>';
+			echo '<h2 class="title">' . esc_html__( 'Rollback', 'vibecode-deploy' ) . '</h2>';
+			/* translators: %s: Fingerprint */
+			echo '<p class="description">' . sprintf( esc_html__( 'Last deploy fingerprint: %s', 'vibecode-deploy' ), '<code>' . esc_html( $last_deploy_fp ) . '</code>' ) . '</p>';
+			$rollback_confirm = esc_js( __( 'Rollback the last deploy? This will restore updated pages and delete pages created by that deploy.', 'vibecode-deploy' ) );
+			echo '<p><a class="button" href="' . esc_url( $rollback_url ) . '" onclick="return confirm(\'' . $rollback_confirm . '\');">' . esc_html__( 'Rollback Last Deploy', 'vibecode-deploy' ) . '</a></p>';
 			echo '</div>';
 		}
 
 		echo '<div class="card" style="max-width: 1100px;">';
-		echo '<h2 class="title">1) Upload Staging Zip</h2>';
+		echo '<h2 class="title">1) ' . esc_html__( 'Upload Staging Zip', 'vibecode-deploy' ) . '</h2>';
 		echo '<form method="post" enctype="multipart/form-data">';
 		wp_nonce_field( 'vibecode_deploy_upload_zip', 'vibecode_deploy_nonce' );
 		echo '<table class="form-table" role="presentation">';
-		echo '<tr><th scope="row">Zip file</th><td><input type="file" name="vibecode_deploy_zip" accept=".zip" required /><p class="description">Upload a staging bundle exported from your local build.</p></td></tr>';
+		echo '<tr><th scope="row">' . esc_html__( 'Zip file', 'vibecode-deploy' ) . '</th><td><input type="file" name="vibecode_deploy_zip" accept=".zip" required /><p class="description">' . esc_html__( 'Upload a staging bundle exported from your local build.', 'vibecode-deploy' ) . '</p></td></tr>';
 		echo '</table>';
-		echo '<p><input type="submit" class="button button-primary" name="vibecode_deploy_upload_zip" value="Upload Staging Zip" /></p>';
+		echo '<p><input type="submit" class="button button-primary" name="vibecode_deploy_upload_zip" value="' . esc_attr__( 'Upload Staging Zip', 'vibecode-deploy' ) . '" /></p>';
 		echo '</form>';
-		echo '<p class="description">Max zip size: ' . esc_html( (string) (int) ( Staging::ZIP_MAX_BYTES / 1024 / 1024 ) ) . 'MB</p>';
+		/* translators: %s: Max size in MB */
+		echo '<p class="description">' . sprintf( esc_html__( 'Max zip size: %s', 'vibecode-deploy' ), esc_html( (string) (int) ( Staging::ZIP_MAX_BYTES / 1024 / 1024 ) ) . 'MB' ) . '</p>';
 		echo '</div>';
 
 		echo '<div class="card" style="max-width: 1100px;">';
-		echo '<h2 class="title">2) Select Build</h2>';
+		echo '<h2 class="title">2) ' . esc_html__( 'Select Build', 'vibecode-deploy' ) . '</h2>';
 
 		$project_slug = (string) $settings['project_slug'];
 		$fingerprints = $project_slug !== '' ? BuildService::list_build_fingerprints( $project_slug ) : array();
@@ -238,40 +244,41 @@ final class ImportPage {
 		}
 
 		if ( $project_slug === '' ) {
-			echo '<p><strong>Project Slug is required.</strong> Set it in Vibe Code Deploy → Configuration before deploying.</p>';
+			echo '<p><strong>' . esc_html__( 'Project Slug is required.', 'vibecode-deploy' ) . '</strong> ' . esc_html__( 'Set it in', 'vibecode-deploy' ) . ' ' . esc_html__( 'Vibe Code Deploy', 'vibecode-deploy' ) . ' → ' . esc_html__( 'Configuration', 'vibecode-deploy' ) . ' ' . esc_html__( 'before deploying.', 'vibecode-deploy' ) . '</p>';
 		} elseif ( empty( $fingerprints ) ) {
-			echo '<p>No staging builds found yet. Upload a staging zip above.</p>';
+			echo '<p>' . esc_html__( 'No staging builds found yet. Upload a staging zip above.', 'vibecode-deploy' ) . '</p>';
 		} else {
 			if ( $active_fingerprint !== '' ) {
-				echo '<p>Active build: <code>' . esc_html( $active_fingerprint ) . '</code></p>';
+				/* translators: %s: Fingerprint */
+				echo '<p>' . sprintf( esc_html__( 'Active build: %s', 'vibecode-deploy' ), '<code>' . esc_html( $active_fingerprint ) . '</code>' ) . '</p>';
 			}
 			echo '<form method="post">';
 			wp_nonce_field( 'vibecode_deploy_preflight', 'vibecode_deploy_preflight_nonce' );
 			echo '<table class="form-table" role="presentation">';
-			echo '<tr><th scope="row">Staging build</th><td><select name="vibecode_deploy_fingerprint">';
+			echo '<tr><th scope="row">' . esc_html__( 'Staging build', 'vibecode-deploy' ) . '</th><td><select name="vibecode_deploy_fingerprint">';
 			foreach ( $fingerprints as $fp ) {
 				$selected = ( $fp === $selected_fingerprint ) ? ' selected' : '';
 				$label = (string) $fp;
 				if ( $active_fingerprint !== '' && $fp === $active_fingerprint ) {
-					$label .= ' (Active)';
+					$label .= ' (' . esc_html__( 'Active', 'vibecode-deploy' ) . ')';
 				}
 				echo '<option value="' . esc_attr( $fp ) . '"' . $selected . '>' . esc_html( $label ) . '</option>';
 			}
 			echo '</select></td></tr>';
 			echo '</table>';
-			echo '<p><input type="submit" class="button" name="vibecode_deploy_preflight" value="Run Preflight" /></p>';
+			echo '<p><input type="submit" class="button" name="vibecode_deploy_preflight" value="' . esc_attr__( 'Run Preflight', 'vibecode-deploy' ) . '" /></p>';
 			echo '</form>';
 
 			if ( is_array( $preflight ) && ! empty( $preflight['items'] ) ) {
 				// Check for critical errors first
 				if ( isset( $preflight['errors'] ) && is_array( $preflight['errors'] ) && ! empty( $preflight['errors'] ) ) {
-					echo '<div class="notice notice-error"><p><strong>Deployment blocked:</strong></p>';
+					echo '<div class="notice notice-error"><p><strong>' . esc_html__( 'Deployment blocked:', 'vibecode-deploy' ) . '</strong></p>';
 					echo '<ul style="list-style: disc; padding-left: 22px;">';
 					foreach ( $preflight['errors'] as $error ) {
 						echo '<li>' . esc_html( $error ) . '</li>';
 					}
 					echo '</ul>';
-					echo '<p>Please fix these issues before attempting to deploy.</p></div>';
+					echo '<p>' . esc_html__( 'Please fix these issues before attempting to deploy.', 'vibecode-deploy' ) . '</p></div>';
 					return;
 				}
 				
@@ -291,13 +298,9 @@ final class ImportPage {
 					$warnings_total += (int) ( $it['warnings_count'] ?? 0 );
 				}
 
-				echo '<h3>Preflight Result</h3>';
-				echo '<p>';
-				echo 'Creates: <strong>' . esc_html( (string) $create ) . '</strong> ';
-				echo 'Updates: <strong>' . esc_html( (string) $update ) . '</strong> ';
-				echo 'Skips (unowned): <strong>' . esc_html( (string) $skip ) . '</strong>';
-				echo ' Warnings: <strong>' . esc_html( (string) $warnings_total ) . '</strong>';
-				echo '</p>';
+				echo '<h3>' . esc_html__( 'Preflight Result', 'vibecode-deploy' ) . '</h3>';
+				/* translators: %1$s: Creates count, %2$s: Updates count, %3$s: Skips count, %4$s: Warnings count */
+				echo '<p>' . sprintf( esc_html__( 'Creates: %1$s Updates: %2$s Skips (unowned): %3$s Warnings: %4$s', 'vibecode-deploy' ), '<strong>' . esc_html( (string) $create ) . '</strong>', '<strong>' . esc_html( (string) $update ) . '</strong>', '<strong>' . esc_html( (string) $skip ) . '</strong>', '<strong>' . esc_html( (string) $warnings_total ) . '</strong>' ) . '</p>';
 
 				
 				$template_parts = isset( $preflight['template_parts'] ) && is_array( $preflight['template_parts'] ) ? $preflight['template_parts'] : array();

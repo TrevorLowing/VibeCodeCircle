@@ -21,8 +21,8 @@ final class HelpPage {
 	public function add_admin_menu(): void {
 		add_submenu_page(
 			'vibecode-deploy',
-			'Help & Documentation',
-			'Help',
+			__( 'Help & Documentation', 'vibecode-deploy' ),
+			__( 'Help', 'vibecode-deploy' ),
 			'manage_options',
 			'vibecode-deploy-help',
 			array( $this, 'render' )
@@ -39,31 +39,31 @@ final class HelpPage {
 	public function render(): void {
 		?>
 		<div class="wrap vibecode-deploy-help">
-			<h1>Vibe Code Deploy - Help & Documentation</h1>
+			<h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
 			
 			<div class="vcd-help-grid">
 				<div class="vcd-help-section">
-					<h2>📖 Getting Started</h2>
-					<p>Vibe Code Deploy converts static HTML websites into WordPress Gutenberg blocks. Here's how to use it:</p>
+					<h2><?php echo esc_html__( '📖 Getting Started', 'vibecode-deploy' ); ?></h2>
+					<p><?php echo esc_html__( 'Vibe Code Deploy converts static HTML websites into WordPress Gutenberg blocks. Here\'s how to use it:', 'vibecode-deploy' ); ?></p>
 					
 					<ol class="vcd-steps">
-						<li><strong>Prepare your HTML:</strong> Organize your HTML files with CSS, JS, and resources in the correct structure.</li>
-						<li><strong>Create a staging ZIP:</strong> Package your HTML files and assets into a ZIP file.</li>
-						<li><strong>Upload and Deploy:</strong> Use the Import Build page to upload and deploy your site.</li>
-						<li><strong>Verify:</strong> Use the System Status below to ensure everything is working correctly.</li>
+						<li><strong><?php echo esc_html__( 'Prepare your HTML:', 'vibecode-deploy' ); ?></strong> <?php echo esc_html__( 'Organize your HTML files with CSS, JS, and resources in the correct structure.', 'vibecode-deploy' ); ?></li>
+						<li><strong><?php echo esc_html__( 'Create a staging ZIP:', 'vibecode-deploy' ); ?></strong> <?php echo esc_html__( 'Package your HTML files and assets into a ZIP file.', 'vibecode-deploy' ); ?></li>
+						<li><strong><?php echo esc_html__( 'Upload and Deploy:', 'vibecode-deploy' ); ?></strong> <?php echo esc_html__( 'Use the Import Build page to upload and deploy your site.', 'vibecode-deploy' ); ?></li>
+						<li><strong><?php echo esc_html__( 'Verify:', 'vibecode-deploy' ); ?></strong> <?php echo esc_html__( 'Use the System Status below to ensure everything is working correctly.', 'vibecode-deploy' ); ?></li>
 					</ol>
 				</div>
 
 				<div class="vcd-help-section">
-					<h2>⚙️ System Status</h2>
-					<p>Check if your system is properly configured for Vibe Code Deploy:</p>
+					<h2><?php echo esc_html__( '⚙️ System Status', 'vibecode-deploy' ); ?></h2>
+					<p><?php echo esc_html__( 'Check if your system is properly configured for Vibe Code Deploy:', 'vibecode-deploy' ); ?></p>
 					
 					<?php $this->render_system_status(); ?>
 				</div>
 
 				<div class="vcd-help-section">
-					<h2>📁 Required File Structure</h2>
-					<p>Your staging ZIP should follow this structure:</p>
+					<h2><?php echo esc_html__( '📁 Required File Structure', 'vibecode-deploy' ); ?></h2>
+					<p><?php echo esc_html__( 'Your staging ZIP should follow this structure:', 'vibecode-deploy' ); ?></p>
 					
 					<pre class="vcd-code-block">
 staging-zip/
@@ -83,97 +83,97 @@ staging-zip/
 				</div>
 
 				<div class="vcd-help-section">
-					<h2>🎨 HTML Structure Guidelines</h2>
-					<p>For best results, follow these HTML structure rules:</p>
+					<h2><?php echo esc_html__( '🎨 HTML Structure Guidelines', 'vibecode-deploy' ); ?></h2>
+					<p><?php echo esc_html__( 'For best results, follow these HTML structure rules:', 'vibecode-deploy' ); ?></p>
 					
 					<div class="vcd-rules">
 						<div class="vcd-rule">
-							<h4>Skip Link (Required)</h4>
-							<code>&lt;a class="cfa-skip-link" href="#main"&gt;Skip to main content&lt;/a&gt;</code>
-							<p>Must be the first element in the body.</p>
+							<h4><?php echo esc_html__( 'Skip Link (Required)', 'vibecode-deploy' ); ?></h4>
+							<code>&lt;a class="{project-prefix}-skip-link" href="#main"&gt;<?php echo esc_html__( 'Skip to main content', 'vibecode-deploy' ); ?>&lt;/a&gt;</code>
+							<p><?php echo esc_html__( 'Must be the first element in the body. Replace', 'vibecode-deploy' ); ?> <code>{project-prefix}</code> <?php echo esc_html__( 'with your configured class prefix.', 'vibecode-deploy' ); ?></p>
 						</div>
 						
 						<div class="vcd-rule">
-							<h4>Header Structure</h4>
-							<code>&lt;header class="cfa-header" role="banner"&gt;</code>
-							<p>Elements repeated on every page (like top bars) should be INSIDE the header.</p>
+							<h4><?php echo esc_html__( 'Header Structure', 'vibecode-deploy' ); ?></h4>
+							<code>&lt;header class="{project-prefix}-header" role="banner"&gt;</code>
+							<p><?php echo esc_html__( 'Elements repeated on every page (like top bars) should be INSIDE the header.', 'vibecode-deploy' ); ?></p>
 						</div>
 						
 						<div class="vcd-rule">
-							<h4>Main Content</h4>
-							<code>&lt;main id="main" class="cfa-main" role="main"&gt;</code>
-							<p>Only the content inside main will be imported as page content.</p>
+							<h4><?php echo esc_html__( 'Main Content', 'vibecode-deploy' ); ?></h4>
+							<code>&lt;main id="main" class="{project-prefix}-main" role="main"&gt;</code>
+							<p><?php echo esc_html__( 'Only the content inside main will be imported as page content.', 'vibecode-deploy' ); ?></p>
 						</div>
 						
 						<div class="vcd-rule">
-							<h4>CSS Classes</h4>
-							<p>Use BEM naming convention with project prefix (e.g., <code>cfa-*</code>).</p>
+							<h4><?php echo esc_html__( 'CSS Classes', 'vibecode-deploy' ); ?></h4>
+							<p><?php echo esc_html__( 'Use BEM naming convention with project prefix (e.g.,', 'vibecode-deploy' ); ?> <code>my-site-*</code>). <?php echo esc_html__( 'Configure the prefix in plugin settings.', 'vibecode-deploy' ); ?></p>
 						</div>
 					</div>
 				</div>
 
 				<div class="vcd-help-section">
-					<h2>🔧 Troubleshooting</h2>
+					<h2><?php echo esc_html__( '🔧 Troubleshooting', 'vibecode-deploy' ); ?></h2>
 					
 					<div class="vcd-issues">
 						<div class="vcd-issue">
-							<h4>❌ Assets not loading (404 errors)</h4>
-							<p><strong>Cause:</strong> Assets weren't copied to plugin folder.</p>
-							<p><strong>Solution:</strong> Re-run the import. The plugin automatically copies assets to <code>/wp-content/plugins/vibecode-deploy/assets/</code></p>
+							<h4><?php echo esc_html__( '❌ Assets not loading (404 errors)', 'vibecode-deploy' ); ?></h4>
+							<p><strong><?php echo esc_html__( 'Cause:', 'vibecode-deploy' ); ?></strong> <?php echo esc_html__( 'Assets weren\'t copied to plugin folder.', 'vibecode-deploy' ); ?></p>
+							<p><strong><?php echo esc_html__( 'Solution:', 'vibecode-deploy' ); ?></strong> <?php echo esc_html__( 'Re-run the import. The plugin automatically copies assets to', 'vibecode-deploy' ); ?> <code>/wp-content/plugins/vibecode-deploy/assets/</code></p>
 						</div>
 						
 						<div class="vcd-issue">
-							<h4>❌ Header/Footer not showing</h4>
-							<p><strong>Cause:</strong> Template parts not created or theme not configured.</p>
-							<p><strong>Solution:</strong> Ensure "Extract header/footer from home.html" is checked during import. The plugin automatically configures the theme.</p>
+							<h4><?php echo esc_html__( '❌ Header/Footer not showing', 'vibecode-deploy' ); ?></h4>
+							<p><strong><?php echo esc_html__( 'Cause:', 'vibecode-deploy' ); ?></strong> <?php echo esc_html__( 'Template parts not created or theme not configured.', 'vibecode-deploy' ); ?></p>
+							<p><strong><?php echo esc_html__( 'Solution:', 'vibecode-deploy' ); ?></strong> <?php echo esc_html__( 'Ensure "Extract header/footer from home.html" is checked during import. The plugin automatically configures the theme.', 'vibecode-deploy' ); ?></p>
 						</div>
 						
 						<div class="vcd-issue">
-							<h4>❌ Styling not working</h4>
-							<p><strong>Cause:</strong> CSS not enqueued by theme.</p>
-							<p><strong>Solution:</strong> The plugin automatically updates the theme to enqueue assets. Check if Etch mode is enabled in Appearance → Customize.</p>
+							<h4><?php echo esc_html__( '❌ Styling not working', 'vibecode-deploy' ); ?></h4>
+							<p><strong><?php echo esc_html__( 'Cause:', 'vibecode-deploy' ); ?></strong> <?php echo esc_html__( 'CSS not enqueued by theme.', 'vibecode-deploy' ); ?></p>
+							<p><strong><?php echo esc_html__( 'Solution:', 'vibecode-deploy' ); ?></strong> <?php echo esc_html__( 'The plugin automatically updates the theme to enqueue assets. Check if Etch mode is enabled in Appearance → Customize.', 'vibecode-deploy' ); ?></p>
 						</div>
 						
 						<div class="vcd-issue">
-							<h4>❌ Blank home page</h4>
-							<p><strong>Cause:</strong> Front page not set correctly.</p>
-							<p><strong>Solution:</strong> Check Settings → Reading. Ensure "Front page displays" is set to "A static page" and Home is selected.</p>
+							<h4><?php echo esc_html__( '❌ Blank home page', 'vibecode-deploy' ); ?></h4>
+							<p><strong><?php echo esc_html__( 'Cause:', 'vibecode-deploy' ); ?></strong> <?php echo esc_html__( 'Front page not set correctly.', 'vibecode-deploy' ); ?></p>
+							<p><strong><?php echo esc_html__( 'Solution:', 'vibecode-deploy' ); ?></strong> <?php echo esc_html__( 'Check Settings → Reading. Ensure "Front page displays" is set to "A static page" and Home is selected.', 'vibecode-deploy' ); ?></p>
 						</div>
 					</div>
 				</div>
 
 				<div class="vcd-help-section">
-					<h2>📋 Feature Reference</h2>
+					<h2><?php echo esc_html__( '📋 Feature Reference', 'vibecode-deploy' ); ?></h2>
 					
 					<div class="vcd-features">
 						<div class="vcd-feature">
-							<h4>Import Build</h4>
-							<p>Upload and deploy staging ZIP files. Includes preflight validation and deployment options.</p>
+							<h4><?php echo esc_html__( 'Import Build', 'vibecode-deploy' ); ?></h4>
+							<p><?php echo esc_html__( 'Upload and deploy staging ZIP files. Includes preflight validation and deployment options.', 'vibecode-deploy' ); ?></p>
 						</div>
 						
 						<div class="vcd-feature">
-							<h4>Templates</h4>
-							<p>Manage header/footer template parts and block templates. Purge plugin-owned templates.</p>
+							<h4><?php echo esc_html__( 'Templates', 'vibecode-deploy' ); ?></h4>
+							<p><?php echo esc_html__( 'Manage header/footer template parts and block templates. Purge plugin-owned templates.', 'vibecode-deploy' ); ?></p>
 						</div>
 						
 						<div class="vcd-feature">
-							<h4>Builds</h4>
-							<p>View deployment history, fingerprints, and rollback to previous versions.</p>
+							<h4><?php echo esc_html__( 'Builds', 'vibecode-deploy' ); ?></h4>
+							<p><?php echo esc_html__( 'View deployment history, fingerprints, and rollback to previous versions.', 'vibecode-deploy' ); ?></p>
 						</div>
 						
 						<div class="vcd-feature">
-							<h4>Settings</h4>
-							<p>Configure project slug, class prefix, and validation options.</p>
+							<h4><?php echo esc_html__( 'Settings', 'vibecode-deploy' ); ?></h4>
+							<p><?php echo esc_html__( 'Configure project slug, class prefix, and validation options.', 'vibecode-deploy' ); ?></p>
 						</div>
 						
 						<div class="vcd-feature">
-							<h4>Rules Pack</h4>
-							<p>Download project-specific rules and configuration files.</p>
+							<h4><?php echo esc_html__( 'Rules Pack', 'vibecode-deploy' ); ?></h4>
+							<p><?php echo esc_html__( 'Download project-specific rules and configuration files.', 'vibecode-deploy' ); ?></p>
 						</div>
 						
 						<div class="vcd-feature">
-							<h4>Logs</h4>
-							<p>View deployment logs, errors, and debugging information.</p>
+							<h4><?php echo esc_html__( 'Logs', 'vibecode-deploy' ); ?></h4>
+							<p><?php echo esc_html__( 'View deployment logs, errors, and debugging information.', 'vibecode-deploy' ); ?></p>
 						</div>
 					</div>
 				</div>
@@ -227,51 +227,62 @@ wp vibecode-deploy purge --type=template-parts
 	}
 
 	private function render_system_status(): void {
+		$wp_version = get_bloginfo('version');
+		$wp_ok = version_compare( $wp_version, '6.0', '>=' );
+		$php_ok = version_compare( PHP_VERSION, '8.0', '>=' );
+		$etch_plugin_active = is_plugin_active('etch/etch.php');
+		$etch_theme_active = get_template() === 'etch-theme';
+		$block_templates_supported = post_type_exists('wp_template') && post_type_exists('wp_template_part');
+		$assets_dir_exists = is_dir(WP_PLUGIN_DIR . '/vibecode-deploy/assets');
+		$uploads_writable = wp_is_writable(WP_CONTENT_DIR . '/uploads');
+		$memory_limit = (int) ini_get('memory_limit');
+		$memory_ok = $memory_limit >= 256;
+
 		$checks = array(
 			array(
-				'label' => 'WordPress Version',
-				'status' => version_compare( get_bloginfo('version'), '6.0', '>=' ) ? 'good' : 'warning',
-				'message' => get_bloginfo('version') . (version_compare( get_bloginfo('version'), '6.0', '>=' ) ? ' (OK)' : ' (6.0+ recommended)'),
+				'label' => __( 'WordPress Version', 'vibecode-deploy' ),
+				'status' => $wp_ok ? 'good' : 'warning',
+				'message' => $wp_version . ($wp_ok ? ' (' . __( 'OK', 'vibecode-deploy' ) . ')' : ' (' . __( '6.0+ recommended', 'vibecode-deploy' ) . ')'),
 			),
 			array(
-				'label' => 'PHP Version',
-				'status' => version_compare( PHP_VERSION, '8.0', '>=' ) ? 'good' : 'warning',
-				'message' => PHP_VERSION . (version_compare( PHP_VERSION, '8.0', '>=' ) ? ' (OK)' : ' (8.0+ recommended)'),
+				'label' => __( 'PHP Version', 'vibecode-deploy' ),
+				'status' => $php_ok ? 'good' : 'warning',
+				'message' => PHP_VERSION . ($php_ok ? ' (' . __( 'OK', 'vibecode-deploy' ) . ')' : ' (' . __( '8.0+ recommended', 'vibecode-deploy' ) . ')'),
 			),
 			array(
-				'label' => 'Etch Plugin',
-				'status' => is_plugin_active('etch/etch.php') ? 'good' : 'warning',
-				'message' => is_plugin_active('etch/etch.php') ? 'Active' : 'Not active (recommended)',
+				'label' => __( 'Etch Plugin', 'vibecode-deploy' ),
+				'status' => $etch_plugin_active ? 'good' : 'warning',
+				'message' => $etch_plugin_active ? __( 'Active', 'vibecode-deploy' ) : __( 'Not active (recommended)', 'vibecode-deploy' ),
 			),
 			array(
-				'label' => 'Etch Theme',
-				'status' => get_template() === 'etch-theme' ? 'good' : 'error',
-				'message' => get_template() === 'etch-theme' ? 'Active' : 'Not active (required)',
+				'label' => __( 'Etch Theme', 'vibecode-deploy' ),
+				'status' => $etch_theme_active ? 'good' : 'error',
+				'message' => $etch_theme_active ? __( 'Active', 'vibecode-deploy' ) : __( 'Not active (required)', 'vibecode-deploy' ),
 			),
 			array(
-				'label' => 'Block Template Support',
-				'status' => post_type_exists('wp_template') && post_type_exists('wp_template_part') ? 'good' : 'error',
-				'message' => post_type_exists('wp_template') && post_type_exists('wp_template_part') ? 'Supported' : 'Not supported',
+				'label' => __( 'Block Template Support', 'vibecode-deploy' ),
+				'status' => $block_templates_supported ? 'good' : 'error',
+				'message' => $block_templates_supported ? __( 'Supported', 'vibecode-deploy' ) : __( 'Not supported', 'vibecode-deploy' ),
 			),
 			array(
-				'label' => 'Plugin Assets Folder',
-				'status' => is_dir(WP_PLUGIN_DIR . '/vibecode-deploy/assets') ? 'good' : 'warning',
-				'message' => is_dir(WP_PLUGIN_DIR . '/vibecode-deploy/assets') ? 'Exists' : 'Not created yet',
+				'label' => __( 'Plugin Assets Folder', 'vibecode-deploy' ),
+				'status' => $assets_dir_exists ? 'good' : 'warning',
+				'message' => $assets_dir_exists ? __( 'Exists', 'vibecode-deploy' ) : __( 'Not created yet', 'vibecode-deploy' ),
 			),
 			array(
-				'label' => 'Uploads Folder Writable',
-				'status' => wp_is_writable(WP_CONTENT_DIR . '/uploads') ? 'good' : 'error',
-				'message' => wp_is_writable(WP_CONTENT_DIR . '/uploads') ? 'Writable' : 'Not writable',
+				'label' => __( 'Uploads Folder Writable', 'vibecode-deploy' ),
+				'status' => $uploads_writable ? 'good' : 'error',
+				'message' => $uploads_writable ? __( 'Writable', 'vibecode-deploy' ) : __( 'Not writable', 'vibecode-deploy' ),
 			),
 			array(
-				'label' => 'Memory Limit',
-				'status' => (int) ini_get('memory_limit') >= 256 ? 'good' : 'warning',
-				'message' => ini_get('memory_limit') . ' (' . ((int) ini_get('memory_limit') >= 256 ? 'OK' : '256M recommended') . ')',
+				'label' => __( 'Memory Limit', 'vibecode-deploy' ),
+				'status' => $memory_ok ? 'good' : 'warning',
+				'message' => ini_get('memory_limit') . ' (' . ($memory_ok ? __( 'OK', 'vibecode-deploy' ) : __( '256M recommended', 'vibecode-deploy' )) . ')',
 			),
 		);
 
 		echo '<table class="vcd-status-table">';
-		echo '<thead><tr><th>Item</th><th>Status</th><th>Details</th></tr></thead>';
+		echo '<thead><tr><th>' . esc_html__( 'Item', 'vibecode-deploy' ) . '</th><th>' . esc_html__( 'Status', 'vibecode-deploy' ) . '</th><th>' . esc_html__( 'Details', 'vibecode-deploy' ) . '</th></tr></thead>';
 		echo '<tbody>';
 		
 		foreach ($checks as $check) {
@@ -293,12 +304,14 @@ wp vibecode-deploy purge --type=template-parts
 		$error_count = array_filter($checks, fn($c) => $c['status'] === 'error');
 		
 		echo '<div class="vcd-overall-status">';
-		if ($error_count > 0) {
-			echo '<p class="vcd-status-error">❌ ' . count($error_count) . ' critical issues found - Deployment may fail</p>';
-		} elseif ($warning_count > 0) {
-			echo '<p class="vcd-status-warning">⚠️ ' . count($warning_count) . ' warnings - Some features may not work</p>';
+		if (count($error_count) > 0) {
+			/* translators: %s: Error count */
+			echo '<p class="vcd-status-error">❌ ' . sprintf( esc_html__( '%s critical issues found - Deployment may fail', 'vibecode-deploy' ), count($error_count) ) . '</p>';
+		} elseif (count($warning_count) > 0) {
+			/* translators: %s: Warning count */
+			echo '<p class="vcd-status-warning">⚠️ ' . sprintf( esc_html__( '%s warnings - Some features may not work', 'vibecode-deploy' ), count($warning_count) ) . '</p>';
 		} else {
-			echo '<p class="vcd-status-good">✅ All systems ready for deployment</p>';
+			echo '<p class="vcd-status-good">✅ ' . esc_html__( 'All systems ready for deployment', 'vibecode-deploy' ) . '</p>';
 		}
 		echo '</div>';
 	}

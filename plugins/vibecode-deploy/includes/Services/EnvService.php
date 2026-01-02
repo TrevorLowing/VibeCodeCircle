@@ -35,7 +35,7 @@ final class EnvService {
 
 		$block_templates_supported = post_type_exists( 'wp_template' ) && post_type_exists( 'wp_template_part' );
 		if ( ! $block_templates_supported ) {
-			$warnings[] = 'Block templates are not supported by the active theme. Template parts/templates (header/footer/404) will be skipped.';
+			$warnings[] = __( 'Block templates are not supported by the active theme. Template parts/templates (header/footer/404) will be skipped.', 'vibecode-deploy' );
 		}
 
 		$etch_installed = false;
@@ -46,9 +46,9 @@ final class EnvService {
 
 		$etch_active = self::is_plugin_active_by_file( $etch_plugin_file );
 		if ( ! $etch_installed ) {
-			$warnings[] = 'Etch plugin is not installed. Install/activate Etch before deploying.';
+			$warnings[] = __( 'Etch plugin is not installed. Install/activate Etch before deploying.', 'vibecode-deploy' );
 		} elseif ( ! $etch_active ) {
-			$warnings[] = 'Etch plugin is installed but not active. Activate Etch before deploying.';
+			$warnings[] = __( 'Etch plugin is installed but not active. Activate Etch before deploying.', 'vibecode-deploy' );
 		}
 
 		$etch_theme_dir = '';
@@ -57,7 +57,7 @@ final class EnvService {
 		}
 		$etch_theme_installed = $etch_theme_dir !== '' ? is_dir( $etch_theme_dir ) : false;
 		if ( ! $etch_theme_installed ) {
-			$warnings[] = 'Etch theme (etch-theme) is not installed. Install the Etch theme before deploying.';
+			$warnings[] = __( 'Etch theme (etch-theme) is not installed. Install the Etch theme before deploying.', 'vibecode-deploy' );
 		}
 
 		$theme = function_exists( 'wp_get_theme' ) ? wp_get_theme() : null;
@@ -71,12 +71,8 @@ final class EnvService {
 		}
 		
 		if ( ! $is_etch_theme ) {
-			$warnings[] = 'Active theme is not etch-theme or a child theme. Current template: ' . $template . '. Styling may not work correctly.';
-		}
-		
-		// Check for CFA child theme specifically (optional)
-		if ( $stylesheet !== 'cfa-etch-child' ) {
-			$warnings[] = 'CFA child theme (cfa-etch-child) is not active. Using ' . $stylesheet . ' instead. Some features may not work as expected.';
+			/* translators: %s: Theme template name */
+			$warnings[] = sprintf( __( 'Active theme is not etch-theme or a child theme. Current template: %s. Styling may not work correctly.', 'vibecode-deploy' ), $template );
 		}
 
 		return $warnings;
@@ -91,14 +87,15 @@ final class EnvService {
 		}
 		$etch_theme_installed = $etch_theme_dir !== '' ? is_dir( $etch_theme_dir ) : false;
 		if ( ! $etch_theme_installed ) {
-			$errors[] = 'Etch theme (etch-theme) is required but not installed.';
+			$errors[] = __( 'Etch theme (etch-theme) is required but not installed.', 'vibecode-deploy' );
 		}
 		
 		$theme = function_exists( 'wp_get_theme' ) ? wp_get_theme() : null;
 		$template = $theme && method_exists( $theme, 'get_template' ) ? (string) $theme->get_template() : '';
 		
 		if ( $template !== 'etch-theme' ) {
-			$errors[] = 'Active theme must be etch-theme or a child theme. Current: ' . $template;
+			/* translators: %s: Theme template name */
+			$errors[] = sprintf( __( 'Active theme must be etch-theme or a child theme. Current: %s', 'vibecode-deploy' ), $template );
 		}
 		
 		return $errors;
@@ -114,7 +111,7 @@ final class EnvService {
 			return;
 		}
 
-		echo '<div class="notice notice-warning"><p><strong>Vibe Code Deploy environment check:</strong></p>';
+		echo '<div class="notice notice-warning"><p><strong>' . esc_html__( 'Vibe Code Deploy environment check:', 'vibecode-deploy' ) . '</strong></p>';
 		echo '<ul style="list-style: disc; padding-left: 22px;">';
 		foreach ( $warnings as $w ) {
 			if ( ! is_string( $w ) || $w === '' ) {

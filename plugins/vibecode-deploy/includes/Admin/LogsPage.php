@@ -20,8 +20,8 @@ final class LogsPage {
 	public static function register_menu(): void {
 		add_submenu_page(
 			'vibecode-deploy',
-			'Logs',
-			'Logs',
+			__( 'Logs', 'vibecode-deploy' ),
+			__( 'Logs', 'vibecode-deploy' ),
 			'manage_options',
 			'vibecode-deploy-logs',
 			array( __CLASS__, 'render' )
@@ -41,18 +41,18 @@ final class LogsPage {
 		$missing = ! empty( $_GET['missing'] );
 
 		echo '<div class="wrap">';
-		echo '<h1>Vibe Code Deploy Logs</h1>';
+		echo '<h1>' . esc_html( get_admin_page_title() ) . '</h1>';
 		EnvService::render_admin_notice();
 
 		if ( $cleared ) {
-			echo '<div class="notice notice-success"><p>Log cleared.</p></div>';
+			echo '<div class="notice notice-success"><p>' . esc_html__( 'Log cleared.', 'vibecode-deploy' ) . '</p></div>';
 		} elseif ( $missing ) {
-			echo '<div class="notice notice-warning"><p>No log file found.</p></div>';
+			echo '<div class="notice notice-warning"><p>' . esc_html__( 'No log file found.', 'vibecode-deploy' ) . '</p></div>';
 		}
 
 		if ( $project_slug === '' ) {
 			echo '<div class="card" style="max-width: 1100px;">';
-			echo '<p><strong>Project Slug is required.</strong> Set it in Vibe Code Deploy → Configuration.</p>';
+			echo '<p><strong>' . esc_html__( 'Project Slug is required.', 'vibecode-deploy' ) . '</strong> ' . esc_html__( 'Set it in', 'vibecode-deploy' ) . ' ' . esc_html__( 'Vibe Code Deploy', 'vibecode-deploy' ) . ' → ' . esc_html__( 'Configuration', 'vibecode-deploy' ) . '.</p>';
 			echo '</div>';
 			echo '</div>';
 			return;
@@ -62,11 +62,13 @@ final class LogsPage {
 		$clear_url = wp_nonce_url( admin_url( 'admin-post.php?action=vibecode_deploy_clear_log' ), 'vibecode_deploy_clear_log' );
 
 		echo '<div class="card">';
-		echo '<h2 class="title">Log</h2>';
-		echo '<p>Project: <code>' . esc_html( $project_slug ) . '</code></p>';
+		echo '<h2 class="title">' . esc_html__( 'Log', 'vibecode-deploy' ) . '</h2>';
+		/* translators: %s: Project slug */
+		echo '<p>' . sprintf( esc_html__( 'Project: %s', 'vibecode-deploy' ), '<code>' . esc_html( $project_slug ) . '</code>' ) . '</p>';
 		echo '<p>';
-		echo '<a class="button" href="' . esc_url( $download_url ) . '">Download Log</a> ';
-		echo '<a class="button" href="' . esc_url( $clear_url ) . '" onclick="return confirm(\'Clear the Vibe Code Deploy log?\');">Clear Log</a>';
+		$clear_confirm = esc_js( __( 'Clear the Vibe Code Deploy log?', 'vibecode-deploy' ) );
+		echo '<a class="button" href="' . esc_url( $download_url ) . '">' . esc_html__( 'Download Log', 'vibecode-deploy' ) . '</a> ';
+		echo '<a class="button" href="' . esc_url( $clear_url ) . '" onclick="return confirm(\'' . $clear_confirm . '\');">' . esc_html__( 'Clear Log', 'vibecode-deploy' ) . '</a>';
 		echo '</p>';
 
 		echo '<textarea class="large-text code" readonly rows="22">';
@@ -79,7 +81,7 @@ final class LogsPage {
 
 	public static function download_log(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Forbidden.' );
+			wp_die( esc_html__( 'Forbidden.', 'vibecode-deploy' ) );
 		}
 
 		check_admin_referer( 'vibecode_deploy_download_log' );
@@ -107,7 +109,7 @@ final class LogsPage {
 
 	public static function clear_log(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Forbidden.' );
+			wp_die( esc_html__( 'Forbidden.', 'vibecode-deploy' ) );
 		}
 
 		check_admin_referer( 'vibecode_deploy_clear_log' );

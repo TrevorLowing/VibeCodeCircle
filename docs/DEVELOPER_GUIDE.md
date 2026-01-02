@@ -151,6 +151,8 @@ require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Admin/YourPage.php';
 - **Final Classes**: All service classes should be `final`
 - **Namespace**: `VibeCode\Deploy` for core, `VibeCode\Deploy\Services` for services, `VibeCode\Deploy\Admin` for admin
 
+**WordPress Coding Standards**: Follow [WordPress PHP Coding Standards](https://developer.wordpress.org/coding-standards/wordpress-coding-standards/php/). See [WordPress Plugin Best Practices](WORDPRESS_PLUGIN_BEST_PRACTICES.md#wordpress-coding-standards) for detailed requirements.
+
 ### Documentation
 
 - All public methods must have PHPDoc blocks
@@ -165,12 +167,85 @@ require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Admin/YourPage.php';
 - Sanitize all input with appropriate WordPress functions
 - Escape all output with `esc_html()`, `esc_attr()`, `esc_url()`
 
+**Security Best Practices**: See [WordPress Plugin Best Practices](WORDPRESS_PLUGIN_BEST_PRACTICES.md#security-best-practices) for comprehensive security guidelines.
+
 ### Error Handling
 
 - Use `Logger::error()` for errors
 - Use `Logger::info()` for informational messages
 - Return arrays with 'ok' key for operation results
 - Use exceptions only for critical failures
+
+**Error Handling Patterns**: See [WordPress Plugin Best Practices](WORDPRESS_PLUGIN_BEST_PRACTICES.md#error-handling) for WordPress-specific error handling.
+
+## Plugin Lifecycle
+
+### Activation Hook
+
+The plugin uses `register_activation_hook()` to set default options and initialize settings when activated.
+
+**Implementation**: See `vibecode-deploy.php` for activation hook registration.
+
+**Best Practices**: See [WordPress Plugin Best Practices](WORDPRESS_PLUGIN_BEST_PRACTICES.md#activation-hook) for activation hook guidelines.
+
+### Deactivation Hook
+
+The plugin uses `register_deactivation_hook()` to clean up scheduled events and flush rewrite rules when deactivated.
+
+**Implementation**: See `vibecode-deploy.php` for deactivation hook registration.
+
+**Best Practices**: See [WordPress Plugin Best Practices](WORDPRESS_PLUGIN_BEST_PRACTICES.md#deactivation-hook) for deactivation hook guidelines.
+
+### Uninstall Hook
+
+The plugin includes `uninstall.php` to clean up options, transients, and scheduled tasks when uninstalled.
+
+**Implementation**: See `uninstall.php` in plugin root directory.
+
+**Best Practices**: See [WordPress Plugin Best Practices](WORDPRESS_PLUGIN_BEST_PRACTICES.md#uninstall-hook) for uninstall hook guidelines.
+
+## Internationalization (i18n)
+
+### Text Domain
+
+The plugin uses the text domain `vibecode-deploy` for all translatable strings.
+
+### Translation Functions
+
+Use WordPress translation functions:
+- `__()` for simple strings
+- `_e()` for echoed strings
+- `esc_html__()` for escaped HTML output
+- `esc_html_e()` for echoed escaped HTML output
+
+**Best Practices**: See [WordPress Plugin Best Practices](WORDPRESS_PLUGIN_BEST_PRACTICES.md#internationalization-i18n) for comprehensive i18n guidelines.
+
+## Database Management
+
+### Schema Versioning
+
+The plugin tracks database schema versions using options to handle upgrades.
+
+**Best Practices**: See [WordPress Plugin Best Practices](WORDPRESS_PLUGIN_BEST_PRACTICES.md#database-management) for database management guidelines.
+
+## WordPress Plugin Best Practices
+
+For comprehensive WordPress plugin development best practices, see:
+
+**[WordPress Plugin Best Practices](WORDPRESS_PLUGIN_BEST_PRACTICES.md)**
+
+This document covers:
+- Plugin lifecycle hooks (activation, deactivation, uninstall)
+- WordPress coding standards (PHP, HTML, CSS, JavaScript)
+- Security best practices (sanitization, escaping, nonces, capabilities)
+- Database management (schema versioning, upgrades)
+- Internationalization (i18n) requirements
+- Plugin headers and readme.txt format
+- Hooks and filters
+- Admin UI standards
+- Performance optimization
+- Error handling
+- Testing strategies
 
 ## Testing
 
@@ -252,8 +327,60 @@ define( 'WP_DEBUG_LOG', true );
 - [ ] Tests added/updated
 - [ ] Documentation updated
 
+## Etch Theme Compatibility
+
+### Official Repository
+
+The plugin is designed to work with the official **Etch theme** and child themes:
+
+- **Official Etch Child Theme Repository**: https://github.com/Digital-Gravy/etch-child-theme
+- **Etch Theme Documentation**: https://etchwp.com/
+
+### Monitoring for Compatibility
+
+**IMPORTANT**: Developers should monitor the official Etch theme repository to ensure generated child themes remain compatible with official updates.
+
+**Monitoring Process:**
+
+1. **Watch the Repository**: Star/watch the [official Etch child theme repository](https://github.com/Digital-Gravy/etch-child-theme) on GitHub to receive notifications of updates
+2. **Check Releases**: Regularly check for new releases or tags that may introduce breaking changes
+3. **Review Changes**: When updates are released, review:
+   - Changes to `style.css` header structure
+   - Changes to required theme files (`index.php`, `functions.php`, etc.)
+   - Changes to template structure or naming conventions
+   - Changes to theme hooks or filters
+4. **Test Compatibility**: After official updates:
+   - Test theme file deployment with updated Etch theme
+   - Verify smart merge still works correctly
+   - Check that generated child themes function properly
+   - Test CPT and shortcode functionality
+5. **Update Plugin**: If breaking changes are detected:
+   - Update `ThemeDeployService` to handle new requirements
+   - Update `ThemeSetupService` if basic theme structure changes
+   - Update documentation with compatibility notes
+   - Test thoroughly before releasing
+
+**Compatibility Checklist:**
+
+- [ ] Child theme `style.css` header matches official structure
+- [ ] Required theme files (`index.php`, `functions.php`) are compatible
+- [ ] Template structure aligns with official Etch theme
+- [ ] Theme hooks and filters work correctly
+- [ ] Smart merge preserves compatibility with parent theme
+- [ ] CPT and shortcode registrations don't conflict with parent theme
+
+**Smart Merge Compatibility:**
+
+The `ThemeDeployService` uses smart merge to preserve existing code while updating CPTs/shortcodes. This approach:
+- Preserves custom theme code that doesn't conflict with parent theme
+- Updates only CPT registrations and shortcode handlers
+- Maintains compatibility with parent theme updates
+- Allows child themes to extend parent functionality safely
+
 ## Resources
 
 - **WordPress Plugin Handbook**: https://developer.wordpress.org/plugins/
 - **WordPress Coding Standards**: https://developer.wordpress.org/coding-standards/
 - **Gutenberg Block Editor**: https://developer.wordpress.org/block-editor/
+- **Official Etch Child Theme Repository**: https://github.com/Digital-Gravy/etch-child-theme
+- **Etch Theme Documentation**: https://etchwp.com/

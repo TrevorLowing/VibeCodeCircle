@@ -8,6 +8,15 @@ use VibeCode\Deploy\Settings;
 defined( 'ABSPATH' ) || exit;
 
 final class DeployService {
+	/**
+	 * Snapshot post meta for a page before deployment.
+	 * 
+	 * Captures current meta values (project slug, source path, fingerprint, assets)
+	 * to enable rollback functionality.
+	 *
+	 * @param int $post_id WordPress post ID.
+	 * @return array Associative array of meta keys and values.
+	 */
 	private static function snapshot_post_meta( int $post_id ): array {
 		$keys = array(
 			Importer::META_PROJECT_SLUG,
@@ -29,6 +38,14 @@ final class DeployService {
 		return $out;
 	}
 
+	/**
+	 * Normalize a local file path by removing leading dots and slashes.
+	 * 
+	 * Converts paths like './css/styles.css' or '/css/styles.css' to 'css/styles.css'.
+	 *
+	 * @param string $path Raw path string.
+	 * @return string Normalized path.
+	 */
 	private static function normalize_local_path( string $path ): string {
 		$path = trim( $path );
 		if ( $path === '' ) {
@@ -39,6 +56,15 @@ final class DeployService {
 		return $path;
 	}
 
+	/**
+	 * Collect all resource paths (images, documents) referenced in HTML.
+	 * 
+	 * Scans DOM for src and href attributes, filters out external URLs,
+	 * and returns only local resource paths (those starting with 'resources/').
+	 *
+	 * @param \DOMDocument $dom Parsed HTML document.
+	 * @return array Array of unique resource paths.
+	 */
 	private static function collect_resource_paths( \DOMDocument $dom ): array {
 		$resources = array();
 		$xpath = new \DOMXPath( $dom );
@@ -90,6 +116,13 @@ final class DeployService {
 		return is_file( $path );
 	}
 
+	/**
+	 * Extract inner HTML content from a DOM node.
+	 *
+	 * @param \DOMDocument $dom Document containing the node.
+	 * @param \DOMNode $node Node to extract inner HTML from.
+	 * @return string Inner HTML content.
+	 */
 	private static function inner_html( \DOMDocument $dom, \DOMNode $node ): string {
 		$html = '';
 		foreach ( $node->childNodes as $child ) {
@@ -621,25 +654,23 @@ final class DeployService {
 			$updated_templates = isset( $template_result['updated_templates'] ) && is_array( $template_result['updated_templates'] ) ? $template_result['updated_templates'] : array();
 		}
 
-		// Temporarily disable theme setup to prevent errors
-		/*
+		// Deploy theme files (functions.php, ACF JSON) from staging
 		$theme = function_exists( 'wp_get_theme' ) ? wp_get_theme() : null;
 		$theme_slug = $theme && method_exists( $theme, 'get_stylesheet' ) ? (string) $theme->get_stylesheet() : '';
 		if ( $theme_slug !== '' ) {
-			$theme_setup = ThemeSetupService::ensure_theme_files( $theme_slug );
-			if ( ! empty( $theme_setup['errors'] ) ) {
-				foreach ( $theme_setup['errors'] as $error ) {
-					\VibeCode\Deploy\Logger::error( 'Theme setup failed.', array( 'error' => $error ), $project_slug );
+			$theme_deploy = ThemeDeployService::deploy_theme_files( $build_root, $theme_slug );
+			if ( ! empty( $theme_deploy['errors'] ) ) {
+				foreach ( $theme_deploy['errors'] as $error ) {
+					\VibeCode\Deploy\Logger::error( 'Theme deployment failed.', array( 'error' => $error ), $project_slug );
 				}
 			}
-			if ( ! empty( $theme_setup['created'] ) || ! empty( $theme_setup['updated'] ) ) {
-				\VibeCode\Deploy\Logger::info( 'Theme files configured.', array(
-					'created' => $theme_setup['created'],
-					'updated' => $theme_setup['updated'],
+			if ( ! empty( $theme_deploy['created'] ) || ! empty( $theme_deploy['updated'] ) ) {
+				\VibeCode\Deploy\Logger::info( 'Theme files deployed.', array(
+					'created' => $theme_deploy['created'],
+					'updated' => $theme_deploy['updated'],
 				), $project_slug );
 			}
 		}
-		*/
 
 		$cpt_validation = array();
 		if ( $validate_cpt_shortcodes && is_array( $placeholder_config ) && ! empty( $placeholder_config ) && empty( $placeholder_config['_error'] ) ) {

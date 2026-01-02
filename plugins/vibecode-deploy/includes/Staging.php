@@ -14,6 +14,7 @@ final class Staging {
 		'css',
 		'js',
 		'json',
+		'php',
 		'txt',
 		'map',
 		'svg',
@@ -39,6 +40,7 @@ final class Staging {
 		'css',
 		'js',
 		'resources',
+		'theme',
 	);
 
 	public static function staging_root( string $project_slug, string $fingerprint ): string {

@@ -87,10 +87,14 @@ get_footer();';
     }
     
     private static function get_index_template_content(): string {
+        $settings = \VibeCode\Deploy\Settings::get_all();
+        $class_prefix = isset( $settings['class_prefix'] ) && is_string( $settings['class_prefix'] ) ? trim( (string) $settings['class_prefix'] ) : '';
+        $main_class = $class_prefix !== '' ? $class_prefix . 'main' : 'main';
+        
         return '<!-- wp:template-part {"slug":"header","theme":"' . get_option('stylesheet') . '","tagName":"header"} /-->
 
-<!-- wp:group {"tagName":"main","className":"cfa-main"} -->
-<main class="wp-block-group cfa-main">
+<!-- wp:group {"tagName":"main","className":"' . esc_attr( $main_class ) . '"} -->
+<main class="wp-block-group ' . esc_attr( $main_class ) . '">
     <!-- wp:post-content {"layout":{"type":"constrained"}} /-->
 </main>
 <!-- /wp:group -->
@@ -99,10 +103,14 @@ get_footer();';
     }
     
     private static function get_page_template_content(): string {
+        $settings = \VibeCode\Deploy\Settings::get_all();
+        $class_prefix = isset( $settings['class_prefix'] ) && is_string( $settings['class_prefix'] ) ? trim( (string) $settings['class_prefix'] ) : '';
+        $main_class = $class_prefix !== '' ? $class_prefix . 'main' : 'main';
+        
         return '<!-- wp:template-part {"slug":"header","theme":"' . get_option('stylesheet') . '","tagName":"header"} /-->
 
-<!-- wp:group {"tagName":"main","className":"cfa-main"} -->
-<main class="wp-block-group cfa-main">
+<!-- wp:group {"tagName":"main","className":"' . esc_attr( $main_class ) . '"} -->
+<main class="wp-block-group ' . esc_attr( $main_class ) . '">
     <!-- wp:post-content {"layout":{"type":"constrained"}} /-->
 </main>
 <!-- /wp:group -->
@@ -143,10 +151,14 @@ get_footer();';
     }
     
     private static function enable_etch_mode( string $theme_slug ): void {
-        // Check if this is the CFA child theme
-        if ( $theme_slug === 'cfa-etch-child' ) {
-            // Enable Etch mode
-            set_theme_mod( 'cfa_etch_mode_enabled', true );
+        // Enable Etch mode for any child theme of etch-theme
+        $theme = function_exists( 'wp_get_theme' ) ? wp_get_theme( $theme_slug ) : null;
+        $template = $theme && method_exists( $theme, 'get_template' ) ? (string) $theme->get_template() : '';
+        
+        if ( $template === 'etch-theme' ) {
+            // Enable Etch mode via theme mod (using theme slug as identifier)
+            $mod_key = sanitize_key( $theme_slug ) . '_etch_mode_enabled';
+            set_theme_mod( $mod_key, true );
             
             // Also ensure Etch settings allow block migration
             $etch_settings = get_option( 'etch_settings', array() );
