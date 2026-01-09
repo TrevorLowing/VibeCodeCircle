@@ -110,15 +110,12 @@ html {
    8. Font-family Resets (Generalized - Let Project CSS Define Fonts)
    ========================================================================== */
 
-/* Reset font-family to inherit - allows project CSS to define fonts */
-/* Projects should add their own font-family declarations in their CSS files */
-body,
-body * {
-    font-family: inherit !important;
-}
-
-h1, h2, h3, h4, h5, h6,
-.wp-block-heading {
+/* Reset font-family ONLY on WordPress-injected elements, not on project elements */
+/* This prevents WordPress from injecting default fonts while preserving project fonts */
+.wp-block-group:not([class*="cfa-"]):not([class*="wp-block"]):not([class*="is-layout"]),
+.wp-block-paragraph:not([class*="cfa-"]),
+.wp-block-heading:not([class*="cfa-"]),
+.entry-content > *:not([class*="cfa-"]) {
     font-family: inherit !important;
 }
 
@@ -126,10 +123,11 @@ h1, h2, h3, h4, h5, h6,
    9. Font-size Resets (Generalized - Let Project CSS Define Sizes)
    ========================================================================== */
 
-/* Reset font-size to inherit - allows project CSS to define sizes */
-/* Projects should add their own font-size declarations in their CSS files */
-body,
-body * {
+/* Reset font-size ONLY on WordPress-injected elements, not on project elements */
+.wp-block-group:not([class*="cfa-"]):not([class*="wp-block"]):not([class*="is-layout"]),
+.wp-block-paragraph:not([class*="cfa-"]),
+.wp-block-heading:not([class*="cfa-"]),
+.entry-content > *:not([class*="cfa-"]) {
     font-size: inherit !important;
 }
 
@@ -137,10 +135,11 @@ body * {
    10. Line-height Resets (Generalized - Let Project CSS Define Line-height)
    ========================================================================== */
 
-/* Reset line-height to inherit - allows project CSS to define line-height */
-/* Projects should add their own line-height declarations in their CSS files */
-body,
-body * {
+/* Reset line-height ONLY on WordPress-injected elements, not on project elements */
+.wp-block-group:not([class*="cfa-"]):not([class*="wp-block"]):not([class*="is-layout"]),
+.wp-block-paragraph:not([class*="cfa-"]),
+.wp-block-heading:not([class*="cfa-"]),
+.entry-content > *:not([class*="cfa-"]) {
     line-height: inherit !important;
 }
 
@@ -148,9 +147,10 @@ body * {
    11. Font-weight Resets (Generalized - Let Project CSS Define Weights)
    ========================================================================== */
 
-/* Reset font-weight to inherit - allows project CSS to define weights */
-/* Projects should add their own font-weight declarations in their CSS files */
-body,
-body * {
+/* Reset font-weight ONLY on WordPress-injected elements, not on project elements */
+.wp-block-group:not([class*="cfa-"]):not([class*="wp-block"]):not([class*="is-layout"]),
+.wp-block-paragraph:not([class*="cfa-"]),
+.wp-block-heading:not([class*="cfa-"]),
+.entry-content > *:not([class*="cfa-"]) {
     font-weight: inherit !important;
 }

@@ -631,9 +631,10 @@ defined( 'ABSPATH' ) || exit;
 			return;
 		}
 
-		// Get all registered public post types (including built-in 'post')
+		// Get only custom post types (exclude built-in types like 'post', 'page', 'attachment')
 		$post_types = get_post_types( array(
 			'public' => true,
+			'_builtin' => false,
 		), 'names' );
 
 		if ( empty( $post_types ) ) {
@@ -655,6 +656,12 @@ defined( 'ABSPATH' ) || exit;
 		}
 
 		foreach ( $post_types as $post_type ) {
+			// Skip WordPress internal block types
+			$internal_types = array( 'wp_template', 'wp_template_part', 'wp_global_styles', 'wp_block', 'wp_navigation' );
+			if ( in_array( $post_type, $internal_types, true ) ) {
+				continue;
+			}
+
 			$slug = 'single-' . $post_type;
 			$existing = self::get_template_by_slug( $slug );
 

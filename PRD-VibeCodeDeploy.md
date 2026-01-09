@@ -114,6 +114,21 @@ Vibe Code Deploy is a WordPress plugin that converts static HTML websites into G
 - Warning/fail modes for validation
 - Auto-seeding options for required shortcodes
 
+#### 2.3.2 Project Prefix Validation
+- **Generalized naming convention enforcement**: Validates that shortcodes and CPTs follow project naming conventions using the project slug as a prefix
+- **Flexible prefix format**: Accepts both `{project_slug}_` (with underscore) and `{project_slug}` (without underscore) formats
+  - Example: For project slug "cfa", validates `cfa_investigations`, `cfaadvisories`, etc.
+- **Configurable validation mode**: 
+  - `warn` (default): Show warnings but allow deployment
+  - `fail`: Block deployment if items don't match prefix
+  - `off`: Disable prefix validation
+- **Configurable validation scope**:
+  - `all` (default): Validate both shortcodes and CPTs
+  - `shortcodes`: Validate shortcodes only
+  - `cpts`: Validate CPTs only
+- **Unknown item detection**: Warns about shortcodes/CPTs that use the project prefix but aren't documented in the config file (potential orphaned/unused items)
+- **Integration with existing validation**: Prefix validation runs alongside shortcode placeholder validation during deployment
+
 #### 2.3.2 Link Validation
 - Internal link rewriting
 - Page slug mapping

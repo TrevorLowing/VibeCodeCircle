@@ -159,7 +159,7 @@ vibecode-deploy/
 
 ### ShortcodePlaceholderService
 
-**Purpose:** Handles shortcode placeholder comments in HTML
+**Purpose:** Handles shortcode placeholder comments in HTML and validates project prefix compliance
 
 **Placeholder Format:**
 ```html
@@ -173,6 +173,21 @@ vibecode-deploy/
 - Loads rules from `vibecode-deploy-shortcodes.json`
 - Validates required placeholders per page
 - Supports validation modes: `warn` or `fail`
+
+**Project Prefix Validation:**
+- **Generalized naming convention**: Validates that shortcodes and CPTs follow project naming conventions
+- **Flexible prefix format**: Accepts both `{project_slug}_` (with underscore) and `{project_slug}` (without underscore)
+  - Example: For project slug "cfa", validates `cfa_investigations`, `cfaadvisories`, etc.
+- **Validation modes**:
+  - `warn` (default): Show warnings but allow deployment
+  - `fail`: Block deployment if items don't match prefix
+  - `off`: Disable prefix validation
+- **Validation scope**:
+  - `all` (default): Validate both shortcodes and CPTs
+  - `shortcodes`: Validate shortcodes only
+  - `cpts`: Validate CPTs only
+- **Unknown item detection**: Warns about shortcodes/CPTs that use the project prefix but aren't documented in config (potential orphaned/unused items)
+- **Integration**: Prefix validation runs alongside shortcode placeholder validation during deployment
 
 ### ThemeDeployService
 

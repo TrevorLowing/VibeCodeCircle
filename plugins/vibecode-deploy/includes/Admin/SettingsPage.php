@@ -117,6 +117,22 @@ final class SettingsPage {
 			'vibecode_deploy',
 			'vibecode_deploy_main'
 		);
+
+		add_settings_field(
+			'vibecode_deploy_prefix_validation_mode',
+			__( 'Prefix Validation Mode', 'vibecode-deploy' ),
+			array( __CLASS__, 'field_prefix_validation_mode' ),
+			'vibecode_deploy',
+			'vibecode_deploy_main'
+		);
+
+		add_settings_field(
+			'vibecode_deploy_prefix_validation_scope',
+			__( 'Prefix Validation Scope', 'vibecode-deploy' ),
+			array( __CLASS__, 'field_prefix_validation_scope' ),
+			'vibecode_deploy',
+			'vibecode_deploy_main'
+		);
 	}
 
 	public static function render(): void {
@@ -694,5 +710,45 @@ final class SettingsPage {
 		$prefix = isset( $settings['placeholder_prefix'] ) ? (string) $settings['placeholder_prefix'] : 'VIBECODE_SHORTCODE';
 		/* translators: %s: Placeholder prefix */
 		self::render_mode_select( 'on_unknown_placeholder', sprintf( __( 'When an invalid/unparseable %s placeholder is encountered in HTML.', 'vibecode-deploy' ), $prefix ) );
+	}
+
+	public static function field_prefix_validation_mode(): void {
+		$settings = Settings::get_all();
+		$project_slug = isset( $settings['project_slug'] ) ? (string) $settings['project_slug'] : '';
+		$current = isset( $settings['prefix_validation_mode'] ) && is_string( $settings['prefix_validation_mode'] ) ? strtolower( trim( (string) $settings['prefix_validation_mode'] ) ) : 'warn';
+		if ( $current !== 'off' && $current !== 'fail' ) {
+			$current = 'warn';
+		}
+		$name = esc_attr( Settings::OPTION_NAME );
+		$field = 'prefix_validation_mode';
+
+		echo '<select name="' . $name . '[' . $field . ']">';
+		echo '<option value="warn"' . selected( $current, 'warn', false ) . '>' . esc_html__( 'Warn (default)', 'vibecode-deploy' ) . '</option>';
+		echo '<option value="fail"' . selected( $current, 'fail', false ) . '>' . esc_html__( 'Fail deploy', 'vibecode-deploy' ) . '</option>';
+		echo '<option value="off"' . selected( $current, 'off', false ) . '>' . esc_html__( 'Off (disabled)', 'vibecode-deploy' ) . '</option>';
+		echo '</select>';
+		if ( $project_slug !== '' ) {
+			/* translators: %s: Project slug */
+			echo '<p class="description">' . sprintf( esc_html__( 'How to handle shortcodes and CPTs that do not match the project prefix "%s". Validates naming conventions to ensure consistency.', 'vibecode-deploy' ), esc_html( $project_slug ) ) . '</p>';
+		} else {
+			echo '<p class="description">' . esc_html__( 'How to handle shortcodes and CPTs that do not match the project prefix. Set Project Slug first to enable validation.', 'vibecode-deploy' ) . '</p>';
+		}
+	}
+
+	public static function field_prefix_validation_scope(): void {
+		$settings = Settings::get_all();
+		$current = isset( $settings['prefix_validation_scope'] ) && is_string( $settings['prefix_validation_scope'] ) ? strtolower( trim( (string) $settings['prefix_validation_scope'] ) ) : 'all';
+		if ( $current !== 'shortcodes' && $current !== 'cpts' ) {
+			$current = 'all';
+		}
+		$name = esc_attr( Settings::OPTION_NAME );
+		$field = 'prefix_validation_scope';
+
+		echo '<fieldset>';
+		echo '<label><input type="radio" name="' . $name . '[' . $field . ']" value="all"' . checked( $current, 'all', false ) . ' /> ' . esc_html__( 'All (shortcodes and CPTs)', 'vibecode-deploy' ) . '</label><br />';
+		echo '<label><input type="radio" name="' . $name . '[' . $field . ']" value="shortcodes"' . checked( $current, 'shortcodes', false ) . ' /> ' . esc_html__( 'Shortcodes only', 'vibecode-deploy' ) . '</label><br />';
+		echo '<label><input type="radio" name="' . $name . '[' . $field . ']" value="cpts"' . checked( $current, 'cpts', false ) . ' /> ' . esc_html__( 'CPTs only', 'vibecode-deploy' ) . '</label>';
+		echo '</fieldset>';
+		echo '<p class="description">' . esc_html__( 'Which items to validate for project prefix compliance. "All" validates both shortcodes and custom post types.', 'vibecode-deploy' ) . '</p>';
 	}
 }

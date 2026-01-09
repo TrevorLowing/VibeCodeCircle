@@ -30,6 +30,8 @@ final class Settings {
 			'on_missing_required' => 'warn',
 			'on_missing_recommended' => 'warn',
 			'on_unknown_placeholder' => 'warn',
+			'prefix_validation_mode' => 'warn',
+			'prefix_validation_scope' => 'all',
 		);
 	}
 
@@ -99,6 +101,24 @@ final class Settings {
 			}
 			$mode = strtolower( trim( (string) $input[ $k ] ) );
 			$out[ $k ] = ( $mode === 'fail' ) ? 'fail' : 'warn';
+		}
+
+		if ( isset( $input['prefix_validation_mode'] ) ) {
+			$mode = strtolower( trim( (string) $input['prefix_validation_mode'] ) );
+			if ( $mode === 'off' || $mode === 'fail' ) {
+				$out['prefix_validation_mode'] = $mode;
+			} else {
+				$out['prefix_validation_mode'] = 'warn';
+			}
+		}
+
+		if ( isset( $input['prefix_validation_scope'] ) ) {
+			$scope = strtolower( trim( (string) $input['prefix_validation_scope'] ) );
+			if ( $scope === 'shortcodes' || $scope === 'cpts' ) {
+				$out['prefix_validation_scope'] = $scope;
+			} else {
+				$out['prefix_validation_scope'] = 'all';
+			}
 		}
 
 		return $out;

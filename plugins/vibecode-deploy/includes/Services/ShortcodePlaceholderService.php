@@ -32,6 +32,42 @@ final class ShortcodePlaceholderService {
 	}
 
 	/**
+	 * Check if a name matches the project prefix.
+	 *
+	 * Supports flexible format: {project_slug}_ or {project_slug} (with or without underscore).
+	 * Case-insensitive comparison.
+	 *
+	 * @param string $name        Name to check (e.g., 'cfa_investigations', 'cfaadvisories').
+	 * @param string $project_slug Project slug (e.g., 'cfa').
+	 * @return bool True if name matches project prefix.
+	 */
+	public static function matches_project_prefix( string $name, string $project_slug ): bool {
+		if ( $project_slug === '' || $name === '' ) {
+			return false;
+		}
+
+		$name_lower = strtolower( $name );
+		$slug_lower = strtolower( $project_slug );
+
+		// Check if name starts with {project_slug}_ (with underscore)
+		if ( strpos( $name_lower, $slug_lower . '_' ) === 0 ) {
+			return true;
+		}
+
+		// Check if name starts with {project_slug} (without underscore, but not as substring)
+		// e.g., "cfa" matches "cfaadvisories" but not "mycfa_investigations"
+		if ( strpos( $name_lower, $slug_lower ) === 0 ) {
+			// Ensure it's not just a partial match (e.g., "cf" matching "cfa")
+			$next_char = substr( $name_lower, strlen( $slug_lower ), 1 );
+			if ( $next_char === '' || $next_char === '_' || ctype_alnum( $next_char ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
 	 * Load shortcode configuration from build root.
 	 *
 	 * @param string $build_root Path to build root directory.
@@ -292,6 +328,26 @@ final class ShortcodePlaceholderService {
 			'errors' => array(),
 		);
 
+		$project_slug = isset( $settings['project_slug'] ) && is_string( $settings['project_slug'] ) ? trim( (string) $settings['project_slug'] ) : '';
+		$prefix_validation_mode = isset( $settings['prefix_validation_mode'] ) && is_string( $settings['prefix_validation_mode'] ) ? strtolower( trim( (string) $settings['prefix_validation_mode'] ) ) : 'warn';
+		
+		// Validate prefix compliance for found shortcodes
+		if ( $project_slug !== '' && $prefix_validation_mode !== 'off' ) {
+			foreach ( $found as $name ) {
+				if ( ! is_string( $name ) || $name === '' ) {
+					continue;
+				}
+				if ( ! self::matches_project_prefix( $name, $project_slug ) ) {
+					$msg = 'Shortcode "' . $name . '" on page "' . $slug . '" does not match project prefix "' . $project_slug . '"';
+					if ( $prefix_validation_mode === 'fail' ) {
+						$out['errors'][] = $msg;
+					} else {
+						$out['warnings'][] = $msg;
+					}
+				}
+			}
+		}
+
 		if ( ! isset( $config['pages'] ) || ! is_array( $config['pages'] ) ) {
 			return $out;
 		}
@@ -303,6 +359,23 @@ final class ShortcodePlaceholderService {
 
 		$required = self::normalize_shortcode_list( $page['required_shortcodes'] ?? array() );
 		$recommended = self::normalize_shortcode_list( $page['recommended_shortcodes'] ?? array() );
+
+		// Validate prefix compliance for config shortcodes
+		if ( $project_slug !== '' && $prefix_validation_mode !== 'off' ) {
+			foreach ( array_merge( $required, $recommended ) as $name ) {
+				if ( ! is_string( $name ) || $name === '' ) {
+					continue;
+				}
+				if ( ! self::matches_project_prefix( $name, $project_slug ) ) {
+					$msg = 'Shortcode "' . $name . '" in config for page "' . $slug . '" does not match project prefix "' . $project_slug . '"';
+					if ( $prefix_validation_mode === 'fail' ) {
+						$out['errors'][] = $msg;
+					} else {
+						$out['warnings'][] = $msg;
+					}
+				}
+			}
+		}
 
 		$missing_required = array_values( array_diff( $required, $found ) );
 		$missing_recommended = array_values( array_diff( $recommended, $found ) );
@@ -337,6 +410,53 @@ final class ShortcodePlaceholderService {
 			return false;
 		}
 		return (bool) preg_match( '/\[' . preg_quote( $shortcode_name, '/' ) . '\b/i', $content );
+	}
+
+	/**
+	 * Validate that registered CPTs match the project prefix.
+	 *
+	 * @param string $project_slug Project slug (e.g., 'cfa').
+	 * @param array  $settings     Plugin settings.
+	 * @return array Validation result with 'warnings' and 'errors' keys.
+	 */
+	public static function validate_cpt_prefixes( string $project_slug, array $settings ): array {
+		$out = array(
+			'warnings' => array(),
+			'errors' => array(),
+		);
+
+		if ( $project_slug === '' ) {
+			return $out;
+		}
+
+		$prefix_validation_mode = isset( $settings['prefix_validation_mode'] ) && is_string( $settings['prefix_validation_mode'] ) ? strtolower( trim( (string) $settings['prefix_validation_mode'] ) ) : 'warn';
+		$prefix_validation_scope = isset( $settings['prefix_validation_scope'] ) && is_string( $settings['prefix_validation_scope'] ) ? strtolower( trim( (string) $settings['prefix_validation_scope'] ) ) : 'all';
+
+		if ( $prefix_validation_mode === 'off' || $prefix_validation_scope === 'shortcodes' ) {
+			return $out;
+		}
+
+		// Get all registered CPTs, excluding built-in WordPress types
+		$built_in_types = array( 'post', 'page', 'attachment', 'revision', 'nav_menu_item', 'custom_css', 'customize_changeset', 'oembed_cache', 'user_request', 'wp_block', 'wp_template', 'wp_template_part', 'wp_global_styles', 'wp_navigation' );
+		$all_cpts = get_post_types( array( 'public' => true, '_builtin' => false ), 'names' );
+		$custom_cpts = array_diff( $all_cpts, $built_in_types );
+
+		foreach ( $custom_cpts as $cpt ) {
+			if ( ! is_string( $cpt ) || $cpt === '' ) {
+				continue;
+			}
+
+			if ( ! self::matches_project_prefix( $cpt, $project_slug ) ) {
+				$msg = 'CPT "' . $cpt . '" does not match project prefix "' . $project_slug . '"';
+				if ( $prefix_validation_mode === 'fail' ) {
+					$out['errors'][] = $msg;
+				} else {
+					$out['warnings'][] = $msg;
+				}
+			}
+		}
+
+		return $out;
 	}
 
 	public static function validate_post_types( array $config, array $settings ): array {
@@ -412,6 +532,112 @@ final class ShortcodePlaceholderService {
 				if ( ! empty( $missing_recommended ) ) {
 					$msg = 'Post type "' . $post_type . '" post #' . (string) $post->ID . ' missing recommended shortcodes: ' . implode( ', ', $missing_recommended );
 					if ( $recommended_mode === 'fail' ) {
+						$out['errors'][] = $msg;
+					} else {
+						$out['warnings'][] = $msg;
+					}
+				}
+			}
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Detect shortcodes and CPTs that use the project prefix but aren't in the config.
+	 *
+	 * These may be orphaned/unused items that should be documented or removed.
+	 *
+	 * @param string $project_slug Project slug (e.g., 'cfa').
+	 * @param array  $config       Shortcode configuration array.
+	 * @param array  $settings     Plugin settings.
+	 * @return array Detection result with 'warnings' and 'errors' keys.
+	 */
+	public static function detect_unknown_prefixed_items( string $project_slug, array $config, array $settings ): array {
+		$out = array(
+			'warnings' => array(),
+			'errors' => array(),
+		);
+
+		if ( $project_slug === '' ) {
+			return $out;
+		}
+
+		$prefix_validation_mode = isset( $settings['prefix_validation_mode'] ) && is_string( $settings['prefix_validation_mode'] ) ? strtolower( trim( (string) $settings['prefix_validation_mode'] ) ) : 'warn';
+		$prefix_validation_scope = isset( $settings['prefix_validation_scope'] ) && is_string( $settings['prefix_validation_scope'] ) ? strtolower( trim( (string) $settings['prefix_validation_scope'] ) ) : 'all';
+
+		if ( $prefix_validation_mode === 'off' ) {
+			return $out;
+		}
+
+		// Collect all shortcodes/CPTs mentioned in config
+		$config_shortcodes = array();
+		$config_cpts = array();
+
+		// Extract shortcodes from pages config
+		if ( isset( $config['pages'] ) && is_array( $config['pages'] ) ) {
+			foreach ( $config['pages'] as $page_config ) {
+				if ( ! is_array( $page_config ) ) {
+					continue;
+				}
+				$required = self::normalize_shortcode_list( $page_config['required_shortcodes'] ?? array() );
+				$recommended = self::normalize_shortcode_list( $page_config['recommended_shortcodes'] ?? array() );
+				$config_shortcodes = array_merge( $config_shortcodes, $required, $recommended );
+			}
+		}
+
+		// Extract shortcodes and CPTs from post_types config
+		if ( isset( $config['post_types'] ) && is_array( $config['post_types'] ) ) {
+			foreach ( $config['post_types'] as $cpt => $rule ) {
+				if ( ! is_string( $cpt ) || $cpt === '' || ! is_array( $rule ) ) {
+					continue;
+				}
+				$cpt_sanitized = sanitize_key( $cpt );
+				if ( $cpt_sanitized !== '' ) {
+					$config_cpts[] = $cpt_sanitized;
+				}
+				$required = self::normalize_shortcode_list( $rule['required_shortcodes'] ?? array() );
+				$recommended = self::normalize_shortcode_list( $rule['recommended_shortcodes'] ?? array() );
+				$config_shortcodes = array_merge( $config_shortcodes, $required, $recommended );
+			}
+		}
+
+		$config_shortcodes = array_values( array_unique( $config_shortcodes ) );
+		$config_cpts = array_values( array_unique( $config_cpts ) );
+
+		// Check registered shortcodes
+		if ( $prefix_validation_scope === 'all' || $prefix_validation_scope === 'shortcodes' ) {
+			global $shortcode_tags;
+			if ( is_array( $shortcode_tags ) ) {
+				foreach ( array_keys( $shortcode_tags ) as $tag ) {
+					if ( ! is_string( $tag ) || $tag === '' ) {
+						continue;
+					}
+					if ( self::matches_project_prefix( $tag, $project_slug ) && ! in_array( $tag, $config_shortcodes, true ) ) {
+						$msg = 'Shortcode "' . $tag . '" uses project prefix but is not documented in config';
+						if ( $prefix_validation_mode === 'fail' ) {
+							$out['errors'][] = $msg;
+						} else {
+							$out['warnings'][] = $msg;
+						}
+					}
+				}
+			}
+		}
+
+		// Check registered CPTs
+		if ( $prefix_validation_scope === 'all' || $prefix_validation_scope === 'cpts' ) {
+			$built_in_types = array( 'post', 'page', 'attachment', 'revision', 'nav_menu_item', 'custom_css', 'customize_changeset', 'oembed_cache', 'user_request', 'wp_block', 'wp_template', 'wp_template_part', 'wp_global_styles', 'wp_navigation' );
+			$all_cpts = get_post_types( array( 'public' => true, '_builtin' => false ), 'names' );
+			$custom_cpts = array_diff( $all_cpts, $built_in_types );
+
+			foreach ( $custom_cpts as $cpt ) {
+				if ( ! is_string( $cpt ) || $cpt === '' ) {
+					continue;
+				}
+				if ( self::matches_project_prefix( $cpt, $project_slug ) && ! in_array( $cpt, $config_cpts, true ) ) {
+					$msg = 'CPT "' . $cpt . '" uses project prefix but is not documented in config';
+					if ( $prefix_validation_mode === 'fail' ) {
 						$out['errors'][] = $msg;
 					} else {
 						$out['warnings'][] = $msg;

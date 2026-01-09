@@ -221,20 +221,77 @@ final class ThemeDeployService {
 	/**
 	 * Extract CPT registration code blocks from functions.php content.
 	 *
+	 * First tries to extract the entire add_action('init', function() { ... }) block
+	 * that contains CPT registrations. If that's not found, extracts individual
+	 * register_post_type() calls.
+	 *
 	 * @param string $content Functions.php content.
-	 * @return array Array of CPT slugs => registration code blocks.
+	 * @return array Array with 'init_block' (full add_action block) and/or 'individual' (array of slug => code).
 	 */
 	private static function extract_cpt_registrations( string $content ): array {
-		$cpts = array();
-		// Match register_post_type('slug', array(...)) blocks
+		$result = array(
+			'init_block' => '',
+			'individual' => array(),
+		);
+		
+		// First, try to extract the entire add_action('init', function() { ... }) block containing CPTs
+		// Look for add_action('init', function() { ... }) that contains register_post_type
+		$init_pattern = '/add_action\s*\(\s*[\'"]init[\'"]\s*,\s*function\s*\([^)]*\)\s*\{/';
+		$pos = 0;
+		while ( preg_match( $init_pattern, $content, $init_match, PREG_OFFSET_CAPTURE, $pos ) ) {
+			$init_start = $init_match[0][1];
+			$brace_start = strpos( $content, '{', $init_start );
+			
+			if ( $brace_start !== false ) {
+				// Balance braces to find the closing brace of the closure
+				$brace_count = 1;
+				$search_pos = $brace_start + 1;
+				$brace_end = false;
+				
+				while ( $search_pos < strlen( $content ) && $brace_count > 0 ) {
+					$char = $content[ $search_pos ];
+					if ( $char === '{' ) {
+						$brace_count++;
+					} elseif ( $char === '}' ) {
+						$brace_count--;
+						if ( $brace_count === 0 ) {
+							$brace_end = $search_pos;
+							break;
+						}
+					}
+					$search_pos++;
+				}
+				
+				if ( $brace_end !== false ) {
+					// Find closing parenthesis and semicolon
+					$close_paren = strpos( $content, ')', $brace_end );
+					if ( $close_paren !== false ) {
+						$semicolon = strpos( $content, ';', $close_paren );
+						if ( $semicolon !== false ) {
+							$full_block = substr( $content, $init_start, $semicolon - $init_start + 1 );
+							// Check if this block contains register_post_type
+							if ( strpos( $full_block, 'register_post_type' ) !== false ) {
+								$result['init_block'] = $full_block;
+								return $result; // Return early if we found the init block with CPTs
+							}
+						}
+					}
+				}
+			}
+			// Continue searching for next add_action('init', ...) block
+			$pos = $init_start + 1;
+		}
+		
+		// Fallback: Extract individual register_post_type() calls
 		$pattern = '/register_post_type\s*\(\s*[\'"]([^\'"]+)[\'"]\s*,\s*array\s*\([^)]*(?:\([^)]*\)[^)]*)*\)\s*\)\s*;/s';
 		if ( preg_match_all( $pattern, $content, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE ) ) {
 			foreach ( $matches as $match ) {
 				$slug = $match[1][0];
-				$cpts[ $slug ] = $match[0][0];
+				$result['individual'][ $slug ] = $match[0][0];
 			}
 		}
-		return $cpts;
+		
+		return $result;
 	}
 
 	/**
@@ -357,15 +414,74 @@ final class ThemeDeployService {
 	/**
 	 * Merge CPT registrations into theme content.
 	 *
-	 * Removes ALL existing registrations for each post type before adding the new one
-	 * to prevent duplicates. Uses balanced brace matching for multi-line registrations.
+	 * If staging has an add_action('init', ...) block, replaces the entire block.
+	 * Otherwise, merges individual register_post_type() calls.
 	 *
 	 * @param string $theme_content Current theme functions.php content.
-	 * @param array  $staging_cpts CPT registrations from staging.
+	 * @param array  $staging_cpts CPT registrations from staging (with 'init_block' and/or 'individual' keys).
 	 * @return string Merged content.
 	 */
 	private static function merge_cpt_registrations( string $theme_content, array $staging_cpts ): string {
-		foreach ( $staging_cpts as $slug => $registration_code ) {
+		// If we have an init block, replace the entire add_action('init', ...) block
+		if ( ! empty( $staging_cpts['init_block'] ) ) {
+			// Remove existing add_action('init', function() { ... }) blocks that contain register_post_type
+			$init_pattern = '/add_action\s*\(\s*[\'"]init[\'"]\s*,\s*function\s*\([^)]*\)\s*\{/';
+			$pos = 0;
+			
+			while ( preg_match( $init_pattern, $theme_content, $match, PREG_OFFSET_CAPTURE, $pos ) ) {
+				$init_start = $match[0][1];
+				$brace_start = strpos( $theme_content, '{', $init_start );
+				
+				if ( $brace_start !== false ) {
+					// Balance braces to find the closing brace
+					$brace_count = 1;
+					$search_pos = $brace_start + 1;
+					$brace_end = false;
+					
+					while ( $search_pos < strlen( $theme_content ) && $brace_count > 0 ) {
+						$char = $theme_content[ $search_pos ];
+						if ( $char === '{' ) {
+							$brace_count++;
+						} elseif ( $char === '}' ) {
+							$brace_count--;
+							if ( $brace_count === 0 ) {
+								$brace_end = $search_pos;
+								break;
+							}
+						}
+						$search_pos++;
+					}
+					
+					if ( $brace_end !== false ) {
+						$close_paren = strpos( $theme_content, ')', $brace_end );
+						if ( $close_paren !== false ) {
+							$semicolon = strpos( $theme_content, ';', $close_paren );
+							if ( $semicolon !== false ) {
+								$block_content = substr( $theme_content, $init_start, $semicolon - $init_start + 1 );
+								// Only remove if it contains register_post_type
+								if ( strpos( $block_content, 'register_post_type' ) !== false ) {
+									$before = substr( $theme_content, 0, $init_start );
+									$after = substr( $theme_content, $semicolon + 1 );
+									$theme_content = $before . $after;
+									// Continue searching from the same position
+									$pos = $init_start;
+									continue;
+								}
+							}
+						}
+					}
+				}
+				$pos = $init_start + 1;
+			}
+			
+			// Add the new init block at the end
+			$theme_content = rtrim( $theme_content ) . "\n\n" . $staging_cpts['init_block'] . "\n";
+			return $theme_content;
+		}
+		
+		// Fallback: Handle individual register_post_type() calls
+		$individual_cpts = $staging_cpts['individual'] ?? array();
+		foreach ( $individual_cpts as $slug => $registration_code ) {
 			// Remove ALL existing registrations for this post type (handle duplicates)
 			// CRITICAL: Only remove registrations at top level, not inside closures/functions
 			// Use balanced brace/parenthesis matching to correctly match multi-line registrations

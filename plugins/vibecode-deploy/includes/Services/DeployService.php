@@ -218,9 +218,10 @@ final class DeployService {
 			return $warnings;
 		}
 
-		// Get all registered public post types
+		// Get only custom post types (exclude built-in types like 'post', 'page', 'attachment')
 		$post_types = get_post_types( array(
 			'public' => true,
+			'_builtin' => false,
 		), 'names' );
 
 		if ( empty( $post_types ) ) {
@@ -228,8 +229,9 @@ final class DeployService {
 		}
 
 		foreach ( $post_types as $post_type ) {
-			// Skip built-in 'post' and 'page' (they have default templates)
-			if ( in_array( $post_type, array( 'post', 'page' ), true ) ) {
+			// Skip WordPress internal block types
+			$internal_types = array( 'wp_template', 'wp_template_part', 'wp_global_styles', 'wp_block', 'wp_navigation' );
+			if ( in_array( $post_type, $internal_types, true ) ) {
 				continue;
 			}
 
@@ -1327,6 +1329,30 @@ final class DeployService {
 				$errors += count( $cpt_errors );
 				\VibeCode\Deploy\Logger::error( 'CPT shortcode validation failed.', array( 'errors' => $cpt_errors ), $project_slug );
 			}
+		}
+
+		// Validate CPT prefix compliance
+		$cpt_prefix_validation = ShortcodePlaceholderService::validate_cpt_prefixes( $project_slug, $settings );
+		$cpt_prefix_warnings = isset( $cpt_prefix_validation['warnings'] ) && is_array( $cpt_prefix_validation['warnings'] ) ? $cpt_prefix_validation['warnings'] : array();
+		$cpt_prefix_errors = isset( $cpt_prefix_validation['errors'] ) && is_array( $cpt_prefix_validation['errors'] ) ? $cpt_prefix_validation['errors'] : array();
+		if ( ! empty( $cpt_prefix_warnings ) ) {
+			\VibeCode\Deploy\Logger::info( 'CPT prefix validation warnings.', array( 'warnings' => $cpt_prefix_warnings ), $project_slug );
+		}
+		if ( ! empty( $cpt_prefix_errors ) ) {
+			$errors += count( $cpt_prefix_errors );
+			\VibeCode\Deploy\Logger::error( 'CPT prefix validation failed.', array( 'errors' => $cpt_prefix_errors ), $project_slug );
+		}
+
+		// Detect unknown prefixed items (shortcodes/CPTs using prefix but not in config)
+		$unknown_items = ShortcodePlaceholderService::detect_unknown_prefixed_items( $project_slug, $placeholder_config, $settings );
+		$unknown_warnings = isset( $unknown_items['warnings'] ) && is_array( $unknown_items['warnings'] ) ? $unknown_items['warnings'] : array();
+		$unknown_errors = isset( $unknown_items['errors'] ) && is_array( $unknown_items['errors'] ) ? $unknown_items['errors'] : array();
+		if ( ! empty( $unknown_warnings ) ) {
+			\VibeCode\Deploy\Logger::info( 'Unknown prefixed items detected.', array( 'warnings' => $unknown_warnings ), $project_slug );
+		}
+		if ( ! empty( $unknown_errors ) ) {
+			$errors += count( $unknown_errors );
+			\VibeCode\Deploy\Logger::error( 'Unknown prefixed items validation failed.', array( 'errors' => $unknown_errors ), $project_slug );
 		}
 
 		if ( $errors === 0 ) {
