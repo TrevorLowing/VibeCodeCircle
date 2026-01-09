@@ -76,6 +76,9 @@ final class Bootstrap {
 			\VibeCode\Deploy\Admin\HelpPage::init();
 		}
 
+		// Enqueue fonts at priority 1 (before WordPress core styles at priority 10)
+		add_action( 'wp_enqueue_scripts', array( '\\VibeCode\\Deploy\\Importer', 'enqueue_fonts' ), 1 );
+		// Enqueue other assets at priority 15 (after WordPress core styles)
 		add_action( 'wp_enqueue_scripts', array( '\\VibeCode\\Deploy\\Importer', 'enqueue_assets_for_current_page' ), 15 );
 		add_filter( 'body_class', array( '\\VibeCode\\Deploy\\Importer', 'add_body_class_from_meta' ), 10, 1 );
 

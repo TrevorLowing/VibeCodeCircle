@@ -31,17 +31,16 @@ final class Importer {
 		return BuildService::clear_active_fingerprint( $project_slug );
 	}
 
-	public static function enqueue_assets_for_current_page(): void {
+	/**
+	 * Enqueue Google Fonts at high priority (before WordPress core styles).
+	 * 
+	 * This ensures fonts load first, before resets and project CSS.
+	 */
+	public static function enqueue_fonts(): void {
 		if ( is_admin() ) {
 			return;
 		}
 
-		$enqueued_css_paths = array();
-		$enqueued_js_paths = array();
-		$enqueued_font_urls = array();
-		$script_attr_map = array();
-
-		// 0) Enqueue Google Fonts FIRST (priority 1) - before all other styles
 		// Per-page fonts for Vibe Code Deploy-owned pages
 		if ( is_singular( 'page' ) ) {
 			$post_id = (int) get_queried_object_id();
@@ -54,17 +53,27 @@ final class Importer {
 							if ( ! is_string( $font_url ) || $font_url === '' ) {
 								continue;
 							}
-							if ( in_array( $font_url, $enqueued_font_urls, true ) ) {
-								continue;
-							}
-							$enqueued_font_urls[] = $font_url;
 							$handle = 'vibecode-deploy-fonts-' . md5( $font_url );
-							wp_enqueue_style( $handle, $font_url, array(), null );
+							// Check if already enqueued to avoid duplicates
+							if ( ! wp_style_is( $handle, 'enqueued' ) && ! wp_style_is( $handle, 'done' ) ) {
+								wp_enqueue_style( $handle, $font_url, array(), null );
+							}
 						}
 					}
 				}
 			}
 		}
+	}
+
+	public static function enqueue_assets_for_current_page(): void {
+		if ( is_admin() ) {
+			return;
+		}
+
+		$enqueued_css_paths = array();
+		$enqueued_js_paths = array();
+		$enqueued_font_urls = array();
+		$script_attr_map = array();
 
 		// 0.5) Enqueue generalized WordPress resets CSS (after fonts, before project CSS)
 		$plugin_dir = defined( 'VIBECODE_DEPLOY_PLUGIN_DIR' ) ? rtrim( (string) VIBECODE_DEPLOY_PLUGIN_DIR, '/\\' ) : '';
