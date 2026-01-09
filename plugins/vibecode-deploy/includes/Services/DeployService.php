@@ -3,6 +3,7 @@
 namespace VibeCode\Deploy\Services;
 
 use VibeCode\Deploy\Importer;
+use VibeCode\Deploy\Logger;
 use VibeCode\Deploy\Settings;
 
 defined( 'ABSPATH' ) || exit;
@@ -153,7 +154,17 @@ final class DeployService {
 
 				$clean = (string) preg_replace( '/^\.\//', '', $url );
 
+				// Skip resources/ paths - they should already be converted to plugin URLs by AssetService::rewrite_asset_urls()
+				// Check if URL is already a plugin asset URL (already converted)
+				$plugin_url_base = plugins_url( 'assets', VIBECODE_DEPLOY_PLUGIN_FILE );
+				if ( strpos( $url, $plugin_url_base . '/resources/' ) !== false ) {
+					// Already converted to plugin URL, skip
+					return $m[0];
+				}
+
 				if ( strpos( $clean, 'resources/' ) === 0 ) {
+					// Resources not yet converted - this shouldn't happen if rewrite_asset_urls() ran first
+					// But handle it anyway for safety
 					$rest = substr( $clean, strlen( 'resources/' ) );
 					return $attr . '=' . $q . rtrim( $resources_base_url, '/' ) . '/' . $rest . $q;
 				}
@@ -193,6 +204,48 @@ final class DeployService {
 		$slug = str_replace( array( '-', '_' ), ' ', $slug );
 		$slug = preg_replace( '/\s+/', ' ', $slug );
 		return ucwords( trim( (string) $slug ) );
+	}
+
+	/**
+	 * Check for missing CPT single templates and return warnings.
+	 *
+	 * @return array Array of warning messages for missing templates.
+	 */
+	private static function check_missing_cpt_templates(): array {
+		$warnings = array();
+		
+		if ( ! TemplateService::block_templates_supported() ) {
+			return $warnings;
+		}
+
+		// Get all registered public post types
+		$post_types = get_post_types( array(
+			'public' => true,
+		), 'names' );
+
+		if ( empty( $post_types ) ) {
+			return $warnings;
+		}
+
+		foreach ( $post_types as $post_type ) {
+			// Skip built-in 'post' and 'page' (they have default templates)
+			if ( in_array( $post_type, array( 'post', 'page' ), true ) ) {
+				continue;
+			}
+
+			$slug = 'single-' . $post_type;
+			$existing = TemplateService::get_template_by_slug( $slug );
+
+			if ( ! $existing || ! isset( $existing->ID ) ) {
+				$warnings[] = sprintf(
+					'Missing template for CPT "%s" (single-%s.html). The plugin will auto-create this during deployment, but you may need to flush rewrite rules after deployment.',
+					$post_type,
+					$post_type
+				);
+			}
+		}
+
+		return $warnings;
 	}
 
 	/**
@@ -257,8 +310,11 @@ final class DeployService {
 			}
 		}
 
+		// Check for missing CPT single templates
+		$cpt_warnings = self::check_missing_cpt_templates();
+		$total_warnings = count( $cpt_warnings );
+
 		$items = array();
-		$total_warnings = 0;
 		foreach ( $pages as $path ) {
 			$slug = (string) preg_replace( '/\.html$/', '', basename( $path ) );
 			if ( $slug === '' ) {
@@ -266,6 +322,10 @@ final class DeployService {
 			}
 
 			$warnings = array();
+			// Add CPT template warnings to first page item
+			if ( ! empty( $cpt_warnings ) && empty( $items ) ) {
+				$warnings = array_merge( $warnings, $cpt_warnings );
+			}
 			$raw = file_get_contents( $path );
 			if ( $raw === false ) {
 				$warnings[] = 'Unable to read HTML file.';
@@ -402,6 +462,40 @@ final class DeployService {
 			);
 		}
 
+		// Collect CSS/JS file lists from staging
+		$css_files = array();
+		$js_files = array();
+		$css_dir = $build_root . '/css';
+		$js_dir = $build_root . '/js';
+		if ( is_dir( $css_dir ) ) {
+			$css_glob = glob( $css_dir . '/*.css' ) ?: array();
+			foreach ( $css_glob as $css_file ) {
+				$css_files[] = 'css/' . basename( $css_file );
+			}
+		}
+		if ( is_dir( $js_dir ) ) {
+			$js_glob = glob( $js_dir . '/*.js' ) ?: array();
+			foreach ( $js_glob as $js_file ) {
+				$js_files[] = 'js/' . basename( $js_file );
+			}
+		}
+
+		// Collect theme file lists from staging
+		$theme_files = array();
+		$staging_theme_dir = $build_root . '/theme';
+		if ( is_dir( $staging_theme_dir ) ) {
+			if ( file_exists( $staging_theme_dir . '/functions.php' ) ) {
+				$theme_files[] = 'functions.php';
+			}
+			$acf_dir = $staging_theme_dir . '/acf-json';
+			if ( is_dir( $acf_dir ) ) {
+				$acf_glob = glob( $acf_dir . '/*.json' ) ?: array();
+				foreach ( $acf_glob as $acf_file ) {
+					$theme_files[] = 'acf-json/' . basename( $acf_file );
+				}
+			}
+		}
+
 		return array(
 			'pages_total' => count( $items ),
 			'items' => $items,
@@ -410,6 +504,258 @@ final class DeployService {
 			'templates' => $templates,
 			'template_parts' => $template_parts,
 			'auto_template_parts' => $auto_parts,
+			'css_files' => $css_files, // CSS file list for selection UI
+			'js_files' => $js_files, // JS file list for selection UI
+			'theme_files' => $theme_files, // Theme file list for selection UI
+		);
+	}
+
+	/**
+	 * Create page templates from pages/*.html files.
+	 *
+	 * Automatically creates page-{slug}.html templates from pages directory,
+	 * ensuring templates always match source HTML files and include hero sections.
+	 *
+	 * @param string $project_slug         Project identifier.
+	 * @param string $fingerprint          Build fingerprint.
+	 * @param array  $pages                Array of page file paths.
+	 * @param array  $slug_set             Set of valid page slugs.
+	 * @param string $resources_base_url   Base URL for resources.
+	 * @param bool   $force_claim_templates Whether to force claim unowned templates.
+	 * @return array Results with 'created', 'updated', 'skipped', 'errors', 'created_templates', 'updated_templates'.
+	 */
+	private static function create_page_templates_from_pages(
+		string $project_slug,
+		string $fingerprint,
+		array $pages,
+		array $slug_set,
+		string $resources_base_url,
+		bool $force_claim_templates
+	): array {
+		$project_slug = sanitize_key( $project_slug );
+		$fingerprint = sanitize_text_field( $fingerprint );
+		
+		$created = 0;
+		$updated = 0;
+		$skipped = 0;
+		$errors = 0;
+		$created_templates = array();
+		$updated_templates = array();
+
+		if ( ! TemplateService::block_templates_supported() ) {
+			return array(
+				'created' => 0,
+				'updated' => 0,
+				'skipped' => 0,
+				'errors' => 0,
+				'created_templates' => array(),
+				'updated_templates' => array(),
+			);
+		}
+
+		// Get header/footer template parts
+		$header_part = TemplateService::get_template_part_by_slug( 'header' );
+		$footer_part = TemplateService::get_template_part_by_slug( 'footer' );
+		
+		// Only create templates if header/footer exist
+		if ( ! $header_part || ! isset( $header_part->ID ) || ! $footer_part || ! isset( $footer_part->ID ) ) {
+			Logger::info( 'Skipping page template creation: header/footer template parts not found.', array(), $project_slug );
+			return array(
+				'created' => 0,
+				'updated' => 0,
+				'skipped' => count( $pages ),
+				'errors' => 0,
+				'created_templates' => array(),
+				'updated_templates' => array(),
+			);
+		}
+
+		// Get class prefix from settings for main class
+		$settings = Settings::get_all();
+		$class_prefix = isset( $settings['class_prefix'] ) && is_string( $settings['class_prefix'] ) ? trim( (string) $settings['class_prefix'] ) : '';
+		$main_class = $class_prefix !== '' ? $class_prefix . 'main' : 'main';
+
+		// Get build root from first page path (assumes all pages are in same pages/ directory)
+		$build_root = '';
+		if ( ! empty( $pages ) ) {
+			$first_page = reset( $pages );
+			$build_root = dirname( dirname( $first_page ) ); // Go up from pages/{file}.html to build root
+		}
+
+		foreach ( $pages as $path ) {
+			$slug = (string) preg_replace( '/\.html$/', '', basename( $path ) );
+			if ( $slug === '' ) {
+				continue;
+			}
+
+			// Skip if template already exists in templates/ directory (manual templates take precedence)
+			if ( $build_root !== '' ) {
+				$templates_dir = $build_root . DIRECTORY_SEPARATOR . 'templates';
+				$template_file = $templates_dir . DIRECTORY_SEPARATOR . 'page-' . $slug . '.html';
+				if ( is_file( $template_file ) ) {
+					// Manual template exists, skip auto-generation
+					Logger::info( 'Skipping auto-template creation: manual template exists.', array(
+						'page_slug' => $slug,
+						'template_file' => $template_file,
+					), $project_slug );
+					$skipped++;
+					continue;
+				}
+			}
+
+			$raw = file_get_contents( $path );
+			if ( $raw === false ) {
+				$errors++;
+				Logger::error( 'Failed to read page file for template creation.', array(
+					'page_slug' => $slug,
+					'path' => $path,
+				), $project_slug );
+				continue;
+			}
+
+			libxml_use_internal_errors( true );
+			$dom = new \DOMDocument();
+			$loaded = $dom->loadHTML( $raw );
+			libxml_clear_errors();
+			if ( ! $loaded ) {
+				$errors++;
+				Logger::error( 'Failed to parse page file for template creation.', array(
+					'page_slug' => $slug,
+					'path' => $path,
+				), $project_slug );
+				continue;
+			}
+
+			$xpath = new \DOMXPath( $dom );
+			$main = $xpath->query( '//main' )->item( 0 );
+			if ( ! $main ) {
+				$errors++;
+				Logger::error( 'Page file missing <main> element for template creation.', array(
+					'page_slug' => $slug,
+					'path' => $path,
+				), $project_slug );
+				continue;
+			}
+
+			// Extract main content (same as page content extraction)
+			$content = self::inner_html( $dom, $main );
+			// Rewrite asset URLs FIRST (resources/ -> plugin URL) before rewrite_urls processes them
+			$content = AssetService::rewrite_asset_urls( $content, $project_slug );
+			// Then rewrite page URLs (skip resources already converted to plugin URLs)
+			$content = self::rewrite_urls( $content, $slug_set, $resources_base_url );
+			$raw_content = $content;
+
+			// Convert to block markup
+			$content_blocks = HtmlToEtchConverter::convert( $raw_content );
+			
+			// Verify converted content doesn't include wp:post-content blocks
+			// (should not happen, but validate to be safe)
+			if ( preg_match( '/<!--\s*wp:post-content/i', $content_blocks ) ) {
+				$errors++;
+				Logger::error( 'Converted page content includes wp:post-content block, which should not be in page templates.', array(
+					'page_slug' => $slug,
+					'template_slug' => 'page-' . $slug,
+				), $project_slug );
+				continue;
+			}
+
+			// Wrap with header/footer template parts
+			$template_slug = 'page-' . $slug;
+			$template_content = '';
+			
+			// Header template part
+			$header_attrs = array( 'slug' => 'header', 'tagName' => 'header' );
+			$theme_slug = TemplateService::current_theme_slug();
+			if ( $theme_slug !== '' ) {
+				$header_attrs['theme'] = $theme_slug;
+			}
+			$template_content .= '<!-- wp:template-part ' . wp_json_encode( $header_attrs ) . ' /-->' . "\n\n";
+			
+			// Main content wrapper
+			$template_content .= '<!-- wp:group {"tagName":"main","className":"' . esc_attr( $main_class ) . '"} -->' . "\n";
+			$template_content .= '<main id="main" class="wp-block-group ' . esc_attr( $main_class ) . '" role="main">' . "\n";
+			$template_content .= $content_blocks;
+			$template_content .= '</main>' . "\n";
+			$template_content .= '<!-- /wp:group -->' . "\n\n";
+			
+			// Footer template part
+			$footer_attrs = array( 'slug' => 'footer', 'tagName' => 'footer' );
+			if ( $theme_slug !== '' ) {
+				$footer_attrs['theme'] = $theme_slug;
+			}
+			$template_content .= '<!-- wp:template-part ' . wp_json_encode( $footer_attrs ) . ' /-->' . "\n";
+			
+			// Final validation: ensure template doesn't include wp:post-content
+			$validation = TemplateService::validate_page_template( $template_slug, $template_content );
+			if ( ! $validation['valid'] ) {
+				$errors++;
+				Logger::error( 'Template validation failed.', array(
+					'page_slug' => $slug,
+					'template_slug' => $template_slug,
+					'error' => $validation['error'],
+				), $project_slug );
+				continue;
+			}
+
+			// Create/update template using TemplateService
+			$res = TemplateService::upsert_template( $project_slug, $fingerprint, $template_slug, $template_content, $force_claim_templates );
+			
+			if ( empty( $res['ok'] ) ) {
+				$errors++;
+				Logger::error( 'Failed to create page template.', array(
+					'page_slug' => $slug,
+					'template_slug' => $template_slug,
+					'error' => isset( $res['error'] ) ? $res['error'] : 'Unknown error',
+				), $project_slug );
+				continue;
+			}
+
+			// Update source path to reflect that template comes from pages/ not templates/
+			if ( ! empty( $res['post_id'] ) ) {
+				update_post_meta( (int) $res['post_id'], Importer::META_SOURCE_PATH, 'pages/' . $slug . '.html' );
+			}
+
+			if ( ! empty( $res['skipped'] ) ) {
+				$skipped++;
+				continue;
+			}
+
+			if ( ! empty( $res['created'] ) ) {
+				$created++;
+				$created_templates[] = array(
+					'post_id' => (int) $res['post_id'],
+					'slug' => (string) $res['slug'],
+					'post_name' => (string) ( $res['post_name'] ?? '' ),
+				);
+				Logger::info( 'Created page template from page file.', array(
+					'page_slug' => $slug,
+					'template_slug' => $template_slug,
+					'post_id' => (int) $res['post_id'],
+				), $project_slug );
+			} else {
+				$updated++;
+				$updated_templates[] = array(
+					'post_id' => (int) $res['post_id'],
+					'slug' => (string) $res['slug'],
+					'post_name' => (string) ( $res['post_name'] ?? '' ),
+					'before' => is_array( $res['before'] ?? null ) ? $res['before'] : array(),
+					'before_meta' => is_array( $res['before_meta'] ?? null ) ? $res['before_meta'] : array(),
+				);
+				Logger::info( 'Updated page template from page file.', array(
+					'page_slug' => $slug,
+					'template_slug' => $template_slug,
+					'post_id' => (int) $res['post_id'],
+				), $project_slug );
+			}
+		}
+
+		return array(
+			'created' => $created,
+			'updated' => $updated,
+			'skipped' => $skipped,
+			'errors' => $errors,
+			'created_templates' => $created_templates,
+			'updated_templates' => $updated_templates,
 		);
 	}
 
@@ -427,9 +773,16 @@ final class DeployService {
 	 * @param bool   $generate_404_template  Whether to generate 404 template.
 	 * @param bool   $force_claim_templates Whether to claim templates not owned by this project.
 	 * @param bool   $validate_cpt_shortcodes Whether to validate CPT shortcode coverage.
+	 * @param array  $selected_pages        Optional array of page slugs to deploy (empty = all).
+	 * @param array  $selected_css          Optional array of CSS file paths to deploy (empty = all).
+	 * @param array  $selected_js           Optional array of JS file paths to deploy (empty = all).
+	 * @param array  $selected_templates    Optional array of template slugs to deploy (empty = all).
+	 * @param array  $selected_template_parts Optional array of template part slugs to deploy (empty = all).
+	 * @param array  $selected_theme_files  Optional array of theme file names to deploy (empty = all).
 	 * @return array Deployment results with 'pages_created', 'pages_updated', 'templates_created', etc.
 	 */
-	public static function run_import( string $project_slug, string $fingerprint, string $build_root, bool $set_front_page, bool $force_claim_unowned, bool $deploy_template_parts = true, bool $generate_404_template = true, bool $force_claim_templates = false, bool $validate_cpt_shortcodes = false ): array {
+	public static function run_import( string $project_slug, string $fingerprint, string $build_root, bool $set_front_page, bool $force_claim_unowned, bool $deploy_template_parts = true, bool $generate_404_template = true, bool $force_claim_templates = false, bool $validate_cpt_shortcodes = false, array $selected_pages = array(), array $selected_css = array(), array $selected_js = array(), array $selected_templates = array(), array $selected_template_parts = array(), array $selected_theme_files = array() ): array {
+		// Copy assets (filtering will be handled by AssetService if needed, or we can filter here)
 		AssetService::copy_assets_to_plugin_folder( $build_root );
 		$active_before = BuildService::get_active_fingerprint( $project_slug );
 		$settings = Settings::get_all();
@@ -463,9 +816,28 @@ final class DeployService {
 		$errors = 0;
 		$home_id = null;
 
+		// Normalize selected filters
+		$selected_pages = array_map( 'sanitize_key', $selected_pages );
+		$selected_pages = array_filter( $selected_pages );
+		$selected_css = array_map( 'sanitize_file_name', $selected_css );
+		$selected_css = array_filter( $selected_css );
+		$selected_js = array_map( 'sanitize_file_name', $selected_js );
+		$selected_js = array_filter( $selected_js );
+		$selected_templates = array_map( 'sanitize_key', $selected_templates );
+		$selected_templates = array_filter( $selected_templates );
+		$selected_template_parts = array_map( 'sanitize_key', $selected_template_parts );
+		$selected_template_parts = array_filter( $selected_template_parts );
+		$selected_theme_files = array_map( 'sanitize_file_name', $selected_theme_files );
+		$selected_theme_files = array_filter( $selected_theme_files );
+
 		foreach ( $pages as $path ) {
 			$slug = (string) preg_replace( '/\.html$/', '', basename( $path ) );
 			if ( $slug === '' ) {
+				continue;
+			}
+
+			// Filter by selected pages if specified
+			if ( ! empty( $selected_pages ) && ! in_array( $slug, $selected_pages, true ) ) {
 				continue;
 			}
 
@@ -539,13 +911,41 @@ final class DeployService {
 			$assets = AssetService::extract_head_assets( $dom );
 
 			$content = self::inner_html( $dom, $main );
-			$content = self::rewrite_urls( $content, $slug_set, $resources_base_url );
+			// Rewrite asset URLs FIRST (resources/ -> plugin URL) before rewrite_urls processes them
 			$content = AssetService::rewrite_asset_urls( $content, $project_slug );
+			// Then rewrite page URLs (skip resources already converted to plugin URLs)
+			$content = self::rewrite_urls( $content, $slug_set, $resources_base_url );
 			$raw_content = $content;
 
 			$content = HtmlToEtchConverter::convert( $raw_content );
 
 			$title = self::title_from_dom( $dom, self::title_from_slug( $slug ) );
+
+			// Check if custom block template exists - if so, clear post_content so template is used
+			// Check both: 1) Already registered in WordPress, 2) File exists in theme directory
+			$template_slug = 'page-' . $slug;
+			$block_template = TemplateService::get_template_by_slug( $template_slug );
+			$has_registered_template = $block_template && isset( $block_template->ID );
+			
+			// Also check if template file exists in theme directory (for templates not yet registered)
+			$theme_dir = get_stylesheet_directory();
+			$template_file = $theme_dir . DIRECTORY_SEPARATOR . 'templates' . DIRECTORY_SEPARATOR . $template_slug . '.html';
+			$has_template_file = is_file( $template_file );
+			
+			$has_custom_template = $has_registered_template || $has_template_file;
+
+			// If custom template exists, clear post_content so WordPress uses the template instead
+			$final_content = $content;
+			if ( $has_custom_template ) {
+				$final_content = '';
+				Logger::info( 'Cleared page content for custom template.', array( 
+					'page_slug' => $slug, 
+					'template_slug' => $template_slug,
+					'registered' => $has_registered_template,
+					'file_exists' => $has_template_file,
+					'template_file' => $template_file
+				), $project_slug );
+			}
 
 			$existing = get_page_by_path( $slug );
 			$postarr = array(
@@ -553,7 +953,7 @@ final class DeployService {
 				'post_status' => 'publish',
 				'post_title' => $title,
 				'post_name' => $slug,
-				'post_content' => $content,
+				'post_content' => $final_content,
 			);
 
 			if ( $existing && isset( $existing->ID ) ) {
@@ -603,13 +1003,57 @@ final class DeployService {
 			update_post_meta( $post_id, Importer::META_PROJECT_SLUG, $project_slug );
 			update_post_meta( $post_id, Importer::META_SOURCE_PATH, 'pages/' . basename( $path ) );
 			update_post_meta( $post_id, Importer::META_FINGERPRINT, $fingerprint );
-			update_post_meta( $post_id, Importer::META_ASSET_CSS, $assets['css'] ?? array() );
-			update_post_meta( $post_id, Importer::META_ASSET_JS, $assets['js'] ?? array() );
+			$css_assets = $assets['css'] ?? array();
+			$js_assets = $assets['js'] ?? array();
+			
+			// Store CSS and JS assets in post meta for later enqueuing
+			update_post_meta( $post_id, Importer::META_ASSET_CSS, $css_assets );
+			update_post_meta( $post_id, Importer::META_ASSET_JS, $js_assets );
+			
+			// Log asset storage for debugging
+			if ( ! empty( $css_assets ) ) {
+				Logger::info( 'Stored CSS assets in post meta.', array(
+					'page_slug' => $slug,
+					'post_id' => $post_id,
+					'css_files' => $css_assets,
+					'count' => count( $css_assets ),
+				), $project_slug );
+			}
+
+			// Log template usage and verification
+			if ( $has_custom_template ) {
+				// Block templates are automatically used by WordPress template hierarchy
+				// WordPress will use page-{slug}.html template when post_content is empty
+				Logger::info( 'Page configured to use block template.', array( 
+					'page_slug' => $slug, 
+					'template_slug' => $template_slug,
+					'has_registered' => $has_registered_template,
+					'has_file' => $has_template_file,
+					'content_cleared' => ( $final_content === '' ),
+					'template_file' => $template_file,
+				), $project_slug );
+			} else {
+				// No custom template - page will use default page.html template with post_content
+				Logger::info( 'Page will use default template with editor content.', array( 
+					'page_slug' => $slug,
+					'has_content' => ( $final_content !== '' ),
+				), $project_slug );
+			}
 
 			if ( $slug === 'home' ) {
 				$home_id = $post_id;
 			}
 		}
+
+		// Auto-create block templates for all post types if they don't exist
+		TemplateService::ensure_post_type_templates( $project_slug, $fingerprint );
+		
+		// Auto-create default post type archive templates (home.html, archive.html)
+		TemplateService::ensure_default_post_templates( $project_slug, $fingerprint );
+		
+		// Flush rewrite rules after CPT templates are created (needed for single post URLs to work)
+		flush_rewrite_rules( false ); // Soft flush (faster)
+		Logger::info( 'Flushed rewrite rules after template creation.', array(), $project_slug );
 
 		if ( $set_front_page && $home_id ) {
 			update_option( 'show_on_front', 'page' );
@@ -633,6 +1077,29 @@ final class DeployService {
 			$updated_template_parts = array_merge( $updated_template_parts, ( is_array( $auto_parts_result['updated_parts'] ?? null ) ? $auto_parts_result['updated_parts'] : array() ) );
 		}
 
+		// Auto-create page templates from pages/*.html files
+		// This ensures templates always match source HTML files and include hero sections
+		$page_templates_result = self::create_page_templates_from_pages(
+			$project_slug,
+			$fingerprint,
+			$pages,
+			$slug_set,
+			$resources_base_url,
+			(bool) $force_claim_templates
+		);
+		if ( is_array( $page_templates_result ) ) {
+			$created += (int) ( $page_templates_result['created'] ?? 0 );
+			$updated += (int) ( $page_templates_result['updated'] ?? 0 );
+			$skipped += (int) ( $page_templates_result['skipped'] ?? 0 );
+			$errors += (int) ( $page_templates_result['errors'] ?? 0 );
+			if ( isset( $page_templates_result['created_templates'] ) && is_array( $page_templates_result['created_templates'] ) ) {
+				$created_templates = array_merge( $created_templates, $page_templates_result['created_templates'] );
+			}
+			if ( isset( $page_templates_result['updated_templates'] ) && is_array( $page_templates_result['updated_templates'] ) ) {
+				$updated_templates = array_merge( $updated_templates, $page_templates_result['updated_templates'] );
+			}
+		}
+
 		$template_result = TemplateService::deploy_template_parts_and_404_template(
 			$project_slug,
 			$fingerprint,
@@ -641,7 +1108,9 @@ final class DeployService {
 			$resources_base_url,
 			(bool) $deploy_template_parts,
 			(bool) $generate_404_template,
-			(bool) $force_claim_templates
+			(bool) $force_claim_templates,
+			$selected_templates,
+			$selected_template_parts
 		);
 		if ( is_array( $template_result ) ) {
 			$created += (int) ( $template_result['created'] ?? 0 );
@@ -653,12 +1122,123 @@ final class DeployService {
 			$created_templates = isset( $template_result['created_templates'] ) && is_array( $template_result['created_templates'] ) ? $template_result['created_templates'] : array();
 			$updated_templates = isset( $template_result['updated_templates'] ) && is_array( $template_result['updated_templates'] ) ? $template_result['updated_templates'] : array();
 		}
+		
+		// After templates are deployed, clear page content for pages that have custom templates
+		// This ensures WordPress uses the block templates instead of page content
+		$theme_dir = get_stylesheet_directory();
+		$pages_to_clear = array();
+		$pages_verified = array();
+		foreach ( $pages as $path ) {
+			$slug = (string) preg_replace( '/\.html$/', '', basename( $path ) );
+			if ( $slug === '' ) {
+				continue;
+			}
+			
+			$template_slug = 'page-' . $slug;
+			$template_file = $theme_dir . DIRECTORY_SEPARATOR . 'templates' . DIRECTORY_SEPARATOR . $template_slug . '.html';
+			
+			// Check if template exists in WordPress (registered) OR as file
+			$block_template = TemplateService::get_template_by_slug( $template_slug );
+			$has_registered_template = $block_template && isset( $block_template->ID );
+			$template_exists = is_file( $template_file );
+			
+			// Check if template was just created/updated in this deployment
+			$template_was_deployed = false;
+			if ( is_array( $created_templates ) ) {
+				foreach ( $created_templates as $created_template ) {
+					if ( isset( $created_template['slug'] ) && $created_template['slug'] === $template_slug ) {
+						$template_was_deployed = true;
+						break;
+					}
+				}
+			}
+			if ( is_array( $updated_templates ) ) {
+				foreach ( $updated_templates as $updated_template ) {
+					if ( isset( $updated_template['slug'] ) && $updated_template['slug'] === $template_slug ) {
+						$template_was_deployed = true;
+						break;
+					}
+				}
+			}
+			
+			$has_custom_template = $has_registered_template || $template_exists || $template_was_deployed;
+			
+			if ( $has_custom_template ) {
+				$page = get_page_by_path( $slug );
+				if ( $page && isset( $page->ID ) ) {
+					$current_content = (string) ( $page->post_content ?? '' );
+					if ( $current_content !== '' ) {
+						$pages_to_clear[] = array(
+							'post_id' => (int) $page->ID,
+							'slug' => $slug,
+							'template_slug' => $template_slug,
+							'has_registered' => $has_registered_template,
+							'has_file' => $template_exists,
+							'was_deployed' => $template_was_deployed,
+						);
+					} else {
+						// Content already empty - verify this is correct
+						$pages_verified[] = array(
+							'post_id' => (int) $page->ID,
+							'slug' => $slug,
+							'template_slug' => $template_slug,
+						);
+					}
+				}
+			}
+		}
+		
+		// Clear content for pages with custom templates
+		if ( ! empty( $pages_to_clear ) ) {
+			Logger::info( 'Clearing page content for pages with custom templates.', array(
+				'count' => count( $pages_to_clear ),
+				'pages' => array_map( function( $p ) {
+					return $p['slug'];
+				}, $pages_to_clear ),
+			), $project_slug );
+			
+			foreach ( $pages_to_clear as $page_info ) {
+				$update_result = wp_update_post( array(
+					'ID' => $page_info['post_id'],
+					'post_content' => '',
+				), true );
+				
+				if ( ! is_wp_error( $update_result ) ) {
+					Logger::info( 'Cleared page content after template deployment.', array(
+						'page_slug' => $page_info['slug'],
+						'template_slug' => $page_info['template_slug'],
+						'post_id' => $page_info['post_id'],
+						'has_registered' => $page_info['has_registered'],
+						'has_file' => $page_info['has_file'],
+						'was_deployed' => $page_info['was_deployed'],
+					), $project_slug );
+				} else {
+					Logger::error( 'Failed to clear page content after template deployment.', array(
+						'page_slug' => $page_info['slug'],
+						'template_slug' => $page_info['template_slug'],
+						'post_id' => $page_info['post_id'],
+						'error' => $update_result->get_error_message(),
+					), $project_slug );
+				}
+			}
+		}
+		
+		// Log verification of pages that already have empty content
+		if ( ! empty( $pages_verified ) ) {
+			Logger::info( 'Verified pages with custom templates have empty content.', array(
+				'count' => count( $pages_verified ),
+				'pages' => array_map( function( $p ) {
+					return $p['slug'];
+				}, $pages_verified ),
+			), $project_slug );
+		}
 
 		// Deploy theme files (functions.php, ACF JSON) from staging
 		$theme = function_exists( 'wp_get_theme' ) ? wp_get_theme() : null;
 		$theme_slug = $theme && method_exists( $theme, 'get_stylesheet' ) ? (string) $theme->get_stylesheet() : '';
+		$theme_snapshots = array();
 		if ( $theme_slug !== '' ) {
-			$theme_deploy = ThemeDeployService::deploy_theme_files( $build_root, $theme_slug );
+			$theme_deploy = ThemeDeployService::deploy_theme_files( $build_root, $theme_slug, $selected_theme_files );
 			if ( ! empty( $theme_deploy['errors'] ) ) {
 				foreach ( $theme_deploy['errors'] as $error ) {
 					\VibeCode\Deploy\Logger::error( 'Theme deployment failed.', array( 'error' => $error ), $project_slug );
@@ -669,6 +1249,27 @@ final class DeployService {
 					'created' => $theme_deploy['created'],
 					'updated' => $theme_deploy['updated'],
 				), $project_slug );
+			}
+			// Capture theme file snapshots for rollback
+			if ( isset( $theme_deploy['snapshots'] ) && is_array( $theme_deploy['snapshots'] ) ) {
+				$theme_snapshots = $theme_deploy['snapshots'];
+			}
+		}
+
+		// Collect asset information from staging
+		$asset_info = array( 'css' => array(), 'js' => array() );
+		$css_dir = $build_root . '/css';
+		$js_dir = $build_root . '/js';
+		if ( is_dir( $css_dir ) ) {
+			$css_files = glob( $css_dir . '/*.css' ) ?: array();
+			foreach ( $css_files as $css_file ) {
+				$asset_info['css'][] = 'css/' . basename( $css_file );
+			}
+		}
+		if ( is_dir( $js_dir ) ) {
+			$js_files = glob( $js_dir . '/*.js' ) ?: array();
+			foreach ( $js_files as $js_file ) {
+				$asset_info['js'][] = 'js/' . basename( $js_file );
 			}
 		}
 
@@ -706,6 +1307,8 @@ final class DeployService {
 				'updated_template_parts' => $updated_template_parts,
 				'created_templates' => $created_templates,
 				'updated_templates' => $updated_templates,
+				'theme_files' => $theme_snapshots, // Theme file snapshots for rollback
+				'assets' => $asset_info, // CSS/JS asset information
 				'result' => array(
 					'created' => $created,
 					'updated' => $updated,
@@ -725,6 +1328,12 @@ final class DeployService {
 
 			ManifestService::write_manifest( $project_slug, $fingerprint, $manifest );
 			ManifestService::set_last_deploy_fingerprint( $project_slug, $fingerprint );
+			
+			// Set active fingerprint after successful deployment
+			// This ensures CSS/JS files load from the correct staging directory
+			if ( $errors === 0 ) {
+				BuildService::set_active_fingerprint( $project_slug, $fingerprint );
+			}
 		}
 
 		return array(

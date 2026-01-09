@@ -2,6 +2,8 @@
 
 namespace VibeCode\Deploy\Services;
 
+use VibeCode\Deploy\Logger;
+
 defined( 'ABSPATH' ) || exit;
 
 final class AssetService {
@@ -32,14 +34,24 @@ final class AssetService {
 				if ( $href === '' ) {
 					continue;
 				}
+				// Skip external URLs (http://, https://)
 				if ( strpos( $href, 'http://' ) === 0 || strpos( $href, 'https://' ) === 0 ) {
 					continue;
 				}
+				// Only extract CSS files from css/ directory (e.g., css/secure-drop.css, css/styles.css)
 				if ( strpos( $href, 'css/' ) !== 0 ) {
 					continue;
 				}
 				$css[] = $href;
 			}
+		}
+		
+		// Log extracted CSS files for debugging
+		if ( ! empty( $css ) ) {
+			\VibeCode\Deploy\Logger::info( 'Extracted CSS assets from HTML head.', array(
+				'css_files' => $css,
+				'count' => count( $css ),
+			), 'cfa' );
 		}
 
 		$scripts = $xpath->query( '//script[@src]' );
