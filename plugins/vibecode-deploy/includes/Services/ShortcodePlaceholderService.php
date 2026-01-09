@@ -89,7 +89,10 @@ final class ShortcodePlaceholderService {
 	/**
 	 * Check if a comment is a shortcode placeholder.
 	 *
-	 * @param string $comment HTML comment text.
+	 * Supports both VIBECODE_SHORTCODE and CFA_SHORTCODE prefixes for backward compatibility.
+	 * Handles both raw comment text and full HTML comment format (<!-- ... -->).
+	 *
+	 * @param string $comment HTML comment text (with or without <!-- --> markers).
 	 * @return bool True if comment is a placeholder.
 	 */
 	public static function is_placeholder_comment( string $comment ): bool {
@@ -97,8 +100,15 @@ final class ShortcodePlaceholderService {
 		if ( $comment === '' ) {
 			return false;
 		}
+		// Strip HTML comment markers if present
+		$comment = preg_replace( '/^<!--\s*(.*?)\s*-->$/s', '$1', $comment );
+		$comment = trim( $comment );
+		if ( $comment === '' ) {
+			return false;
+		}
 		$prefix = self::get_placeholder_prefix();
-		return stripos( $comment, $prefix ) === 0;
+		// Support both VIBECODE_SHORTCODE and CFA_SHORTCODE for backward compatibility
+		return stripos( $comment, $prefix ) === 0 || stripos( $comment, 'CFA_SHORTCODE' ) === 0;
 	}
 
 	/**
@@ -109,12 +119,16 @@ final class ShortcodePlaceholderService {
 	 */
 	public static function parse_placeholder_comment( string $comment ): array {
 		$comment = trim( $comment );
+		// Strip HTML comment markers if present
+		$comment = preg_replace( '/^<!--\s*(.*?)\s*-->$/s', '$1', $comment );
+		$comment = trim( $comment );
 		if ( ! self::is_placeholder_comment( $comment ) ) {
 			return array( 'ok' => false );
 		}
 
 		$prefix = self::get_placeholder_prefix();
-		$rest = preg_replace( '/^' . preg_quote( $prefix, '/' ) . '\b\s*/i', '', $comment );
+		// Support both VIBECODE_SHORTCODE and CFA_SHORTCODE for backward compatibility
+		$rest = preg_replace( '/^(?:' . preg_quote( $prefix, '/' ) . '|CFA_SHORTCODE)\b\s*/i', '', $comment );
 		$rest = is_string( $rest ) ? trim( $rest ) : '';
 		if ( $rest === '' ) {
 			return array( 'ok' => false, 'error' => 'Missing shortcode name.' );

@@ -21,6 +21,7 @@ final class AssetService {
 	public static function extract_head_assets( \DOMDocument $dom ): array {
 		$css = array();
 		$js = array();
+		$fonts = array(); // Google Fonts and other external font links
 
 		$xpath = new \DOMXPath( $dom );
 		$links = $xpath->query( '//head//link[@rel="stylesheet"]' );
@@ -30,6 +31,13 @@ final class AssetService {
 					continue;
 				}
 				$href = (string) $node->getAttribute( 'href' );
+				
+				// Extract Google Fonts and other external font links
+				if ( strpos( $href, 'fonts.googleapis.com' ) !== false || strpos( $href, 'fonts.gstatic.com' ) !== false ) {
+					$fonts[] = $href;
+					continue;
+				}
+				
 				$href = self::normalize_local_asset_path( $href );
 				if ( $href === '' ) {
 					continue;
@@ -84,6 +92,7 @@ final class AssetService {
 		return array(
 			'css' => array_values( array_unique( $css ) ),
 			'js' => $js,
+			'fonts' => array_values( array_unique( $fonts ) ), // Google Fonts and external fonts
 		);
 	}
 

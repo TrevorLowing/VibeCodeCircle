@@ -2,6 +2,7 @@
 
 namespace VibeCode\Deploy;
 
+use VibeCode\Deploy\Logger;
 use VibeCode\Deploy\Services\BuildService;
 use VibeCode\Deploy\Services\DeployService;
 use VibeCode\Deploy\Services\ShortcodePlaceholderService;
@@ -15,6 +16,8 @@ final class Importer {
 	public const META_FINGERPRINT = '_vibecode_deploy_fingerprint';
 	public const META_ASSET_CSS = '_vibecode_deploy_assets_css';
 	public const META_ASSET_JS = '_vibecode_deploy_assets_js';
+	public const META_ASSET_FONTS = '_vibecode_deploy_assets_fonts';
+	public const META_BODY_CLASS = '_vibecode_deploy_body_class';
 
 	public static function get_active_fingerprint( string $project_slug ): string {
 		return BuildService::get_active_fingerprint( $project_slug );
@@ -35,7 +38,43 @@ final class Importer {
 
 		$enqueued_css_paths = array();
 		$enqueued_js_paths = array();
+		$enqueued_font_urls = array();
 		$script_attr_map = array();
+
+		// 0) Enqueue Google Fonts FIRST (priority 1) - before all other styles
+		// Per-page fonts for Vibe Code Deploy-owned pages
+		if ( is_singular( 'page' ) ) {
+			$post_id = (int) get_queried_object_id();
+			if ( $post_id > 0 ) {
+				$project_slug = (string) get_post_meta( $post_id, self::META_PROJECT_SLUG, true );
+				if ( $project_slug !== '' ) {
+					$fonts = get_post_meta( $post_id, self::META_ASSET_FONTS, true );
+					if ( is_array( $fonts ) && ! empty( $fonts ) ) {
+						foreach ( $fonts as $font_url ) {
+							if ( ! is_string( $font_url ) || $font_url === '' ) {
+								continue;
+							}
+							if ( in_array( $font_url, $enqueued_font_urls, true ) ) {
+								continue;
+							}
+							$enqueued_font_urls[] = $font_url;
+							$handle = 'vibecode-deploy-fonts-' . md5( $font_url );
+							wp_enqueue_style( $handle, $font_url, array(), null );
+						}
+					}
+				}
+			}
+		}
+
+		// 0.5) Enqueue generalized WordPress resets CSS (after fonts, before project CSS)
+		$plugin_dir = defined( 'VIBECODE_DEPLOY_PLUGIN_DIR' ) ? rtrim( (string) VIBECODE_DEPLOY_PLUGIN_DIR, '/\\' ) : '';
+		$resets_css_file = $plugin_dir . '/assets/css/wordpress-resets.css';
+		if ( file_exists( $resets_css_file ) ) {
+			$resets_handle = 'vibecode-deploy-wordpress-resets';
+			$resets_url = plugins_url( 'assets/css/wordpress-resets.css', VIBECODE_DEPLOY_PLUGIN_FILE );
+			$resets_version = defined( 'VIBECODE_DEPLOY_PLUGIN_VERSION' ) ? VIBECODE_DEPLOY_PLUGIN_VERSION : '0.1.1';
+			wp_enqueue_style( $resets_handle, $resets_url, array(), $resets_version );
+		}
 
 		// 1) Per-page assets for Vibe Code Deploy-owned pages (if present).
 		if ( is_singular( 'page' ) ) {
@@ -48,15 +87,39 @@ final class Importer {
 					$base_url = rtrim( (string) $uploads['baseurl'], '/\\' ) . '/vibecode-deploy/staging/' . rawurlencode( $project_slug ) . '/' . rawurlencode( $fingerprint ) . '/';
 
 					$css = get_post_meta( $post_id, self::META_ASSET_CSS, true );
-					if ( is_array( $css ) ) {
+					if ( is_array( $css ) && ! empty( $css ) ) {
+						Logger::info( 'Enqueuing per-page CSS assets.', array( 
+							'post_id' => $post_id, 
+							'project_slug' => $project_slug, 
+							'fingerprint' => $fingerprint,
+							'css_files' => $css,
+							'count' => count( $css )
+						) );
 						foreach ( $css as $i => $href ) {
 							if ( ! is_string( $href ) || $href === '' ) {
 								continue;
 							}
 							$enqueued_css_paths[] = $href;
 							$handle = 'vibecode-deploy-css-' . md5( $project_slug . '|' . $fingerprint . '|' . $href . '|' . (string) $i );
-							wp_enqueue_style( $handle, $base_url . ltrim( $href, '/' ), array(), null );
+							// Include file modification time for cache busting
+							$css_path = rtrim( BuildService::build_root_path( $project_slug, $fingerprint ), '/\\' ) . DIRECTORY_SEPARATOR . str_replace( '/', DIRECTORY_SEPARATOR, $href );
+							$file_mtime = is_file( $css_path ) ? (string) filemtime( $css_path ) : '';
+							$version = defined( 'VIBECODE_DEPLOY_PLUGIN_VERSION' ) ? VIBECODE_DEPLOY_PLUGIN_VERSION . '-' . $fingerprint . ( $file_mtime !== '' ? '-' . $file_mtime : '' ) : $fingerprint . ( $file_mtime !== '' ? '-' . $file_mtime : '' );
+							$css_url = $base_url . ltrim( $href, '/' );
+							wp_enqueue_style( $handle, $css_url, array(), $version );
+							Logger::info( 'Enqueued CSS file.', array( 
+								'handle' => $handle, 
+								'url' => $css_url, 
+								'version' => $version,
+								'file_exists' => is_file( $css_path )
+							) );
 						}
+					} else {
+						Logger::info( 'No per-page CSS assets found.', array( 
+							'post_id' => $post_id, 
+							'project_slug' => $project_slug,
+							'css_meta' => $css
+						) );
 					}
 
 					$js = get_post_meta( $post_id, self::META_ASSET_JS, true );
@@ -72,8 +135,9 @@ final class Importer {
 							}
 
 							$enqueued_js_paths[] = $src;
-							$handle = 'vibecode-deploy-js-' . md5( $project_slug . '|' . $fingerprint . '|' . $src . '|' . (string) $i );
-							wp_enqueue_script( $handle, $base_url . ltrim( $src, '/' ), array(), null, true );
+				$handle = 'vibecode-deploy-js-' . md5( $project_slug . '|' . $fingerprint . '|' . $src . '|' . (string) $i );
+				$version = defined( 'VIBECODE_DEPLOY_PLUGIN_VERSION' ) ? VIBECODE_DEPLOY_PLUGIN_VERSION . '-' . $fingerprint : $fingerprint;
+				wp_enqueue_script( $handle, $base_url . ltrim( $src, '/' ), array(), $version, true );
 
 							$script_attr_map[ $handle ] = array(
 								'defer' => ! empty( $item['defer'] ),
@@ -140,7 +204,33 @@ final class Importer {
 					continue;
 				}
 				$handle = 'vibecode-deploy-global-css-' . md5( $default_project_slug . '|' . $active_fingerprint . '|' . $href );
-				wp_enqueue_style( $handle, $base_url . ltrim( $href, '/' ), array(), null );
+				// Include file modification time for cache busting
+				$file_mtime = (string) filemtime( $path );
+				$version = defined( 'VIBECODE_DEPLOY_PLUGIN_VERSION' ) ? VIBECODE_DEPLOY_PLUGIN_VERSION . '-' . $active_fingerprint . '-' . $file_mtime : $active_fingerprint . '-' . $file_mtime;
+				wp_enqueue_style( $handle, $base_url . ltrim( $href, '/' ), array(), $version );
+			}
+
+			// 3) Page-specific CSS detection (e.g., css/secure-drop.css for secure-drop page)
+			if ( is_singular( 'page' ) ) {
+				$post_id = (int) get_queried_object_id();
+				if ( $post_id > 0 ) {
+					$page_slug = get_post_field( 'post_name', $post_id );
+					if ( is_string( $page_slug ) && $page_slug !== '' ) {
+						$page_css = 'css/' . sanitize_file_name( $page_slug ) . '.css';
+						// Check if already enqueued
+						if ( ! in_array( $page_css, $enqueued_css_paths, true ) ) {
+							$page_css_path = rtrim( $base_dir, '/\\' ) . DIRECTORY_SEPARATOR . str_replace( '/', DIRECTORY_SEPARATOR, $page_css );
+							if ( is_file( $page_css_path ) ) {
+								$enqueued_css_paths[] = $page_css;
+								$handle = 'vibecode-deploy-page-css-' . md5( $default_project_slug . '|' . $active_fingerprint . '|' . $page_css );
+								// Include file modification time for cache busting
+								$file_mtime = (string) filemtime( $page_css_path );
+								$version = defined( 'VIBECODE_DEPLOY_PLUGIN_VERSION' ) ? VIBECODE_DEPLOY_PLUGIN_VERSION . '-' . $active_fingerprint . '-' . $file_mtime : $active_fingerprint . '-' . $file_mtime;
+								wp_enqueue_style( $handle, $base_url . ltrim( $page_css, '/' ), array(), $version );
+							}
+						}
+					}
+				}
 			}
 
 			// Always enqueue global JS (even if per-page assets exist, ensure base scripts load)
@@ -159,7 +249,8 @@ final class Importer {
 					continue;
 				}
 				$handle = 'vibecode-deploy-global-js-' . md5( $default_project_slug . '|' . $active_fingerprint . '|' . $src );
-				wp_enqueue_script( $handle, $base_url . ltrim( $src, '/' ), array(), null, true );
+				$version = defined( 'VIBECODE_DEPLOY_PLUGIN_VERSION' ) ? VIBECODE_DEPLOY_PLUGIN_VERSION . '-' . $active_fingerprint : $active_fingerprint;
+				wp_enqueue_script( $handle, $base_url . ltrim( $src, '/' ), array(), $version, true );
 				$script_attr_map[ $handle ] = array(
 					'defer' => ! empty( $it['defer'] ),
 					'async' => ! empty( $it['async'] ),
@@ -319,58 +410,180 @@ final class Importer {
 		$attrs = self::pick_attributes( $el );
 		$attrs_for_json = empty( $attrs ) ? new \stdClass() : $attrs;
 
-		$styles = array();
-		if ( ( $attrs['data-etch-element'] ?? '' ) === 'flex-div' || ( ( $attrs['class'] ?? '' ) !== '' && strpos( (string) $attrs['class'], 'flex' ) !== false ) ) {
-			$styles[] = 'etch-flex-div-style';
-		}
-
-		$inner = self::convert_dom_children( $el );
-
-		$etch_data = array(
-			'origin' => 'etch',
-			'attributes' => $attrs_for_json,
-			'block' => array(
-				'type' => 'html',
-				'tag' => $tag,
-			),
-		);
-
-		if ( ! empty( $styles ) ) {
-			$etch_data['styles'] = $styles;
-		}
-
-		// Preserve original classes in the wrapper div
-		$class_attr = '';
-		if ( isset( $attrs['class'] ) && is_string( $attrs['class'] ) && $attrs['class'] !== '' ) {
-			$class_attr = ' class="' . esc_attr( $attrs['class'] ) . ' wp-block-group"';
-		} else {
-			$class_attr = ' class="wp-block-group"';
-		}
-
-		// Build additional attributes string (id, data-*, etc.)
-		$additional_attrs = '';
-		foreach ( $attrs as $key => $value ) {
-			if ( $key === 'class' ) {
-				continue; // Already handled above
+		// Special handling for void elements (img, br, hr, input, etc.)
+		// These should be preserved as-is, not wrapped in divs
+		$void_elements = array( 'img', 'br', 'hr', 'input', 'meta', 'link', 'area', 'base', 'col', 'embed', 'source', 'track', 'wbr' );
+		
+		// Elements that should be preserved as-is (non-void elements with special requirements)
+		$preserve_as_is_elements = array( 'iframe', 'svg', 'script', 'style' );
+		
+		// Combine all elements that should be preserved
+		$all_preserve_elements = array_merge( $void_elements, $preserve_as_is_elements );
+		
+		if ( in_array( $tag, $all_preserve_elements, true ) ) {
+			// Build the opening tag with all attributes preserved
+			$element_html = '<' . $tag;
+			foreach ( $attrs as $key => $value ) {
+				if ( is_string( $value ) && $value !== '' ) {
+					$element_html .= ' ' . esc_attr( $key ) . '="' . esc_attr( $value ) . '"';
+				}
 			}
-			if ( is_string( $value ) && $value !== '' ) {
-				$additional_attrs .= ' ' . esc_attr( $key ) . '="' . esc_attr( $value ) . '"';
+			$element_html .= '>';
+			
+			// For non-void preserved elements, extract and preserve inner HTML
+			if ( in_array( $tag, $preserve_as_is_elements, true ) ) {
+				$dom = $el->ownerDocument;
+				if ( $dom instanceof \DOMDocument ) {
+					$inner_html = self::inner_html( $dom, $el );
+					$element_html .= $inner_html;
+				}
+				$element_html .= '</' . $tag . '>';
 			}
+			
+			// Wrap in wp:html block to preserve the element
+			return "<!-- wp:html -->\n" . $element_html . "\n<!-- /wp:html -->\n";
 		}
 
-		return self::block_open(
-			'group',
-			array(
-				'metadata' => array(
-					'name' => strtoupper( $tag ),
-					'etchData' => $etch_data,
+		// Define block-level elements that should be converted to wp:group blocks
+		$block_elements = array( 'div', 'section', 'article', 'main', 'header', 'footer', 'aside', 'nav', 'form', 'ul', 'ol', 'li', 'dl', 'dt', 'dd', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th', 'figure', 'figcaption', 'blockquote', 'pre', 'address' );
+		
+		// Define inline elements that should be preserved as-is (not converted to groups)
+		$inline_elements = array( 'span', 'a', 'strong', 'em', 'b', 'i', 'u', 'small', 'sub', 'sup', 'code', 'kbd', 'samp', 'var', 'mark', 'time', 'abbr', 'cite', 'q', 'dfn', 'button', 'label', 'select', 'textarea', 'option', 'optgroup' );
+		
+		// Handle headings - convert to heading blocks, not groups
+		if ( preg_match( '/^h[1-6]$/', $tag ) ) {
+			$level = (int) substr( $tag, 1 );
+			$inner = self::convert_dom_children( $el );
+			$inner_text = trim( strip_tags( $inner ) );
+			
+			// Build heading attributes
+			$heading_attrs = array( 'level' => $level );
+			if ( isset( $attrs['class'] ) && is_string( $attrs['class'] ) && $attrs['class'] !== '' ) {
+				$heading_attrs['className'] = $attrs['class'];
+			}
+			
+			// Add other attributes (id, data-*, etc.)
+			$element_attrs = '';
+			foreach ( $attrs as $key => $value ) {
+				if ( $key === 'class' ) {
+					continue; // Already handled in className
+				}
+				if ( is_string( $value ) && $value !== '' ) {
+					$element_attrs .= ' ' . esc_attr( $key ) . '="' . esc_attr( $value ) . '"';
+				}
+			}
+			
+			return self::block_open( 'heading', $heading_attrs ) . "\n" .
+				'<' . $tag . $element_attrs . '>' . $inner_text . '</' . $tag . '>' . "\n" .
+				self::block_close( 'heading' ) . "\n";
+		}
+		
+		// Handle inline elements - preserve as-is in wp:html blocks
+		if ( in_array( $tag, $inline_elements, true ) ) {
+			$dom = $el->ownerDocument;
+			if ( $dom instanceof \DOMDocument ) {
+				$inner_html = self::convert_dom_children( $el );
+				$element_html = '<' . $tag;
+				foreach ( $attrs as $key => $value ) {
+					if ( is_string( $value ) && $value !== '' ) {
+						$element_html .= ' ' . esc_attr( $key ) . '="' . esc_attr( $value ) . '"';
+					}
+				}
+				$element_html .= '>' . $inner_html . '</' . $tag . '>';
+				
+				// Wrap in wp:html block to preserve the element
+				return "<!-- wp:html -->\n" . $element_html . "\n<!-- /wp:html -->\n";
+			}
+		}
+		
+		// Handle block-level elements - convert to wp:group blocks
+		if ( in_array( $tag, $block_elements, true ) ) {
+			$styles = array();
+			if ( ( $attrs['data-etch-element'] ?? '' ) === 'flex-div' || ( ( $attrs['class'] ?? '' ) !== '' && strpos( (string) $attrs['class'], 'flex' ) !== false ) ) {
+				$styles[] = 'etch-flex-div-style';
+			}
+
+			$inner = self::convert_dom_children( $el );
+
+			$etch_data = array(
+				'origin' => 'etch',
+				'attributes' => $attrs_for_json,
+				'block' => array(
+					'type' => 'html',
+					'tag' => $tag,
 				),
-			)
-		) . "\n" .
-			'<div' . $class_attr . $additional_attrs . '>' . "\n" .
-			$inner .
-			'</div>' . "\n" .
-			self::block_close( 'group' ) . "\n";
+			);
+
+			if ( ! empty( $styles ) ) {
+				$etch_data['styles'] = $styles;
+			}
+
+			// Preserve original classes on the original element
+			// CRITICAL: This ensures CSS classes like 'cfa-hero--compact' are preserved during Gutenberg conversion
+			// We add 'wp-block-group' to the original element (not a wrapper div) to maintain semantic HTML
+			$class_attr = '';
+			if ( isset( $attrs['class'] ) && is_string( $attrs['class'] ) && $attrs['class'] !== '' ) {
+				$original_classes = $attrs['class'];
+				$class_attr = ' class="' . esc_attr( $original_classes ) . ' wp-block-group"';
+				
+				// Log preservation of important classes for debugging
+				if ( strpos( $original_classes, 'cfa-hero' ) !== false || strpos( $original_classes, 'cfa-page-hero' ) !== false ) {
+					Logger::info( 'Preserved hero classes during HTML to block conversion.', array(
+						'original_classes' => $original_classes,
+						'tag' => $tag,
+					), 'cfa' );
+				}
+			} else {
+				$class_attr = ' class="wp-block-group"';
+			}
+
+			// Build additional attributes string (id, data-*, etc.)
+			// These will be added directly to the original element (not a wrapper div)
+			$additional_attrs = '';
+			foreach ( $attrs as $key => $value ) {
+				if ( $key === 'class' ) {
+					continue; // Already handled above in $class_attr
+				}
+				if ( is_string( $value ) && $value !== '' ) {
+					$additional_attrs .= ' ' . esc_attr( $key ) . '="' . esc_attr( $value ) . '"';
+				}
+			}
+
+			// Use the original element's tag directly (not wrapped in a div)
+			// This preserves semantic HTML (section, article, etc.) while adding Gutenberg classes
+			return self::block_open(
+				'group',
+				array(
+					'metadata' => array(
+						'name' => strtoupper( $tag ),
+						'etchData' => $etch_data,
+					),
+				)
+			) . "\n" .
+				'<' . $tag . $class_attr . $additional_attrs . '>' . "\n" .
+				$inner .
+				'</' . $tag . '>' . "\n" .
+				self::block_close( 'group' ) . "\n";
+		}
+		
+		// Default: For any other elements, preserve as-is in wp:html block
+		$dom = $el->ownerDocument;
+		if ( $dom instanceof \DOMDocument ) {
+			$inner_html = self::convert_dom_children( $el );
+			$element_html = '<' . $tag;
+			foreach ( $attrs as $key => $value ) {
+				if ( is_string( $value ) && $value !== '' ) {
+					$element_html .= ' ' . esc_attr( $key ) . '="' . esc_attr( $value ) . '"';
+				}
+			}
+			$element_html .= '>' . $inner_html . '</' . $tag . '>';
+			
+			// Wrap in wp:html block to preserve the element
+			return "<!-- wp:html -->\n" . $element_html . "\n<!-- /wp:html -->\n";
+		}
+		
+		// Fallback: return empty if DOMDocument not available
+		return '';
 	}
 
 	public static function html_to_etch_blocks( string $html ): string {
@@ -593,7 +806,52 @@ final class Importer {
 		return DeployService::preflight( $project_slug, $build_root );
 	}
 
-	public static function run_import( string $project_slug, string $fingerprint, string $build_root, bool $set_front_page, bool $force_claim_unowned, bool $deploy_template_parts = true, bool $generate_404_template = true, bool $force_claim_templates = false, bool $validate_cpt_shortcodes = false ): array {
-		return DeployService::run_import( $project_slug, $fingerprint, $build_root, $set_front_page, $force_claim_unowned, $deploy_template_parts, $generate_404_template, $force_claim_templates, $validate_cpt_shortcodes );
+	public static function run_import( string $project_slug, string $fingerprint, string $build_root, bool $set_front_page, bool $force_claim_unowned, bool $deploy_template_parts = true, bool $generate_404_template = true, bool $force_claim_templates = false, bool $validate_cpt_shortcodes = false, array $selected_pages = array(), array $selected_css = array(), array $selected_js = array(), array $selected_templates = array(), array $selected_template_parts = array(), array $selected_theme_files = array() ): array {
+		return DeployService::run_import( $project_slug, $fingerprint, $build_root, $set_front_page, $force_claim_unowned, $deploy_template_parts, $generate_404_template, $force_claim_templates, $validate_cpt_shortcodes, $selected_pages, $selected_css, $selected_js, $selected_templates, $selected_template_parts, $selected_theme_files );
+	}
+
+	/**
+	 * Add body class from post meta to body_class filter.
+	 *
+	 * Extracts body class stored in post meta during deployment and adds it to WordPress body_class.
+	 * This ensures page-specific body classes (e.g., cfa-secure-drop-page) are preserved.
+	 *
+	 * @param array $classes Existing body classes.
+	 * @return array Modified body classes with custom class added.
+	 */
+	public static function add_body_class_from_meta( array $classes ): array {
+		if ( is_admin() ) {
+			return $classes;
+		}
+
+		// Only apply to singular pages
+		if ( ! is_singular( 'page' ) ) {
+			return $classes;
+		}
+
+		$post_id = (int) get_queried_object_id();
+		if ( $post_id <= 0 ) {
+			return $classes;
+		}
+
+		// Check if this page is owned by Vibe Code Deploy
+		$project_slug = (string) get_post_meta( $post_id, self::META_PROJECT_SLUG, true );
+		if ( $project_slug === '' ) {
+			return $classes;
+		}
+
+		// Get body class from post meta
+		$body_class = (string) get_post_meta( $post_id, self::META_BODY_CLASS, true );
+		if ( $body_class !== '' ) {
+			// Split multiple classes and add each one
+			$custom_classes = array_filter( array_map( 'trim', explode( ' ', $body_class ) ) );
+			foreach ( $custom_classes as $class ) {
+				if ( $class !== '' && ! in_array( $class, $classes, true ) ) {
+					$classes[] = sanitize_html_class( $class );
+				}
+			}
+		}
+
+		return $classes;
 	}
 }

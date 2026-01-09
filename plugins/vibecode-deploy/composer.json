@@ -1,0 +1,26 @@
+{
+	"name": "vibecode/vibecode-deploy",
+	"description": "Gutenberg-first deployment and import tooling",
+	"type": "wordpress-plugin",
+	"license": "GPL-2.0-or-later",
+	"require": {
+		"php": ">=8.0"
+	},
+	"require-dev": {
+		"phpunit/phpunit": "^9.5"
+	},
+	"autoload": {
+		"psr-4": {
+			"VibeCode\\Deploy\\": "includes/"
+		}
+	},
+	"autoload-dev": {
+		"psr-4": {
+			"VibeCode\\Deploy\\Tests\\": "tests/"
+		}
+	},
+	"scripts": {
+		"test": "phpunit",
+		"test-coverage": "phpunit --coverage-html coverage/"
+	}
+}

@@ -57,9 +57,17 @@ final class ThemeSetupService {
     
     private static function get_index_php_content(): string {
         return '<?php
-// This file is required for WordPress themes
-// It will use the block template system if available
-
+/**
+ * Index Template (Fallback)
+ *
+ * This file is required for WordPress themes as a fallback.
+ * For block themes (EtchWP), block templates in templates/ directory take precedence.
+ * This file will only be used if no block template is found.
+ *
+ * Note: get_header() and get_footer() are called for compatibility,
+ * but header.php and footer.php are intentionally empty for block theme compatibility.
+ * Header/footer are rendered via block template parts in block templates.
+ */
 get_header();
 
 if (have_posts()) {
@@ -74,8 +82,17 @@ get_footer();';
     
     private static function get_page_php_content(): string {
         return '<?php
-// Template for individual pages
-
+/**
+ * Page Template (Fallback)
+ *
+ * This file is required for WordPress themes as a fallback.
+ * For block themes (EtchWP), block templates in templates/ directory take precedence.
+ * This file will only be used if no block template is found.
+ *
+ * Note: get_header() and get_footer() are called for compatibility,
+ * but header.php and footer.php are intentionally empty for block theme compatibility.
+ * Header/footer are rendered via block template parts in block templates.
+ */
 get_header();
 
 while (have_posts()) {
@@ -136,13 +153,13 @@ get_footer();';
                 // Update existing hook
                 $content = preg_replace(
                     '/(add_action\(\'wp_enqueue_scripts\',\s*function\(\)\s*\{[^}]*)(\},\s*\d+\);)/s',
-                    '$1' . "\n    \n    // Enqueue Vibe Code Deploy assets\n    if (file_exists(plugin_dir_path(\'vibecode-deploy\') . \'assets/css/styles.css\')) {\n        wp_enqueue_style(\'vibecode-deploy-styles\', plugins_url(\'assets/css/styles.css\', \'vibecode-deploy\'));\n    }\n    if (file_exists(plugin_dir_path(\'vibecode-deploy\') . \'assets/css/icons.css\')) {\n        wp_enqueue_style(\'vibecode-deploy-icons\', plugins_url(\'assets/css/icons.css\', \'vibecode-deploy\'));\n    }\n$2",
+                    '$1' . "\n    \n    // Enqueue Vibe Code Deploy assets\n    \$version = defined(\'VIBECODE_DEPLOY_PLUGIN_VERSION\') ? VIBECODE_DEPLOY_PLUGIN_VERSION : \'0.1.1\';\n    if (file_exists(plugin_dir_path(\'vibecode-deploy\') . \'assets/css/styles.css\')) {\n        wp_enqueue_style(\'vibecode-deploy-styles\', plugins_url(\'assets/css/styles.css\', \'vibecode-deploy\'), array(), \$version);\n    }\n    if (file_exists(plugin_dir_path(\'vibecode-deploy\') . \'assets/css/icons.css\')) {\n        wp_enqueue_style(\'vibecode-deploy-icons\', plugins_url(\'assets/css/icons.css\', \'vibecode-deploy\'), array(), \$version);\n    }\n$2",
                     $content
                 );
                 $results['updated'][] = 'functions.php (asset enqueueing added)';
             } else {
                 // Add new hook at the end
-                $content .= "\n\nadd_action('wp_enqueue_scripts', function() {\n    // Enqueue Vibe Code Deploy assets\n    if (file_exists(plugin_dir_path('vibecode-deploy') . 'assets/css/styles.css')) {\n        wp_enqueue_style('vibecode-deploy-styles', plugins_url('assets/css/styles.css', 'vibecode-deploy'));\n    }\n    if (file_exists(plugin_dir_path('vibecode-deploy') . 'assets/css/icons.css')) {\n        wp_enqueue_style('vibecode-deploy-icons', plugins_url('assets/css/icons.css', 'vibecode-deploy'));\n    }\n}, 20);\n";
+                $content .= "\n\nadd_action('wp_enqueue_scripts', function() {\n    // Enqueue Vibe Code Deploy assets\n    \$version = defined('VIBECODE_DEPLOY_PLUGIN_VERSION') ? VIBECODE_DEPLOY_PLUGIN_VERSION : '0.1.1';\n    if (file_exists(plugin_dir_path('vibecode-deploy') . 'assets/css/styles.css')) {\n        wp_enqueue_style('vibecode-deploy-styles', plugins_url('assets/css/styles.css', 'vibecode-deploy'), array(), \$version);\n    }\n    if (file_exists(plugin_dir_path('vibecode-deploy') . 'assets/css/icons.css')) {\n        wp_enqueue_style('vibecode-deploy-icons', plugins_url('assets/css/icons.css', 'vibecode-deploy'), array(), \$version);\n    }\n}, 20);\n";
                 $results['created'][] = 'functions.php (asset enqueueing added)';
             }
             

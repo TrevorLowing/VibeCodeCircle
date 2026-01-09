@@ -2,6 +2,8 @@
 
 namespace VibeCode\Deploy\Services;
 
+use VibeCode\Deploy\Logger;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -19,13 +21,15 @@ final class ThemeDeployService {
 	 *
 	 * @param string $build_root Path to extracted staging build root.
 	 * @param string $theme_slug Child theme slug (e.g., 'my-site-etch-child').
-	 * @return array Results with 'created', 'updated', 'errors' keys.
+	 * @param array  $selected_theme_files Optional array of theme file names to deploy (e.g., 'functions.php', 'acf-json/*.json').
+	 * @return array Results with 'created', 'updated', 'errors', 'snapshots' keys.
 	 */
-	public static function deploy_theme_files( string $build_root, string $theme_slug ): array {
+	public static function deploy_theme_files( string $build_root, string $theme_slug, array $selected_theme_files = array() ): array {
 		$results = array(
 			'created' => array(),
 			'updated' => array(),
 			'errors' => array(),
+			'snapshots' => array(), // File snapshots for rollback
 		);
 
 		$theme_dir = WP_CONTENT_DIR . '/themes/' . $theme_slug;
@@ -37,11 +41,29 @@ final class ThemeDeployService {
 			return $results;
 		}
 
+		// Determine which files to deploy
+		$deploy_functions = empty( $selected_theme_files ) || in_array( 'functions.php', $selected_theme_files, true );
+		$deploy_acf = empty( $selected_theme_files ) || in_array( 'acf-json/*.json', $selected_theme_files, true ) || array_filter( $selected_theme_files, function( $file ) {
+			return strpos( (string) $file, 'acf-json/' ) === 0;
+		} );
+
 		// Deploy functions.php with smart merge
-		if ( is_dir( $staging_theme_dir ) && file_exists( $staging_theme_dir . '/functions.php' ) ) {
+		if ( $deploy_functions && is_dir( $staging_theme_dir ) && file_exists( $staging_theme_dir . '/functions.php' ) ) {
+			// Capture snapshot before deployment (for backup/rollback)
+			$theme_file = $theme_dir . '/functions.php';
+			$backup_file = $theme_file . '.backup';
+			if ( file_exists( $theme_file ) ) {
+				$before_content = file_get_contents( $theme_file );
+				if ( $before_content !== false ) {
+					$results['snapshots']['functions.php'] = $before_content;
+					// Create backup file for emergency restore if merge fails
+					file_put_contents( $backup_file, $before_content );
+				}
+			}
+
 			$merge_result = self::smart_merge_functions_php(
 				$staging_theme_dir . '/functions.php',
-				$theme_dir . '/functions.php'
+				$theme_file
 			);
 			if ( $merge_result['success'] ) {
 				if ( $merge_result['created'] ) {
@@ -49,19 +71,50 @@ final class ThemeDeployService {
 				} else {
 					$results['updated'][] = 'functions.php';
 				}
+				// Remove backup file if merge was successful
+				if ( file_exists( $backup_file ) ) {
+					@unlink( $backup_file );
+				}
 			} else {
 				$results['errors'][] = 'functions.php: ' . $merge_result['error'];
+				// If merge failed and backup exists, restore it
+				if ( file_exists( $backup_file ) && isset( $results['snapshots']['functions.php'] ) ) {
+					file_put_contents( $theme_file, $results['snapshots']['functions.php'] );
+					Logger::info( 'Restored functions.php from backup after failed merge.', array(), 'cfa' );
+				}
 			}
 		}
 
 		// Deploy ACF JSON files
-		$staging_acf_dir = $staging_theme_dir . '/acf-json';
-		$theme_acf_dir = $theme_dir . '/acf-json';
-		if ( is_dir( $staging_acf_dir ) ) {
-			$acf_result = self::copy_acf_json_files( $staging_acf_dir, $theme_acf_dir );
-			$results['created'] = array_merge( $results['created'], $acf_result['created'] );
-			$results['updated'] = array_merge( $results['updated'], $acf_result['updated'] );
-			$results['errors'] = array_merge( $results['errors'], $acf_result['errors'] );
+		if ( $deploy_acf ) {
+			$staging_acf_dir = $staging_theme_dir . '/acf-json';
+			$theme_acf_dir = $theme_dir . '/acf-json';
+			if ( is_dir( $staging_acf_dir ) ) {
+				// Capture snapshots before deployment
+				if ( is_dir( $theme_acf_dir ) ) {
+					$json_files = glob( $theme_acf_dir . '/*.json' ) ?: array();
+					foreach ( $json_files as $json_file ) {
+						$filename = basename( $json_file );
+						$content = file_get_contents( $json_file );
+						if ( $content !== false ) {
+							if ( ! isset( $results['snapshots']['acf-json'] ) ) {
+								$results['snapshots']['acf-json'] = array();
+							}
+							$results['snapshots']['acf-json'][ $filename ] = $content;
+						}
+					}
+				}
+
+				$acf_result = self::copy_acf_json_files( $staging_acf_dir, $theme_acf_dir );
+				$results['created'] = array_merge( $results['created'], $acf_result['created'] );
+				$results['updated'] = array_merge( $results['updated'], $acf_result['updated'] );
+				$results['errors'] = array_merge( $results['errors'], $acf_result['errors'] );
+			}
+		}
+
+		// Flush rewrite rules if functions.php was deployed (CPTs may have changed)
+		if ( $deploy_functions && ( ! empty( $results['created'] ) || ! empty( $results['updated'] ) ) ) {
+			flush_rewrite_rules( false ); // Soft flush (faster)
 		}
 
 		return $results;
@@ -106,6 +159,10 @@ final class ThemeDeployService {
 		$staging_cpts = self::extract_cpt_registrations( $staging_content );
 		$staging_shortcodes = self::extract_shortcode_registrations( $staging_content );
 		$staging_acf_filters = self::extract_acf_filters( $staging_content );
+		$staging_helper_functions = self::extract_helper_functions( $staging_content );
+
+		// Merge helper functions first (they may be used by shortcodes)
+		$theme_content = self::merge_helper_functions( $theme_content, $staging_helper_functions );
 
 		// Merge CPTs
 		$theme_content = self::merge_cpt_registrations( $theme_content, $staging_cpts );
@@ -116,9 +173,44 @@ final class ThemeDeployService {
 		// Ensure ACF JSON filters exist
 		$theme_content = self::ensure_acf_filters( $theme_content, $staging_acf_filters );
 
-		// Write merged content
+		// CRITICAL: Validate PHP syntax after ALL merges are complete
+		$syntax_check = self::validate_php_syntax( $theme_content );
+		if ( ! $syntax_check['valid'] ) {
+			Logger::error( 'PHP syntax error detected after functions.php merge. File NOT written.', array(
+				'error' => $syntax_check['error'],
+				'file' => $theme_file,
+			), 'cfa' );
+			return array( 
+				'success' => false, 
+				'error' => 'PHP syntax error after merge: ' . $syntax_check['error'] . ' File was NOT written to prevent site breakage.' 
+			);
+		}
+
+		// Write merged content (only if syntax is valid)
 		if ( file_put_contents( $theme_file, $theme_content ) === false ) {
 			return array( 'success' => false, 'error' => 'Unable to write theme functions.php' );
+		}
+
+		// Double-check the written file has valid syntax
+		$written_check = self::validate_php_syntax_file( $theme_file );
+		if ( ! $written_check['valid'] ) {
+			Logger::error( 'PHP syntax error in written file. Attempting to restore from backup.', array(
+				'error' => $written_check['error'],
+				'file' => $theme_file,
+			), 'cfa' );
+			// Try to restore from backup if it exists
+			$backup_file = $theme_file . '.backup';
+			if ( file_exists( $backup_file ) ) {
+				copy( $backup_file, $theme_file );
+				return array( 
+					'success' => false, 
+					'error' => 'Written file had syntax errors. Restored from backup. Original error: ' . $written_check['error'] 
+				);
+			}
+			return array( 
+				'success' => false, 
+				'error' => 'Written file has syntax errors and no backup available: ' . $written_check['error'] 
+			);
 		}
 
 		return array( 'success' => true, 'created' => $created );
@@ -146,24 +238,95 @@ final class ThemeDeployService {
 	/**
 	 * Extract shortcode registration code blocks from functions.php content.
 	 *
+	 * Uses balanced brace matching to correctly extract multi-line shortcode closures.
+	 *
 	 * @param string $content Functions.php content.
 	 * @return array Array of shortcode tags => registration code blocks.
 	 */
 	private static function extract_shortcode_registrations( string $content ): array {
 		$shortcodes = array();
-		// Match add_shortcode('tag', function/callable) blocks
-		$pattern = '/add_shortcode\s*\(\s*[\'"]([^\'"]+)[\'"]\s*,\s*(?:function\s*\([^)]*\)\s*\{[^}]*\}|\$[a-zA-Z_][a-zA-Z0-9_]*|array\s*\([^)]*\))\s*\)\s*;/s';
-		if ( preg_match_all( $pattern, $content, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE ) ) {
-			foreach ( $matches as $match ) {
-				$tag = $match[1][0];
-				// Extract full shortcode block (may span multiple lines)
-				$start_pos = $match[0][1];
-				$end_pos = $start_pos + strlen( $match[0][0] );
-				// Try to capture full closure
-				$full_block = substr( $content, $start_pos, $end_pos - $start_pos );
-				$shortcodes[ $tag ] = $full_block;
+		$pos = 0;
+		
+		while ( ( $add_pos = strpos( $content, 'add_shortcode', $pos ) ) !== false ) {
+			// Find opening parenthesis
+			$open_paren = strpos( $content, '(', $add_pos );
+			if ( $open_paren === false ) {
+				break;
 			}
+			
+			// Find tag (first quoted string) - use PREG_OFFSET_CAPTURE to get position
+			if ( ! preg_match( '/[\'"]([^\'"]+)[\'"]/', $content, $tag_match, PREG_OFFSET_CAPTURE, $open_paren ) ) {
+				$pos = $add_pos + 1;
+				continue;
+			}
+			$tag = $tag_match[1][0];
+			$tag_end_pos = $tag_match[0][1] + strlen( $tag_match[0][0] );
+			
+			// Find comma after tag
+			$comma_pos = strpos( $content, ',', $tag_end_pos );
+			if ( $comma_pos === false ) {
+				$pos = $add_pos + 1;
+				continue;
+			}
+			
+			// Find function keyword
+			$func_pos = strpos( $content, 'function', $comma_pos );
+			if ( $func_pos === false ) {
+				$pos = $add_pos + 1;
+				continue;
+			}
+			
+			// Find opening brace of function
+			$brace_start = strpos( $content, '{', $func_pos );
+			if ( $brace_start === false ) {
+				$pos = $add_pos + 1;
+				continue;
+			}
+			
+			// Balance braces to find closing brace
+			$brace_count = 1;
+			$search_pos = $brace_start + 1;
+			$brace_end = false;
+			
+			while ( $search_pos < strlen( $content ) && $brace_count > 0 ) {
+				$char = $content[ $search_pos ];
+				if ( $char === '{' ) {
+					$brace_count++;
+				} elseif ( $char === '}' ) {
+					$brace_count--;
+					if ( $brace_count === 0 ) {
+						$brace_end = $search_pos;
+						break;
+					}
+				}
+				$search_pos++;
+			}
+			
+			if ( $brace_end === false ) {
+				$pos = $add_pos + 1;
+				continue;
+			}
+			
+			// Find closing parenthesis and semicolon
+			$close_paren = strpos( $content, ')', $brace_end );
+			if ( $close_paren === false ) {
+				$pos = $add_pos + 1;
+				continue;
+			}
+			$semicolon = strpos( $content, ';', $close_paren );
+			if ( $semicolon === false ) {
+				$pos = $add_pos + 1;
+				continue;
+			}
+			
+			// Extract full block
+			$full_block = substr( $content, $add_pos, $semicolon - $add_pos + 1 );
+			$shortcodes[ $tag ] = $full_block;
+			
+			// Move past this match
+			$pos = $semicolon + 1;
 		}
+		
 		return $shortcodes;
 	}
 
@@ -192,38 +355,262 @@ final class ThemeDeployService {
 	/**
 	 * Merge CPT registrations into theme content.
 	 *
+	 * Removes ALL existing registrations for each post type before adding the new one
+	 * to prevent duplicates. Uses balanced brace matching for multi-line registrations.
+	 *
 	 * @param string $theme_content Current theme functions.php content.
 	 * @param array  $staging_cpts CPT registrations from staging.
 	 * @return string Merged content.
 	 */
 	private static function merge_cpt_registrations( string $theme_content, array $staging_cpts ): string {
 		foreach ( $staging_cpts as $slug => $registration_code ) {
-			// Check if CPT already exists in theme
-			$pattern = '/register_post_type\s*\(\s*[\'"]' . preg_quote( $slug, '/' ) . '[\'"]\s*,/';
-			if ( preg_match( $pattern, $theme_content ) ) {
-				// Replace existing registration
-				$theme_content = preg_replace(
-					'/register_post_type\s*\(\s*[\'"]' . preg_quote( $slug, '/' ) . '[\'"]\s*,\s*array\s*\([^)]*(?:\([^)]*\)[^)]*)*\)\s*\)\s*;/s',
-					$registration_code,
-					$theme_content
-				);
-			} else {
-				// Add new registration before closing PHP tag or at end
-				if ( strpos( $theme_content, 'register_post_type' ) !== false ) {
-					// Insert after last register_post_type
-					$pattern = '/(register_post_type\s*\([^;]+;\s*)/s';
-					$theme_content = preg_replace( $pattern, '$1' . "\n" . $registration_code . "\n", $theme_content, -1, $count );
-					if ( $count === 0 ) {
-						// Fallback: append before closing PHP tag
+			// Remove ALL existing registrations for this post type (handle duplicates)
+			// CRITICAL: Only remove registrations at top level, not inside closures/functions
+			// Use balanced brace/parenthesis matching to correctly match multi-line registrations
+			$pos = 0;
+			$removed_count = 0;
+			
+			while ( ( $match_pos = strpos( $theme_content, 'register_post_type', $pos ) ) !== false ) {
+				// Check if this is the post type we're looking for
+				$slug_pattern = '/register_post_type\s*\(\s*[\'"]' . preg_quote( $slug, '/' ) . '[\'"]\s*,/';
+				if ( ! preg_match( $slug_pattern, substr( $theme_content, $match_pos, 200 ) ) ) {
+					$pos = $match_pos + 1;
+					continue;
+				}
+				
+				// CRITICAL: Check if this registration is inside a closure or function
+				// Count braces/parentheses backwards from match_pos to see if we're inside a function/closure
+				$before_match = substr( $theme_content, 0, $match_pos );
+				$brace_count = 0;
+				$paren_count = 0;
+				$in_function = false;
+				$in_closure = false;
+				
+				// Scan backwards to find if we're inside a function or closure
+				for ( $i = strlen( $before_match ) - 1; $i >= 0; $i-- ) {
+					$char = $before_match[ $i ];
+					if ( $char === '}' ) {
+						$brace_count++;
+					} elseif ( $char === '{' ) {
+						$brace_count--;
+						if ( $brace_count < 0 ) {
+							// We're inside a function/closure - DON'T remove this registration
+							$in_function = true;
+							break;
+						}
+					} elseif ( $char === ')' ) {
+						$paren_count++;
+					} elseif ( $char === '(' ) {
+						$paren_count--;
+						if ( $paren_count < 0 ) {
+							// Check if this is a function/closure definition
+							$before_paren = substr( $before_match, max( 0, $i - 20 ), 20 );
+							if ( preg_match( '/(function|=>)\s*$/', $before_paren ) ) {
+								$in_closure = true;
+								break;
+							}
+						}
+					}
+				}
+				
+				// Skip if inside a function or closure
+				if ( $in_function || $in_closure ) {
+					$pos = $match_pos + 1;
+					continue;
+				}
+				
+				// Find the opening parenthesis
+				$open_paren = strpos( $theme_content, '(', $match_pos );
+				if ( $open_paren === false ) {
+					$pos = $match_pos + 1;
+					continue;
+				}
+				
+				// Find the opening brace of the array argument
+				$array_start = strpos( $theme_content, 'array', $open_paren );
+				if ( $array_start === false ) {
+					$pos = $match_pos + 1;
+					continue;
+				}
+				
+				// Find the opening parenthesis of array()
+				$array_paren = strpos( $theme_content, '(', $array_start );
+				if ( $array_paren === false ) {
+					$pos = $match_pos + 1;
+					continue;
+				}
+				
+				// Balance parentheses to find the closing parenthesis of array()
+				$paren_count = 1;
+				$search_pos = $array_paren + 1;
+				$array_close = false;
+				
+				while ( $search_pos < strlen( $theme_content ) && $paren_count > 0 ) {
+					$char = $theme_content[ $search_pos ];
+					if ( $char === '(' ) {
+						$paren_count++;
+					} elseif ( $char === ')' ) {
+						$paren_count--;
+						if ( $paren_count === 0 ) {
+							$array_close = $search_pos;
+							break;
+						}
+					}
+					$search_pos++;
+				}
+				
+				if ( $array_close === false ) {
+					$pos = $match_pos + 1;
+					continue;
+				}
+				
+				// Find the closing parenthesis of register_post_type() and semicolon
+				$func_close = strpos( $theme_content, ')', $array_close );
+				if ( $func_close === false ) {
+					$pos = $match_pos + 1;
+					continue;
+				}
+				
+				$semicolon = strpos( $theme_content, ';', $func_close );
+				if ( $semicolon === false ) {
+					$pos = $match_pos + 1;
+					continue;
+				}
+				
+				// Find the start of the line containing this registration (for clean removal)
+				$line_start = $match_pos;
+				while ( $line_start > 0 && $theme_content[ $line_start - 1 ] !== "\n" ) {
+					$line_start--;
+				}
+				
+				// Find the end of the line after the semicolon
+				$line_end = $semicolon + 1;
+				while ( $line_end < strlen( $theme_content ) && $theme_content[ $line_end ] !== "\n" ) {
+					$line_end++;
+				}
+				if ( $line_end < strlen( $theme_content ) ) {
+					$line_end++; // Include the newline
+				}
+				
+				// Remove this registration (entire line)
+				$before = substr( $theme_content, 0, $line_start );
+				$after = substr( $theme_content, $line_end );
+				
+				$theme_content = $before . $after;
+				$removed_count++;
+				// Continue searching from the same position (content shifted)
+				$pos = $line_start;
+			}
+			
+			// Add the new registration
+			if ( $removed_count > 0 ) {
+				Logger::info( 'Removed duplicate CPT registrations before adding new one.', array(
+					'post_type' => $slug,
+					'removed_count' => $removed_count,
+				), 'cfa' );
+			}
+			
+			// Add new registration at the end (after all other CPT registrations if any exist)
+			if ( strpos( $theme_content, 'register_post_type' ) !== false ) {
+				// Find the last register_post_type and add after it
+				$last_pos = strrpos( $theme_content, 'register_post_type' );
+				if ( $last_pos !== false ) {
+					// Find the semicolon after the last registration
+					$semicolon_pos = strpos( $theme_content, ';', $last_pos );
+					if ( $semicolon_pos !== false ) {
+						$before = substr( $theme_content, 0, $semicolon_pos + 1 );
+						$after = substr( $theme_content, $semicolon_pos + 1 );
+						$theme_content = $before . "\n" . $registration_code . "\n" . $after;
+					} else {
+						// Fallback: append at end
 						$theme_content = rtrim( $theme_content ) . "\n\n" . $registration_code . "\n";
 					}
 				} else {
-					// Add after init hook or at end
+					// Fallback: append at end
 					$theme_content = rtrim( $theme_content ) . "\n\n" . $registration_code . "\n";
 				}
+			} else {
+				// No existing registrations, add at end
+				$theme_content = rtrim( $theme_content ) . "\n\n" . $registration_code . "\n";
 			}
 		}
+		
+		// Note: PHP syntax validation happens at the end of smart_merge_functions_php()
+		// after ALL merges are complete, not here after each individual merge step
+		
 		return $theme_content;
+	}
+	
+	/**
+	 * Validate PHP syntax by checking if code can be parsed.
+	 *
+	 * Uses php -l to validate syntax. This is the most reliable method.
+	 *
+	 * @param string $php_code PHP code to validate.
+	 * @return array Array with 'valid' (bool) and 'error' (string) keys.
+	 */
+	private static function validate_php_syntax( string $php_code ): array {
+		// Use php -l via shell if available
+		$temp_file = sys_get_temp_dir() . '/vibecode-deploy-syntax-check-' . uniqid( '', true ) . '.php';
+		
+		if ( file_put_contents( $temp_file, $php_code ) === false ) {
+			Logger::warning( 'Could not create temp file for PHP syntax validation.', array(), 'cfa' );
+			// Don't block deployment if we can't validate, but log it
+			return array( 'valid' => true, 'error' => 'Could not create temp file for validation' );
+		}
+		
+		// Use php -l to check syntax (most reliable method)
+		$output = array();
+		$return_var = 0;
+		$php_binary = defined( 'PHP_BINARY' ) && PHP_BINARY ? PHP_BINARY : 'php';
+		$command = escapeshellarg( $php_binary ) . ' -l ' . escapeshellarg( $temp_file ) . ' 2>&1';
+		@exec( $command, $output, $return_var );
+		
+		// Clean up temp file
+		@unlink( $temp_file );
+		
+		if ( $return_var === 0 ) {
+			return array( 'valid' => true, 'error' => '' );
+		} else {
+			$error = implode( "\n", $output );
+			// Extract line number from error if available
+			if ( preg_match( '/on line (\d+)/i', $error, $matches ) ) {
+				$line_num = (int) $matches[1];
+				$error = "Parse error on line {$line_num}: " . $error;
+			}
+			return array( 'valid' => false, 'error' => trim( $error ) );
+		}
+	}
+	
+	/**
+	 * Validate PHP syntax of an existing file.
+	 *
+	 * @param string $file_path Path to PHP file to validate.
+	 * @return array Array with 'valid' (bool) and 'error' (string) keys.
+	 */
+	private static function validate_php_syntax_file( string $file_path ): array {
+		if ( ! file_exists( $file_path ) ) {
+			return array( 'valid' => false, 'error' => 'File does not exist: ' . $file_path );
+		}
+		
+		// Use php -l to check syntax
+		$output = array();
+		$return_var = 0;
+		$php_binary = defined( 'PHP_BINARY' ) && PHP_BINARY ? PHP_BINARY : 'php';
+		$command = escapeshellarg( $php_binary ) . ' -l ' . escapeshellarg( $file_path ) . ' 2>&1';
+		@exec( $command, $output, $return_var );
+		
+		if ( $return_var === 0 ) {
+			return array( 'valid' => true, 'error' => '' );
+		} else {
+			$error = implode( "\n", $output );
+			// Extract line number from error if available
+			if ( preg_match( '/on line (\d+)/i', $error, $matches ) ) {
+				$line_num = (int) $matches[1];
+				$error = "Parse error on line {$line_num}: " . $error;
+			}
+			return array( 'valid' => false, 'error' => trim( $error ) );
+		}
 	}
 
 	/**
@@ -238,15 +625,15 @@ final class ThemeDeployService {
 			// Check if shortcode already exists
 			$pattern = '/add_shortcode\s*\(\s*[\'"]' . preg_quote( $tag, '/' ) . '[\'"]\s*,/';
 			if ( preg_match( $pattern, $theme_content ) ) {
-				// Replace existing shortcode (simplified - may need more sophisticated matching)
+				// Replace existing shortcode - match multi-line closures
 				$theme_content = preg_replace(
-					'/add_shortcode\s*\(\s*[\'"]' . preg_quote( $tag, '/' ) . '[\'"]\s*,[^;]+;\s*/s',
+					'/add_shortcode\s*\(\s*[\'"]' . preg_quote( $tag, '/' ) . '[\'"]\s*,\s*function\s*\([^)]*\)\s*\{.*?\}\s*\)\s*;/s',
 					$registration_code,
 					$theme_content,
 					1
 				);
 			} else {
-				// Add new shortcode
+				// Add new shortcode at the end
 				$theme_content = rtrim( $theme_content ) . "\n\n" . $registration_code . "\n";
 			}
 		}
@@ -268,6 +655,108 @@ final class ThemeDeployService {
 		// Check for load_json filter
 		if ( ! empty( $staging_filters['load_json'] ) && strpos( $theme_content, "acf/settings/load_json" ) === false ) {
 			$theme_content = rtrim( $theme_content ) . "\n\n" . $staging_filters['load_json'] . "\n";
+		}
+		return $theme_content;
+	}
+
+	/**
+	 * Extract helper functions from functions.php content.
+	 *
+	 * Extracts standalone functions (not closures) that start with a project prefix
+	 * (e.g., 'cfa_') and are used by shortcodes or CPTs.
+	 *
+	 * @param string $content Functions.php content.
+	 * @return array Array of function names => function code blocks.
+	 */
+	private static function extract_helper_functions( string $content ): array {
+		$functions = array();
+		$pos = 0;
+
+		// Match function declarations: function function_name($params) { ... }
+		// Look for functions that start with common prefixes used by shortcodes
+		$pattern = '/function\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\([^)]*\)\s*\{/';
+		while ( preg_match( $pattern, $content, $matches, PREG_OFFSET_CAPTURE, $pos ) ) {
+			$func_name = $matches[1][0];
+			$func_start = $matches[0][1];
+			
+			// Only extract functions that start with common prefixes (cfa_, project-specific prefixes)
+			// or are explicitly helper functions (contain 'helper', 'get_', 'render_', 'normalize_', 'is_')
+			if ( preg_match( '/^(cfa_|helper_|get_|render_|normalize_|is_|migrate_|format_|days_)/', $func_name ) ) {
+				// Find opening brace
+				$brace_start = strpos( $content, '{', $func_start );
+				if ( $brace_start === false ) {
+					$pos = $func_start + 1;
+					continue;
+				}
+
+				// Balance braces to find closing brace
+				$brace_count = 1;
+				$search_pos = $brace_start + 1;
+				$brace_end = false;
+
+				while ( $search_pos < strlen( $content ) && $brace_count > 0 ) {
+					$char = $content[ $search_pos ];
+					if ( $char === '{' ) {
+						$brace_count++;
+					} elseif ( $char === '}' ) {
+						$brace_count--;
+						if ( $brace_count === 0 ) {
+							$brace_end = $search_pos;
+							break;
+						}
+					}
+					$search_pos++;
+				}
+
+				if ( $brace_end !== false ) {
+					// Extract full function including the closing brace
+					$func_code = substr( $content, $func_start, $brace_end - $func_start + 1 );
+					$functions[ $func_name ] = $func_code;
+					$pos = $brace_end + 1;
+				} else {
+					$pos = $func_start + 1;
+				}
+			} else {
+				$pos = $func_start + 1;
+			}
+		}
+
+		return $functions;
+	}
+
+	/**
+	 * Merge helper functions into theme content.
+	 *
+	 * @param string $theme_content Current theme functions.php content.
+	 * @param array  $staging_functions Array of function names => function code blocks.
+	 * @return string Merged content.
+	 */
+	private static function merge_helper_functions( string $theme_content, array $staging_functions ): string {
+		foreach ( $staging_functions as $func_name => $func_code ) {
+			// Check if function already exists
+			$pattern = '/function\s+' . preg_quote( $func_name, '/' ) . '\s*\(/';
+			if ( preg_match( $pattern, $theme_content ) ) {
+				// Replace existing function - match multi-line function definitions
+				$theme_content = preg_replace(
+					'/function\s+' . preg_quote( $func_name, '/' ) . '\s*\([^)]*\)\s*\{.*?\}\s*;/s',
+					$func_code,
+					$theme_content,
+					1
+				);
+			} else {
+				// Add new function before first CPT registration or shortcode
+				$insert_pos = strpos( $theme_content, 'register_post_type' );
+				if ( $insert_pos === false ) {
+					$insert_pos = strpos( $theme_content, 'add_shortcode' );
+				}
+				if ( $insert_pos === false ) {
+					// Add at the end
+					$theme_content = rtrim( $theme_content ) . "\n\n" . $func_code . "\n";
+				} else {
+					// Add before first CPT/shortcode
+					$theme_content = substr( $theme_content, 0, $insert_pos ) . $func_code . "\n\n" . substr( $theme_content, $insert_pos );
+				}
+			}
 		}
 		return $theme_content;
 	}

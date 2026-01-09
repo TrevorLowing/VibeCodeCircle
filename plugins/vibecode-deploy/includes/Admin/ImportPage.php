@@ -7,6 +7,7 @@ use VibeCode\Deploy\Logger;
 use VibeCode\Deploy\Settings;
 use VibeCode\Deploy\Staging;
 use VibeCode\Deploy\Services\BuildService;
+use VibeCode\Deploy\Services\ClassPrefixDetector;
 use VibeCode\Deploy\Services\EnvService;
 use VibeCode\Deploy\Services\ManifestService;
 use VibeCode\Deploy\Services\RollbackService;
@@ -46,16 +47,24 @@ final class ImportPage {
 		$rolled_back_deleted = isset( $_GET['rolled_back_deleted'] ) ? (int) $_GET['rolled_back_deleted'] : 0;
 		$rolled_back_restored = isset( $_GET['rolled_back_restored'] ) ? (int) $_GET['rolled_back_restored'] : 0;
 
+		// Debug: Log all POST data when preflight button is clicked
+		if ( isset( $_POST['vibecode_deploy_preflight'] ) ) {
+			Logger::info( 'Preflight POST detected.', array(
+				'post_keys' => array_keys( $_POST ),
+				'has_fingerprint' => isset( $_POST['vibecode_deploy_fingerprint'] ),
+				'fingerprint_value' => isset( $_POST['vibecode_deploy_fingerprint'] ) ? sanitize_text_field( (string) $_POST['vibecode_deploy_fingerprint'] ) : '',
+				'has_nonce' => isset( $_POST['vibecode_deploy_preflight_nonce'] ),
+				'project_slug' => (string) $settings['project_slug'],
+			), (string) $settings['project_slug'] );
+		}
+
 		if ( isset( $_POST['vibecode_deploy_upload_zip'] ) ) {
 			check_admin_referer( 'vibecode_deploy_upload_zip', 'vibecode_deploy_nonce' );
 
 			if ( $settings['project_slug'] === '' ) {
 				$error = __( 'Project Slug is required.', 'vibecode-deploy' );
 				Logger::error( 'Upload blocked: missing project slug.', array(), '' );
-			} elseif ( $settings['class_prefix'] === '' ) {
-				$error = __( 'Class Prefix is required.', 'vibecode-deploy' );
-				Logger::error( 'Upload blocked: missing class prefix.', array( 'project_slug' => (string) $settings['project_slug'] ), (string) $settings['project_slug'] );
-			} elseif ( ! preg_match( '/^[a-z0-9-]+-$/', (string) $settings['class_prefix'] ) ) {
+			} elseif ( $settings['class_prefix'] !== '' && ! preg_match( '/^[a-z0-9-]+-$/', (string) $settings['class_prefix'] ) ) {
 				$error = __( 'Class Prefix is invalid.', 'vibecode-deploy' );
 				Logger::error( 'Upload blocked: invalid class prefix.', array( 'project_slug' => (string) $settings['project_slug'], 'class_prefix' => (string) $settings['class_prefix'] ), (string) $settings['project_slug'] );
 			} elseif ( empty( $_FILES['vibecode_deploy_zip']['tmp_name'] ) || ! is_uploaded_file( (string) $_FILES['vibecode_deploy_zip']['tmp_name'] ) ) {
@@ -92,8 +101,30 @@ final class ImportPage {
 							Logger::error( 'Extraction failed.', array( 'project_slug' => (string) $settings['project_slug'], 'error' => $error ), (string) $settings['project_slug'] );
 						} else {
 							$selected_fingerprint = (string) $result['fingerprint'];
-							$notice = 'Staging uploaded: ' . esc_html( (string) $result['fingerprint'] ) . ' (' . esc_html( (string) $result['files'] ) . ' files)';
-							Logger::info( 'Staging extracted.', array( 'project_slug' => (string) $settings['project_slug'], 'fingerprint' => (string) $result['fingerprint'], 'files' => (int) ( $result['files'] ?? 0 ) ), (string) $settings['project_slug'] );
+							
+							// Auto-detect class prefix if not set
+							if ( $settings['class_prefix'] === '' ) {
+								$build_root = BuildService::build_root_path( (string) $settings['project_slug'], $selected_fingerprint );
+								$detected_prefix = ClassPrefixDetector::detect_from_staging( $build_root );
+								
+								if ( $detected_prefix !== '' ) {
+									// Update settings with detected prefix
+									$updated_settings = $settings;
+									$updated_settings['class_prefix'] = $detected_prefix;
+									update_option( Settings::OPTION_NAME, $updated_settings );
+									$settings = Settings::get_all(); // Refresh settings
+									
+									$notice = 'Staging uploaded: ' . esc_html( $selected_fingerprint ) . ' (' . esc_html( (string) $result['files'] ) . ' files). Class prefix auto-detected: <code>' . esc_html( $detected_prefix ) . '</code>';
+									Logger::info( 'Class prefix auto-detected from staging files.', array( 'project_slug' => (string) $settings['project_slug'], 'detected_prefix' => $detected_prefix ), (string) $settings['project_slug'] );
+								} else {
+									$notice = 'Staging uploaded: ' . esc_html( $selected_fingerprint ) . ' (' . esc_html( (string) $result['files'] ) . ' files). <strong>Warning:</strong> Class prefix could not be auto-detected. Please set it manually in Settings.';
+									Logger::warning( 'Class prefix auto-detection failed.', array( 'project_slug' => (string) $settings['project_slug'] ), (string) $settings['project_slug'] );
+								}
+							} else {
+								$notice = 'Staging uploaded: ' . esc_html( $selected_fingerprint ) . ' (' . esc_html( (string) $result['files'] ) . ' files)';
+							}
+							
+							Logger::info( 'Staging extracted.', array( 'project_slug' => (string) $settings['project_slug'], 'fingerprint' => $selected_fingerprint, 'files' => (int) ( $result['files'] ?? 0 ) ), (string) $settings['project_slug'] );
 						}
 					}
 				}
@@ -101,8 +132,15 @@ final class ImportPage {
 		}
 
 		if ( isset( $_POST['vibecode_deploy_preflight'] ) ) {
+			Logger::info( 'Preflight POST processing started.', array( 'project_slug' => (string) $settings['project_slug'] ), (string) $settings['project_slug'] );
+			
+			// Verify nonce - this will wp_die() if invalid, so if we get here, nonce is valid
 			check_admin_referer( 'vibecode_deploy_preflight', 'vibecode_deploy_preflight_nonce' );
+			Logger::info( 'Preflight nonce verified.', array( 'project_slug' => (string) $settings['project_slug'] ), (string) $settings['project_slug'] );
+			
 			$selected_fingerprint = isset( $_POST['vibecode_deploy_fingerprint'] ) ? sanitize_text_field( (string) $_POST['vibecode_deploy_fingerprint'] ) : '';
+			Logger::info( 'Preflight fingerprint extracted.', array( 'project_slug' => (string) $settings['project_slug'], 'fingerprint' => $selected_fingerprint ), (string) $settings['project_slug'] );
+			
 			if ( $settings['project_slug'] === '' ) {
 				$error = 'Project Slug is required.';
 				Logger::error( 'Preflight blocked: missing project slug.', array(), '' );
@@ -111,15 +149,44 @@ final class ImportPage {
 				Logger::error( 'Preflight blocked: missing fingerprint selection.', array( 'project_slug' => (string) $settings['project_slug'] ), (string) $settings['project_slug'] );
 			} else {
 				$build_root = BuildService::build_root_path( (string) $settings['project_slug'], $selected_fingerprint );
-				Logger::info( 'Preflight started.', array( 'project_slug' => (string) $settings['project_slug'], 'fingerprint' => $selected_fingerprint ), (string) $settings['project_slug'] );
-				$preflight = Importer::preflight( (string) $settings['project_slug'], $build_root );
-				if ( empty( $preflight['pages_total'] ) ) {
-					$error = 'No pages found for the selected build.';
-					Logger::error( 'Preflight found no pages.', array( 'project_slug' => (string) $settings['project_slug'], 'fingerprint' => $selected_fingerprint ), (string) $settings['project_slug'] );
+				Logger::info( 'Preflight build_root calculated.', array( 'project_slug' => (string) $settings['project_slug'], 'fingerprint' => $selected_fingerprint, 'build_root' => $build_root, 'build_root_exists' => is_dir( $build_root ) ), (string) $settings['project_slug'] );
+				
+				if ( ! is_dir( $build_root ) ) {
+					$error = 'Build directory not found. Please ensure the staging zip was uploaded successfully.';
+					Logger::error( 'Preflight blocked: build directory not found.', array( 'project_slug' => (string) $settings['project_slug'], 'fingerprint' => $selected_fingerprint, 'build_root' => $build_root ), (string) $settings['project_slug'] );
 				} else {
-					Logger::info( 'Preflight complete.', array( 'project_slug' => (string) $settings['project_slug'], 'fingerprint' => $selected_fingerprint, 'pages_total' => (int) ( $preflight['pages_total'] ?? 0 ) ), (string) $settings['project_slug'] );
+					Logger::info( 'Preflight started.', array( 'project_slug' => (string) $settings['project_slug'], 'fingerprint' => $selected_fingerprint, 'build_root' => $build_root ), (string) $settings['project_slug'] );
+					try {
+						$preflight = Importer::preflight( (string) $settings['project_slug'], $build_root );
+						Logger::info( 'Preflight method returned.', array( 'project_slug' => (string) $settings['project_slug'], 'is_array' => is_array( $preflight ), 'has_pages_total' => isset( $preflight['pages_total'] ), 'pages_total' => isset( $preflight['pages_total'] ) ? (int) $preflight['pages_total'] : null ), (string) $settings['project_slug'] );
+						
+						// Ensure preflight is always an array, even on error
+						if ( ! is_array( $preflight ) ) {
+							$preflight = array(
+								'pages_total' => 0,
+								'items' => array(),
+								'errors' => array( 'Preflight returned invalid result. Check logs for details.' ),
+							);
+							Logger::error( 'Preflight returned invalid result.', array( 'preflight' => $preflight, 'build_root' => $build_root ), (string) $settings['project_slug'] );
+						}
+						// Always log preflight completion, even if no pages found
+						// The preflight result will be displayed below regardless of pages_total
+						if ( empty( $preflight['pages_total'] ) ) {
+							Logger::warning( 'Preflight found no pages.', array( 'project_slug' => (string) $settings['project_slug'], 'fingerprint' => $selected_fingerprint, 'preflight' => $preflight, 'build_root' => $build_root, 'pages_dir' => Importer::pages_dir( $build_root ), 'pages_dir_exists' => is_dir( Importer::pages_dir( $build_root ) ) ), (string) $settings['project_slug'] );
+						} else {
+							Logger::info( 'Preflight complete.', array( 'project_slug' => (string) $settings['project_slug'], 'fingerprint' => $selected_fingerprint, 'pages_total' => (int) ( $preflight['pages_total'] ?? 0 ) ), (string) $settings['project_slug'] );
+						}
+					} catch ( \Exception $e ) {
+						$preflight = array(
+							'pages_total' => 0,
+							'items' => array(),
+							'errors' => array( 'Preflight error: ' . $e->getMessage() ),
+						);
+						Logger::error( 'Preflight exception.', array( 'exception' => $e->getMessage(), 'trace' => $e->getTraceAsString(), 'build_root' => $build_root ), (string) $settings['project_slug'] );
+					}
 				}
 			}
+			Logger::info( 'Preflight POST processing complete.', array( 'project_slug' => (string) $settings['project_slug'], 'preflight_set' => ( $preflight !== null ), 'error_set' => ( $error !== '' ) ), (string) $settings['project_slug'] );
 		}
 
 		if ( isset( $_POST['vibecode_deploy_run_import'] ) ) {
@@ -131,23 +198,89 @@ final class ImportPage {
 			$generate_404_template = ! isset( $_POST['vibecode_deploy_generate_404_template'] ) ? true : ( ! empty( $_POST['vibecode_deploy_generate_404_template'] ) );
 			$force_claim_templates = ! empty( $_POST['vibecode_deploy_force_claim_templates'] );
 			$validate_cpt_shortcodes = ! empty( $_POST['vibecode_deploy_validate_cpt_shortcodes'] );
+			
+			// Auto-detect class prefix if still empty (before validation)
+			if ( $settings['class_prefix'] === '' && $selected_fingerprint !== '' && $settings['project_slug'] !== '' ) {
+				$build_root = BuildService::build_root_path( (string) $settings['project_slug'], $selected_fingerprint );
+				$detected_prefix = ClassPrefixDetector::detect_from_staging( $build_root );
+				
+				if ( $detected_prefix !== '' ) {
+					// Update settings with detected prefix
+					$updated_settings = $settings;
+					$updated_settings['class_prefix'] = $detected_prefix;
+					update_option( Settings::OPTION_NAME, $updated_settings );
+					$settings = Settings::get_all(); // Refresh settings
+					
+					$notice = 'Class prefix auto-detected: <code>' . esc_html( $detected_prefix ) . '</code>';
+					Logger::info( 'Class prefix auto-detected from staging files during import.', array( 'project_slug' => (string) $settings['project_slug'], 'detected_prefix' => $detected_prefix ), (string) $settings['project_slug'] );
+				}
+			}
 
 			if ( $settings['project_slug'] === '' ) {
 				$error = 'Project Slug is required.';
 				Logger::error( 'Import blocked: missing project slug.', array(), '' );
-			} elseif ( $settings['class_prefix'] === '' ) {
-				$error = 'Class Prefix is required.';
-				Logger::error( 'Import blocked: missing class prefix.', array( 'project_slug' => (string) $settings['project_slug'] ), (string) $settings['project_slug'] );
-			} elseif ( ! preg_match( '/^[a-z0-9-]+-$/', (string) $settings['class_prefix'] ) ) {
+			} elseif ( $settings['class_prefix'] !== '' && ! preg_match( '/^[a-z0-9-]+-$/', (string) $settings['class_prefix'] ) ) {
 				$error = 'Class Prefix is invalid.';
 				Logger::error( 'Import blocked: invalid class prefix.', array( 'project_slug' => (string) $settings['project_slug'], 'class_prefix' => (string) $settings['class_prefix'] ), (string) $settings['project_slug'] );
 			} elseif ( $selected_fingerprint === '' ) {
 				$error = 'Select a staging build.';
 				Logger::error( 'Import blocked: missing fingerprint selection.', array( 'project_slug' => (string) $settings['project_slug'] ), (string) $settings['project_slug'] );
 			} else {
+				// Get selected items from form
+				$selected_pages = array();
+				if ( isset( $_POST['vibecode_deploy_selected_pages'] ) && is_array( $_POST['vibecode_deploy_selected_pages'] ) ) {
+					$selected_pages = array_map( 'sanitize_key', $_POST['vibecode_deploy_selected_pages'] );
+					$selected_pages = array_filter( $selected_pages );
+				}
+				
+				$selected_css = array();
+				if ( isset( $_POST['vibecode_deploy_selected_css'] ) && is_array( $_POST['vibecode_deploy_selected_css'] ) ) {
+					$selected_css = array_map( 'sanitize_file_name', $_POST['vibecode_deploy_selected_css'] );
+					$selected_css = array_filter( $selected_css );
+				}
+				
+				$selected_js = array();
+				if ( isset( $_POST['vibecode_deploy_selected_js'] ) && is_array( $_POST['vibecode_deploy_selected_js'] ) ) {
+					$selected_js = array_map( 'sanitize_file_name', $_POST['vibecode_deploy_selected_js'] );
+					$selected_js = array_filter( $selected_js );
+				}
+				
+				$selected_templates = array();
+				if ( isset( $_POST['vibecode_deploy_selected_templates'] ) && is_array( $_POST['vibecode_deploy_selected_templates'] ) ) {
+					$selected_templates = array_map( 'sanitize_key', $_POST['vibecode_deploy_selected_templates'] );
+					$selected_templates = array_filter( $selected_templates );
+				}
+				
+				$selected_template_parts = array();
+				if ( isset( $_POST['vibecode_deploy_selected_template_parts'] ) && is_array( $_POST['vibecode_deploy_selected_template_parts'] ) ) {
+					$selected_template_parts = array_map( 'sanitize_key', $_POST['vibecode_deploy_selected_template_parts'] );
+					$selected_template_parts = array_filter( $selected_template_parts );
+				}
+				
+				$selected_theme_files = array();
+				if ( isset( $_POST['vibecode_deploy_selected_theme_files'] ) && is_array( $_POST['vibecode_deploy_selected_theme_files'] ) ) {
+					$selected_theme_files = array_map( 'sanitize_file_name', $_POST['vibecode_deploy_selected_theme_files'] );
+					$selected_theme_files = array_filter( $selected_theme_files );
+				}
+				
 				$build_root = BuildService::build_root_path( (string) $settings['project_slug'], $selected_fingerprint );
-				Logger::info( 'Import started.', array( 'project_slug' => (string) $settings['project_slug'], 'fingerprint' => $selected_fingerprint, 'set_front_page' => (bool) $set_front_page, 'force_claim_unowned' => (bool) $force_claim_unowned, 'deploy_template_parts' => (bool) $deploy_template_parts, 'generate_404_template' => (bool) $generate_404_template, 'force_claim_templates' => (bool) $force_claim_templates, 'validate_cpt_shortcodes' => (bool) $validate_cpt_shortcodes ), (string) $settings['project_slug'] );
-				$import_result = Importer::run_import( (string) $settings['project_slug'], $selected_fingerprint, $build_root, $set_front_page, $force_claim_unowned, $deploy_template_parts, $generate_404_template, $force_claim_templates, $validate_cpt_shortcodes );
+				Logger::info( 'Import started.', array( 
+					'project_slug' => (string) $settings['project_slug'], 
+					'fingerprint' => $selected_fingerprint, 
+					'set_front_page' => (bool) $set_front_page, 
+					'force_claim_unowned' => (bool) $force_claim_unowned, 
+					'deploy_template_parts' => (bool) $deploy_template_parts, 
+					'generate_404_template' => (bool) $generate_404_template, 
+					'force_claim_templates' => (bool) $force_claim_templates, 
+					'validate_cpt_shortcodes' => (bool) $validate_cpt_shortcodes,
+					'selected_pages' => count( $selected_pages ),
+					'selected_css' => count( $selected_css ),
+					'selected_js' => count( $selected_js ),
+					'selected_templates' => count( $selected_templates ),
+					'selected_template_parts' => count( $selected_template_parts ),
+					'selected_theme_files' => count( $selected_theme_files ),
+				), (string) $settings['project_slug'] );
+				$import_result = Importer::run_import( (string) $settings['project_slug'], $selected_fingerprint, $build_root, $set_front_page, $force_claim_unowned, $deploy_template_parts, $generate_404_template, $force_claim_templates, $validate_cpt_shortcodes, $selected_pages, $selected_css, $selected_js, $selected_templates, $selected_template_parts, $selected_theme_files );
 				if ( is_array( $import_result ) && (int) ( $import_result['errors'] ?? 0 ) === 0 ) {
 					BuildService::set_active_fingerprint( (string) $settings['project_slug'], $selected_fingerprint );
 				}
@@ -172,6 +305,11 @@ final class ImportPage {
 			echo '<div class="notice notice-error"><p>' . esc_html( $error ) . '</p></div>';
 		} elseif ( $notice !== '' ) {
 			echo '<div class="notice notice-success"><p>' . esc_html( $notice ) . '</p></div>';
+		}
+
+		// Debug: Show if preflight was attempted but result is null
+		if ( isset( $_POST['vibecode_deploy_preflight'] ) && $preflight === null && $error === '' ) {
+			echo '<div class="notice notice-warning"><p><strong>' . esc_html__( 'Preflight Warning:', 'vibecode-deploy' ) . '</strong> ' . esc_html__( 'Preflight was attempted but no result was returned. Check the logs for details.', 'vibecode-deploy' ) . '</p></div>';
 		}
 
 		$logs_url = admin_url( 'admin.php?page=vibecode-deploy-logs' );
@@ -252,7 +390,7 @@ final class ImportPage {
 				/* translators: %s: Fingerprint */
 				echo '<p>' . sprintf( esc_html__( 'Active build: %s', 'vibecode-deploy' ), '<code>' . esc_html( $active_fingerprint ) . '</code>' ) . '</p>';
 			}
-			echo '<form method="post">';
+			echo '<form method="post" action="' . esc_url( admin_url( 'admin.php?page=vibecode-deploy-import' ) ) . '">';
 			wp_nonce_field( 'vibecode_deploy_preflight', 'vibecode_deploy_preflight_nonce' );
 			echo '<table class="form-table" role="presentation">';
 			echo '<tr><th scope="row">' . esc_html__( 'Staging build', 'vibecode-deploy' ) . '</th><td><select name="vibecode_deploy_fingerprint">';
@@ -269,8 +407,10 @@ final class ImportPage {
 			echo '<p><input type="submit" class="button" name="vibecode_deploy_preflight" value="' . esc_attr__( 'Run Preflight', 'vibecode-deploy' ) . '" /></p>';
 			echo '</form>';
 
-			if ( is_array( $preflight ) && ! empty( $preflight['items'] ) ) {
-				// Check for critical errors first
+			// Show preflight results if available (even if items array is empty)
+			// Note: $preflight is set during POST processing above, so it persists for this page render
+			if ( is_array( $preflight ) ) {
+				// Check for critical errors first (always show, even if items is empty)
 				if ( isset( $preflight['errors'] ) && is_array( $preflight['errors'] ) && ! empty( $preflight['errors'] ) ) {
 					echo '<div class="notice notice-error"><p><strong>' . esc_html__( 'Deployment blocked:', 'vibecode-deploy' ) . '</strong></p>';
 					echo '<ul style="list-style: disc; padding-left: 22px;">';
@@ -279,10 +419,26 @@ final class ImportPage {
 					}
 					echo '</ul>';
 					echo '<p>' . esc_html__( 'Please fix these issues before attempting to deploy.', 'vibecode-deploy' ) . '</p></div>';
-					return;
 				}
-				
-				$create = 0;
+
+				// Show success/error notice
+				if ( isset( $preflight['pages_total'] ) && $preflight['pages_total'] > 0 ) {
+					echo '<div class="notice notice-success is-dismissible"><p><strong>' . esc_html__( 'Preflight completed successfully.', 'vibecode-deploy' ) . '</strong> ' . sprintf( esc_html__( 'Found %d page(s) to process.', 'vibecode-deploy' ), (int) $preflight['pages_total'] ) . '</p></div>';
+				} elseif ( isset( $preflight['pages_total'] ) && $preflight['pages_total'] === 0 ) {
+					echo '<div class="notice notice-warning is-dismissible"><p><strong>' . esc_html__( 'Preflight completed, but no pages were found.', 'vibecode-deploy' ) . '</strong></p></div>';
+				} else {
+					// Preflight ran but pages_total is not set (shouldn't happen, but show feedback)
+					echo '<div class="notice notice-info is-dismissible"><p><strong>' . esc_html__( 'Preflight completed.', 'vibecode-deploy' ) . '</strong></p></div>';
+				}
+
+				// Show message if preflight completed but no items to display
+				if ( empty( $preflight['items'] ) && isset( $preflight['pages_total'] ) && $preflight['pages_total'] > 0 ) {
+					echo '<div class="notice notice-warning is-dismissible"><p><strong>' . esc_html__( 'Preflight completed, but no page details are available.', 'vibecode-deploy' ) . '</strong> ' . esc_html__( 'This may indicate an issue with the staging build structure.', 'vibecode-deploy' ) . '</p></div>';
+				}
+
+				// Show preflight details if items exist
+				if ( ! empty( $preflight['items'] ) ) {
+					$create = 0;
 				$update = 0;
 				$skip = 0;
 				$warnings_total = 0;
@@ -324,9 +480,13 @@ final class ImportPage {
 					}
 					echo '<p>Template Parts — Creates: <strong>' . esc_html( (string) $tp_create ) . '</strong> Updates: <strong>' . esc_html( (string) $tp_update ) . '</strong> Skips (unowned): <strong>' . esc_html( (string) $tp_skip ) . '</strong></p>';
 					
-					echo '<details><summary>Show template part actions</summary>';
+					echo '<details><summary>Select Template Parts to Deploy</summary>';
+					echo '<p>';
+					echo '<button type="button" class="button" id="vibecode-deploy-select-all-template-parts">' . esc_html__( 'Select All', 'vibecode-deploy' ) . '</button> ';
+					echo '<button type="button" class="button" id="vibecode-deploy-deselect-all-template-parts">' . esc_html__( 'Deselect All', 'vibecode-deploy' ) . '</button>';
+					echo '</p>';
 					echo '<table class="widefat striped" style="max-width: 900px;">';
-					echo '<thead><tr><th>Slug</th><th>Action</th><th>Source</th></tr></thead><tbody>';
+					echo '<thead><tr><th style="width: 30px;"><input type="checkbox" id="vibecode-deploy-template-parts-select-all" checked /></th><th>Slug</th><th>Action</th><th>Source</th></tr></thead><tbody>';
 					foreach ( $template_items as $it ) {
 						if ( ! is_array( $it ) ) {
 							continue;
@@ -335,6 +495,7 @@ final class ImportPage {
 						$act = (string) ( $it['action'] ?? '' );
 						$file = (string) ( $it['file'] ?? '' );
 						echo '<tr>';
+						echo '<td><input type="checkbox" name="vibecode_deploy_selected_template_parts[]" value="' . esc_attr( $slug ) . '" class="vibecode-deploy-template-part-checkbox" checked /></td>';
 						echo '<td>' . esc_html( $slug ) . '</td>';
 						echo '<td>' . esc_html( $act ) . '</td>';
 						echo '<td><code>' . esc_html( wp_basename( $file ) ) . '</code></td>';
@@ -365,9 +526,13 @@ final class ImportPage {
 					}
 					echo '<p>Templates — Creates: <strong>' . esc_html( (string) $t_create ) . '</strong> Updates: <strong>' . esc_html( (string) $t_update ) . '</strong> Skips (unowned): <strong>' . esc_html( (string) $t_skip ) . '</strong></p>';
 					
-					echo '<details><summary>Show template actions</summary>';
+					echo '<details><summary>Select Templates to Deploy</summary>';
+					echo '<p>';
+					echo '<button type="button" class="button" id="vibecode-deploy-select-all-templates">' . esc_html__( 'Select All', 'vibecode-deploy' ) . '</button> ';
+					echo '<button type="button" class="button" id="vibecode-deploy-deselect-all-templates">' . esc_html__( 'Deselect All', 'vibecode-deploy' ) . '</button>';
+					echo '</p>';
 					echo '<table class="widefat striped" style="max-width: 900px;">';
-					echo '<thead><tr><th>Slug</th><th>Action</th><th>Source</th></tr></thead><tbody>';
+					echo '<thead><tr><th style="width: 30px;"><input type="checkbox" id="vibecode-deploy-templates-select-all" checked /></th><th>Slug</th><th>Action</th><th>Source</th></tr></thead><tbody>';
 					foreach ( $templates_items as $it ) {
 						if ( ! is_array( $it ) ) {
 							continue;
@@ -376,6 +541,7 @@ final class ImportPage {
 						$act = (string) ( $it['action'] ?? '' );
 						$file = (string) ( $it['file'] ?? '' );
 						echo '<tr>';
+						echo '<td><input type="checkbox" name="vibecode_deploy_selected_templates[]" value="' . esc_attr( $slug ) . '" class="vibecode-deploy-template-checkbox" checked /></td>';
 						echo '<td>' . esc_html( $slug ) . '</td>';
 						echo '<td>' . esc_html( $act ) . '</td>';
 						echo '<td><code>' . esc_html( wp_basename( $file ) ) . '</code></td>';
@@ -426,9 +592,14 @@ final class ImportPage {
 					echo '</details>';
 				}
 
-				echo '<details><summary>Show page actions</summary>';
+				echo '<details open><summary>Select Pages to Deploy</summary>';
+				echo '<p>';
+				echo '<button type="button" class="button" id="vibecode-deploy-select-all-pages">' . esc_html__( 'Select All', 'vibecode-deploy' ) . '</button> ';
+				echo '<button type="button" class="button" id="vibecode-deploy-deselect-all-pages">' . esc_html__( 'Deselect All', 'vibecode-deploy' ) . '</button> ';
+				echo '<span id="vibecode-deploy-page-count" style="margin-left: 10px; font-weight: bold;">' . esc_html__( '0 pages selected', 'vibecode-deploy' ) . '</span>';
+				echo '</p>';
 				echo '<table class="widefat striped" style="max-width: 900px;">';
-				echo '<thead><tr><th>Slug</th><th>Action</th><th>Warnings</th><th>Source</th></tr></thead><tbody>';
+				echo '<thead><tr><th style="width: 30px;"><input type="checkbox" id="vibecode-deploy-pages-select-all" checked /></th><th>Slug</th><th>Action</th><th>Warnings</th><th>Source</th></tr></thead><tbody>';
 				foreach ( $preflight['items'] as $it ) {
 					$slug = (string) ( $it['slug'] ?? '' );
 					$act = (string) ( $it['action'] ?? '' );
@@ -436,6 +607,7 @@ final class ImportPage {
 					$warnings = isset( $it['warnings'] ) && is_array( $it['warnings'] ) ? $it['warnings'] : array();
 					$warnings_count = (int) ( $it['warnings_count'] ?? 0 );
 					echo '<tr>';
+					echo '<td><input type="checkbox" name="vibecode_deploy_selected_pages[]" value="' . esc_attr( $slug ) . '" class="vibecode-deploy-page-checkbox" checked /></td>';
 					echo '<td>' . esc_html( $slug ) . '</td>';
 					echo '<td>' . esc_html( $act ) . '</td>';
 					echo '<td>';
@@ -460,8 +632,85 @@ final class ImportPage {
 				echo '</tbody></table>';
 				echo '</details>';
 
+				// CSS/JS File Selection
+				$css_files = isset( $preflight['css_files'] ) && is_array( $preflight['css_files'] ) ? $preflight['css_files'] : array();
+				$js_files = isset( $preflight['js_files'] ) && is_array( $preflight['js_files'] ) ? $preflight['js_files'] : array();
+				if ( ! empty( $css_files ) || ! empty( $js_files ) ) {
+					echo '<h3 style="margin-top: 24px;">' . esc_html__( 'Select CSS/JS Files to Deploy', 'vibecode-deploy' ) . '</h3>';
+					if ( ! empty( $css_files ) ) {
+						echo '<details open><summary>CSS Files (' . count( $css_files ) . ')</summary>';
+						echo '<p>';
+						echo '<button type="button" class="button" id="vibecode-deploy-select-all-css">' . esc_html__( 'Select All CSS', 'vibecode-deploy' ) . '</button> ';
+						echo '<button type="button" class="button" id="vibecode-deploy-deselect-all-css">' . esc_html__( 'Deselect All CSS', 'vibecode-deploy' ) . '</button>';
+						echo '</p>';
+						echo '<ul style="list-style: none; padding-left: 0;">';
+						foreach ( $css_files as $css_file ) {
+							$css_file = (string) $css_file;
+							echo '<li style="margin-bottom: 5px;">';
+							echo '<label><input type="checkbox" name="vibecode_deploy_selected_css[]" value="' . esc_attr( $css_file ) . '" class="vibecode-deploy-css-checkbox" checked /> ';
+							echo '<code>' . esc_html( $css_file ) . '</code></label>';
+							echo '</li>';
+						}
+						echo '</ul>';
+						echo '</details>';
+					}
+					if ( ! empty( $js_files ) ) {
+						echo '<details open><summary>JS Files (' . count( $js_files ) . ')</summary>';
+						echo '<p>';
+						echo '<button type="button" class="button" id="vibecode-deploy-select-all-js">' . esc_html__( 'Select All JS', 'vibecode-deploy' ) . '</button> ';
+						echo '<button type="button" class="button" id="vibecode-deploy-deselect-all-js">' . esc_html__( 'Deselect All JS', 'vibecode-deploy' ) . '</button>';
+						echo '</p>';
+						echo '<ul style="list-style: none; padding-left: 0;">';
+						foreach ( $js_files as $js_file ) {
+							$js_file = (string) $js_file;
+							echo '<li style="margin-bottom: 5px;">';
+							echo '<label><input type="checkbox" name="vibecode_deploy_selected_js[]" value="' . esc_attr( $js_file ) . '" class="vibecode-deploy-js-checkbox" checked /> ';
+							echo '<code>' . esc_html( $js_file ) . '</code></label>';
+							echo '</li>';
+						}
+						echo '</ul>';
+						echo '</details>';
+					}
+				}
+
+				// Theme File Selection
+				$theme_files = isset( $preflight['theme_files'] ) && is_array( $preflight['theme_files'] ) ? $preflight['theme_files'] : array();
+				if ( ! empty( $theme_files ) ) {
+					echo '<h3 style="margin-top: 24px;">' . esc_html__( 'Select Theme Files to Deploy', 'vibecode-deploy' ) . '</h3>';
+					echo '<details open><summary>Theme Files (' . count( $theme_files ) . ')</summary>';
+					echo '<p>';
+					echo '<button type="button" class="button" id="vibecode-deploy-select-all-theme-files">' . esc_html__( 'Select All', 'vibecode-deploy' ) . '</button> ';
+					echo '<button type="button" class="button" id="vibecode-deploy-deselect-all-theme-files">' . esc_html__( 'Deselect All', 'vibecode-deploy' ) . '</button>';
+					echo '</p>';
+					echo '<ul style="list-style: none; padding-left: 0;">';
+					$has_functions = false;
+					$acf_files = array();
+					foreach ( $theme_files as $theme_file ) {
+						$theme_file = (string) $theme_file;
+						if ( $theme_file === 'functions.php' ) {
+							$has_functions = true;
+						} elseif ( strpos( $theme_file, 'acf-json/' ) === 0 ) {
+							$acf_files[] = $theme_file;
+						}
+					}
+					if ( $has_functions ) {
+						echo '<li style="margin-bottom: 5px;">';
+						echo '<label><input type="checkbox" name="vibecode_deploy_selected_theme_files[]" value="functions.php" class="vibecode-deploy-theme-file-checkbox" checked /> ';
+						echo '<code>functions.php</code></label>';
+						echo '</li>';
+					}
+					if ( ! empty( $acf_files ) ) {
+						echo '<li style="margin-bottom: 5px;">';
+						echo '<label><input type="checkbox" name="vibecode_deploy_selected_theme_files[]" value="acf-json/*.json" class="vibecode-deploy-theme-file-checkbox" checked /> ';
+						echo '<code>acf-json/*.json</code> (' . count( $acf_files ) . ' files)</label>';
+						echo '</li>';
+					}
+					echo '</ul>';
+					echo '</details>';
+				}
+
 				echo '<h2 class="title" style="margin-top: 24px;">3) Deploy Build</h2>';
-				echo '<form method="post">';
+				echo '<form method="post" id="vibecode-deploy-import-form">';
 				wp_nonce_field( 'vibecode_deploy_run_import', 'vibecode_deploy_run_import_nonce' );
 				echo '<input type="hidden" name="vibecode_deploy_fingerprint" value="' . esc_attr( $selected_fingerprint ) . '" />';
 				echo '<label style="display:block; margin: 8px 0;">';
@@ -484,8 +733,190 @@ final class ImportPage {
 				echo '<label style="display:block; margin: 8px 0;">';
 				echo '<input type="checkbox" name="vibecode_deploy_validate_cpt_shortcodes" value="1" /> Optional: Validate CPT shortcode coverage (recommended sections only; may warn or fail based on strict mode)';
 				echo '</label>';
-				echo '<p><input type="submit" class="button button-primary" name="vibecode_deploy_run_import" value="Deploy Build" /></p>';
+				echo '<p><input type="submit" class="button button-primary" name="vibecode_deploy_run_import" value="Deploy Build" id="vibecode-deploy-submit" /></p>';
 				echo '</form>';
+				
+				// JavaScript for selection management
+				?>
+				<script>
+				(function() {
+					'use strict';
+					
+					function updatePageCount() {
+						var checkboxes = document.querySelectorAll('.vibecode-deploy-page-checkbox:checked');
+						var count = checkboxes.length;
+						var total = document.querySelectorAll('.vibecode-deploy-page-checkbox').length;
+						var countEl = document.getElementById('vibecode-deploy-page-count');
+						if (countEl) {
+							countEl.textContent = count + ' of ' + total + ' pages selected';
+						}
+					}
+					
+					// Page selection
+					var pagesSelectAll = document.getElementById('vibecode-deploy-pages-select-all');
+					var pagesSelectAllBtn = document.getElementById('vibecode-deploy-select-all-pages');
+					var pagesDeselectAllBtn = document.getElementById('vibecode-deploy-deselect-all-pages');
+					
+					if (pagesSelectAll) {
+						pagesSelectAll.addEventListener('change', function() {
+							document.querySelectorAll('.vibecode-deploy-page-checkbox').forEach(function(cb) {
+								cb.checked = pagesSelectAll.checked;
+							});
+							updatePageCount();
+						});
+					}
+					
+					if (pagesSelectAllBtn) {
+						pagesSelectAllBtn.addEventListener('click', function() {
+							document.querySelectorAll('.vibecode-deploy-page-checkbox').forEach(function(cb) {
+								cb.checked = true;
+							});
+							if (pagesSelectAll) pagesSelectAll.checked = true;
+							updatePageCount();
+						});
+					}
+					
+					if (pagesDeselectAllBtn) {
+						pagesDeselectAllBtn.addEventListener('click', function() {
+							document.querySelectorAll('.vibecode-deploy-page-checkbox').forEach(function(cb) {
+								cb.checked = false;
+							});
+							if (pagesSelectAll) pagesSelectAll.checked = false;
+							updatePageCount();
+						});
+					}
+					
+					document.querySelectorAll('.vibecode-deploy-page-checkbox').forEach(function(cb) {
+						cb.addEventListener('change', updatePageCount);
+					});
+					
+					// Template selection
+					var templatesSelectAll = document.getElementById('vibecode-deploy-templates-select-all');
+					var templatesSelectAllBtn = document.getElementById('vibecode-deploy-select-all-templates');
+					var templatesDeselectAllBtn = document.getElementById('vibecode-deploy-deselect-all-templates');
+					
+					if (templatesSelectAll) {
+						templatesSelectAll.addEventListener('change', function() {
+							document.querySelectorAll('.vibecode-deploy-template-checkbox').forEach(function(cb) {
+								cb.checked = templatesSelectAll.checked;
+							});
+						});
+					}
+					
+					if (templatesSelectAllBtn) {
+						templatesSelectAllBtn.addEventListener('click', function() {
+							document.querySelectorAll('.vibecode-deploy-template-checkbox').forEach(function(cb) {
+								cb.checked = true;
+							});
+							if (templatesSelectAll) templatesSelectAll.checked = true;
+						});
+					}
+					
+					if (templatesDeselectAllBtn) {
+						templatesDeselectAllBtn.addEventListener('click', function() {
+							document.querySelectorAll('.vibecode-deploy-template-checkbox').forEach(function(cb) {
+								cb.checked = false;
+							});
+							if (templatesSelectAll) templatesSelectAll.checked = false;
+						});
+					}
+					
+					// Template part selection
+					var templatePartsSelectAll = document.getElementById('vibecode-deploy-template-parts-select-all');
+					var templatePartsSelectAllBtn = document.getElementById('vibecode-deploy-select-all-template-parts');
+					var templatePartsDeselectAllBtn = document.getElementById('vibecode-deploy-deselect-all-template-parts');
+					
+					if (templatePartsSelectAll) {
+						templatePartsSelectAll.addEventListener('change', function() {
+							document.querySelectorAll('.vibecode-deploy-template-part-checkbox').forEach(function(cb) {
+								cb.checked = templatePartsSelectAll.checked;
+							});
+						});
+					}
+					
+					if (templatePartsSelectAllBtn) {
+						templatePartsSelectAllBtn.addEventListener('click', function() {
+							document.querySelectorAll('.vibecode-deploy-template-part-checkbox').forEach(function(cb) {
+								cb.checked = true;
+							});
+							if (templatePartsSelectAll) templatePartsSelectAll.checked = true;
+						});
+					}
+					
+					if (templatePartsDeselectAllBtn) {
+						templatePartsDeselectAllBtn.addEventListener('click', function() {
+							document.querySelectorAll('.vibecode-deploy-template-part-checkbox').forEach(function(cb) {
+								cb.checked = false;
+							});
+							if (templatePartsSelectAll) templatePartsSelectAll.checked = false;
+						});
+					}
+					
+					// CSS selection
+					var cssSelectAllBtn = document.getElementById('vibecode-deploy-select-all-css');
+					var cssDeselectAllBtn = document.getElementById('vibecode-deploy-deselect-all-css');
+					
+					if (cssSelectAllBtn) {
+						cssSelectAllBtn.addEventListener('click', function() {
+							document.querySelectorAll('.vibecode-deploy-css-checkbox').forEach(function(cb) {
+								cb.checked = true;
+							});
+						});
+					}
+					
+					if (cssDeselectAllBtn) {
+						cssDeselectAllBtn.addEventListener('click', function() {
+							document.querySelectorAll('.vibecode-deploy-css-checkbox').forEach(function(cb) {
+								cb.checked = false;
+							});
+						});
+					}
+					
+					// JS selection
+					var jsSelectAllBtn = document.getElementById('vibecode-deploy-select-all-js');
+					var jsDeselectAllBtn = document.getElementById('vibecode-deploy-deselect-all-js');
+					
+					if (jsSelectAllBtn) {
+						jsSelectAllBtn.addEventListener('click', function() {
+							document.querySelectorAll('.vibecode-deploy-js-checkbox').forEach(function(cb) {
+								cb.checked = true;
+							});
+						});
+					}
+					
+					if (jsDeselectAllBtn) {
+						jsDeselectAllBtn.addEventListener('click', function() {
+							document.querySelectorAll('.vibecode-deploy-js-checkbox').forEach(function(cb) {
+								cb.checked = false;
+							});
+						});
+					}
+					
+					// Theme file selection
+					var themeFilesSelectAllBtn = document.getElementById('vibecode-deploy-select-all-theme-files');
+					var themeFilesDeselectAllBtn = document.getElementById('vibecode-deploy-deselect-all-theme-files');
+					
+					if (themeFilesSelectAllBtn) {
+						themeFilesSelectAllBtn.addEventListener('click', function() {
+							document.querySelectorAll('.vibecode-deploy-theme-file-checkbox').forEach(function(cb) {
+								cb.checked = true;
+							});
+						});
+					}
+					
+					if (themeFilesDeselectAllBtn) {
+						themeFilesDeselectAllBtn.addEventListener('click', function() {
+							document.querySelectorAll('.vibecode-deploy-theme-file-checkbox').forEach(function(cb) {
+								cb.checked = false;
+							});
+						});
+					}
+					
+					// Initial page count
+					updatePageCount();
+				})();
+				</script>
+				<?php
 			}
 
 			if ( is_array( $import_result ) ) {
@@ -542,6 +973,7 @@ final class ImportPage {
 
 					echo '</div>';
 				}
+			}
 			}
 		}
 		echo '</div>';

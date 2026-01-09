@@ -86,7 +86,7 @@ get_footer();';
         // Check if asset enqueueing already exists
         if ( strpos( $content, 'vibecode-deploy-styles' ) === false ) {
             // Add at the end of file (safer)
-            $new_code = "\n// Vibe Code Deploy Asset Enqueueing\nadd_action('wp_enqueue_scripts', function() {\n    if (file_exists(WP_PLUGIN_DIR . '/vibecode-deploy/assets/css/styles.css')) {\n        wp_enqueue_style('vibecode-deploy-styles', plugins_url('assets/css/styles.css', 'vibecode-deploy'));\n    }\n    if (file_exists(WP_PLUGIN_DIR . '/vibecode-deploy/assets/css/icons.css')) {\n        wp_enqueue_style('vibecode-deploy-icons', plugins_url('assets/css/icons.css', 'vibecode-deploy'));\n    }\n}, 20);\n";
+            $new_code = "\n// Vibe Code Deploy Asset Enqueueing\nadd_action('wp_enqueue_scripts', function() {\n    \$version = defined('VIBECODE_DEPLOY_PLUGIN_VERSION') ? VIBECODE_DEPLOY_PLUGIN_VERSION : '0.1.1';\n    if (file_exists(WP_PLUGIN_DIR . '/vibecode-deploy/assets/css/styles.css')) {\n        wp_enqueue_style('vibecode-deploy-styles', plugins_url('assets/css/styles.css', 'vibecode-deploy'), array(), \$version);\n    }\n    if (file_exists(WP_PLUGIN_DIR . '/vibecode-deploy/assets/css/icons.css')) {\n        wp_enqueue_style('vibecode-deploy-icons', plugins_url('assets/css/icons.css', 'vibecode-deploy'), array(), \$version);\n    }\n}, 20);\n";
             
             // Append to file
             if ( file_put_contents( $functions_file, $content . $new_code ) !== false ) {

@@ -782,6 +782,17 @@ final class DeployService {
 	 * @return array Deployment results with 'pages_created', 'pages_updated', 'templates_created', etc.
 	 */
 	public static function run_import( string $project_slug, string $fingerprint, string $build_root, bool $set_front_page, bool $force_claim_unowned, bool $deploy_template_parts = true, bool $generate_404_template = true, bool $force_claim_templates = false, bool $validate_cpt_shortcodes = false, array $selected_pages = array(), array $selected_css = array(), array $selected_js = array(), array $selected_templates = array(), array $selected_template_parts = array(), array $selected_theme_files = array() ): array {
+		// Optional: Flush caches before import for fresh deployment
+		// This ensures no stale data interferes with new deployment
+		if ( $force_claim_templates ) {
+			CleanupService::flush_all_caches( $project_slug );
+			Logger::info( 'Flushed all caches before import for fresh deployment.', array(
+				'project_slug' => $project_slug,
+				'fingerprint' => $fingerprint,
+				'force_claim_templates' => $force_claim_templates,
+			), $project_slug );
+		}
+		
 		// Copy assets (filtering will be handled by AssetService if needed, or we can filter here)
 		AssetService::copy_assets_to_plugin_folder( $build_root );
 		$active_before = BuildService::get_active_fingerprint( $project_slug );
@@ -861,6 +872,16 @@ final class DeployService {
 			if ( ! $main ) {
 				$errors++;
 				continue;
+			}
+
+			// Extract body class from source HTML
+			$body_class = '';
+			$body = $xpath->query( '//body' )->item( 0 );
+			if ( $body instanceof \DOMElement ) {
+				$body_class_attr = $body->getAttribute( 'class' );
+				if ( is_string( $body_class_attr ) && $body_class_attr !== '' ) {
+					$body_class = sanitize_text_field( trim( $body_class_attr ) );
+				}
 			}
 
 			if ( is_array( $placeholder_config ) && ! empty( $placeholder_config ) && empty( $placeholder_config['_error'] ) ) {
@@ -1005,10 +1026,25 @@ final class DeployService {
 			update_post_meta( $post_id, Importer::META_FINGERPRINT, $fingerprint );
 			$css_assets = $assets['css'] ?? array();
 			$js_assets = $assets['js'] ?? array();
+			$font_assets = $assets['fonts'] ?? array();
 			
-			// Store CSS and JS assets in post meta for later enqueuing
+			// Store CSS, JS, and Font assets in post meta for later enqueuing
 			update_post_meta( $post_id, Importer::META_ASSET_CSS, $css_assets );
 			update_post_meta( $post_id, Importer::META_ASSET_JS, $js_assets );
+			update_post_meta( $post_id, Importer::META_ASSET_FONTS, $font_assets );
+			
+			// Store body class in post meta for body_class filter
+			if ( $body_class !== '' ) {
+				update_post_meta( $post_id, Importer::META_BODY_CLASS, $body_class );
+				Logger::info( 'Stored body class in post meta.', array(
+					'page_slug' => $slug,
+					'post_id' => $post_id,
+					'body_class' => $body_class,
+				), $project_slug );
+			} else {
+				// Remove body class meta if not present in source
+				delete_post_meta( $post_id, Importer::META_BODY_CLASS );
+			}
 			
 			// Log asset storage for debugging
 			if ( ! empty( $css_assets ) ) {

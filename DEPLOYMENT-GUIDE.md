@@ -76,8 +76,16 @@ vibecode-deploy-staging/
 
 2. ZIP the folder:
 ```bash
-zip -r vibecode-deploy-staging.zip vibecode-deploy-staging/
+zip -r vibecode-deploy-staging.zip vibecode-deploy-staging/ \
+  -x "*.DS_Store" "__MACOSX/*" "*/__MACOSX/*" "._*"
 ```
+
+**Standard Location:** For consistency, copy the staging zip to `VibeCodeCircle/dist/`:
+```bash
+cp vibecode-deploy-staging.zip /path/to/VibeCodeCircle/dist/
+```
+
+**Note:** All distribution files (plugin and staging zips) should be placed in `VibeCodeCircle/dist/` directory. See [Build Guide](docs/BUILD.md) for complete build instructions.
 
 ## Step 3: Deploy to WordPress
 
@@ -154,6 +162,8 @@ add_action('wp_enqueue_scripts', function() {
 1. Go to **Appearance → Editor**
 2. Verify Header and Footer template parts exist
 3. Check they contain the correct content
+4. **Automatic Template Assignment**: Custom page templates (`page-{slug}.php`) are automatically assigned during deployment
+5. **Automatic CPT Templates**: Default `single-{post_type}.html` block templates are automatically created for all public CPTs
 
 ## Troubleshooting
 

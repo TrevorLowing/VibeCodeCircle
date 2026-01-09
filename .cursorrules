@@ -90,6 +90,26 @@ plugin-name/
 
 **Reference**: See `docs/WORDPRESS_PLUGIN_BEST_PRACTICES.md#database-management`
 
+### Version Management
+
+**REQUIRED**: Increment plugin version for all code changes.
+
+- **ALWAYS increment version** when making any code changes to the plugin
+- **Minimum increment**: Patch version (e.g., `0.1.0` → `0.1.1`)
+- **Update locations**:
+  1. Plugin header `Version:` in main plugin file (`vibecode-deploy.php`)
+  2. `VIBECODE_DEPLOY_PLUGIN_VERSION` constant definition
+  3. Fallback version strings in `ThemeSetupService.php` and `ThemeSetupService-safe.php` (if present)
+- **Version format**: Semantic versioning (`MAJOR.MINOR.PATCH`)
+- **Why**: Version increments ensure browser cache busting for CSS/JS assets and proper upgrade detection
+
+**Example**:
+```php
+// vibecode-deploy.php
+ * Version: 0.1.1
+define( 'VIBECODE_DEPLOY_PLUGIN_VERSION', '0.1.1' );
+```
+
 ### Admin UI Standards
 
 **REQUIRED**: Follow WordPress admin UI standards.
@@ -176,6 +196,7 @@ plugin-name/
 10. Skip nonce verification for form submissions
 11. Skip internationalization for user-facing strings
 12. Skip automated tests for critical functionality
+13. **Make code changes without incrementing plugin version**
 
 ## Quick Reference
 

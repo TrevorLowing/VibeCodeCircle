@@ -3,9 +3,9 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../" && pwd)"
 FIXTURES="${REPO_ROOT}/testing/plugins/vibecode-deploy/data/fixtures/cfa-root"
-OUT_BASE="${REPO_ROOT}/testing/plugins/vibecode-deploy/data/build"
-STAGING_DIR="${OUT_BASE}/vibecode-deploy-staging"
-ZIP_PATH="${OUT_BASE}/vibecode-deploy-staging.zip"
+DIST_DIR="${REPO_ROOT}/dist"
+STAGING_DIR="${DIST_DIR}/vibecode-deploy-staging"
+ZIP_PATH="${DIST_DIR}/vibecode-deploy-staging.zip"
 
 if [ ! -d "${FIXTURES}" ]; then
   echo "Fixtures not found at: ${FIXTURES}" 1>&2
@@ -29,11 +29,15 @@ for d in css js resources; do
 done
 
 rm -f "${ZIP_PATH}"
+rm -rf "${STAGING_DIR}"
 
 (
-  cd "${OUT_BASE}"
+  cd "${DIST_DIR}"
   zip -r "$(basename "${ZIP_PATH}")" "vibecode-deploy-staging" \
     -x "*.DS_Store" "__MACOSX/*" "*/__MACOSX/*" "._*" >/dev/null
 )
 
-echo "Built staging zip: ${ZIP_PATH}"
+# Clean up staging directory after zipping
+rm -rf "${STAGING_DIR}"
+
+echo "✓ Built staging zip: ${ZIP_PATH}"

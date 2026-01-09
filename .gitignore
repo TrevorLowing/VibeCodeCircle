@@ -1,0 +1,23 @@
+# Distribution files (zip files are generated, not tracked)
+dist/*.zip
+
+# Keep dist directory structure
+!dist/.gitkeep
+
+# OS files
+.DS_Store
+**/.DS_Store
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp

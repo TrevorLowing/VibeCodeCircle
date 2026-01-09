@@ -449,6 +449,40 @@ echo '<a href="' . esc_url( __( 'https://example.com', 'vibecode-deploy' ) ) . '
 - **Requires PHP**: Minimum PHP version
 - **Network**: Whether plugin is network-wide (multisite)
 
+### Version Management
+
+**REQUIRED**: Increment plugin version for all code changes.
+
+**Rules**:
+- **ALWAYS increment version** when making any code changes to the plugin
+- **Minimum increment**: Patch version (e.g., `0.1.0` → `0.1.1`)
+- **Update all locations**:
+  1. Plugin header `Version:` in main plugin file
+  2. `VIBECODE_DEPLOY_PLUGIN_VERSION` constant definition
+  3. Fallback version strings in generated code (e.g., `ThemeSetupService.php`)
+
+**Why Version Increments Matter**:
+- **Cache Busting**: Version parameters in `wp_enqueue_style()` and `wp_enqueue_script()` ensure browsers reload assets
+- **Upgrade Detection**: WordPress can detect plugin updates and run upgrade routines
+- **User Experience**: Users see updated functionality immediately without manual cache clearing
+
+**Example**:
+```php
+// vibecode-deploy.php
+/**
+ * Version: 0.1.1
+ */
+define( 'VIBECODE_DEPLOY_PLUGIN_VERSION', '0.1.1' );
+
+// Usage in enqueue calls
+wp_enqueue_style( 'my-style', $url, array(), VIBECODE_DEPLOY_PLUGIN_VERSION );
+```
+
+**Version Format**: Use semantic versioning (`MAJOR.MINOR.PATCH`)
+- **MAJOR**: Breaking changes
+- **MINOR**: New features (backward compatible)
+- **PATCH**: Bug fixes and small improvements
+
 ## Readme.txt Format
 
 **For WordPress.org repository**, use standard readme.txt format:

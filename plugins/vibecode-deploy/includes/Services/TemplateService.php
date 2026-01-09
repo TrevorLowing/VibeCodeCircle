@@ -6,12 +6,12 @@ use VibeCode\Deploy\Importer;
 
 defined( 'ABSPATH' ) || exit;
 
-final class TemplateService {
-	private static function block_templates_supported(): bool {
+	final class TemplateService {
+	public static function block_templates_supported(): bool {
 		return post_type_exists( 'wp_template' ) && post_type_exists( 'wp_template_part' );
 	}
 
-	private static function current_theme_slug(): string {
+	public static function current_theme_slug(): string {
 		return sanitize_key( (string) get_stylesheet() );
 	}
 
@@ -59,7 +59,7 @@ final class TemplateService {
 		return null;
 	}
 
-	private static function get_template_part_by_slug( string $slug ) {
+	public static function get_template_part_by_slug( string $slug ) {
 		$slug = sanitize_key( $slug );
 		if ( $slug === '' ) {
 			return null;
@@ -90,7 +90,7 @@ final class TemplateService {
 		return get_page_by_path( $slug, OBJECT, 'wp_template_part' );
 	}
 
-	private static function get_template_by_slug( string $slug ) {
+	public static function get_template_by_slug( string $slug ) {
 		$slug = sanitize_key( $slug );
 		if ( $slug === '' ) {
 			return null;
@@ -618,7 +618,340 @@ final class TemplateService {
 		return $out;
 	}
 
-	private static function upsert_template( string $project_slug, string $fingerprint, string $slug, string $content_blocks, bool $force_claim_unowned ): array {
+	/**
+	 * Ensure block templates exist for all registered public post types (including built-in 'post')
+	 * Creates default single-{post_type}.html templates if missing
+	 */
+	public static function ensure_post_type_templates( string $project_slug, string $fingerprint ): void {
+		if ( ! self::block_templates_supported() ) {
+			return;
+		}
+
+		// Get all registered public post types (including built-in 'post')
+		$post_types = get_post_types( array(
+			'public' => true,
+		), 'names' );
+
+		if ( empty( $post_types ) ) {
+			return;
+		}
+
+		$theme_dir = get_stylesheet_directory();
+		$theme_slug = self::current_theme_slug();
+		$header_slug = 'header';
+		$footer_slug = 'footer';
+
+		// Check if header/footer template parts exist
+		$header_part = self::get_template_part_by_slug( $header_slug );
+		$footer_part = self::get_template_part_by_slug( $footer_slug );
+
+		if ( ! $header_part || ! isset( $header_part->ID ) || ! $footer_part || ! isset( $footer_part->ID ) ) {
+			// Can't create templates without header/footer parts
+			return;
+		}
+
+		foreach ( $post_types as $post_type ) {
+			$slug = 'single-' . $post_type;
+			$existing = self::get_template_by_slug( $slug );
+
+			// Only create if template doesn't exist
+			if ( $existing && isset( $existing->ID ) ) {
+				continue;
+			}
+
+			// Build default template content
+			$content_blocks = self::build_single_template_blocks( $header_slug, $footer_slug, $post_type );
+
+			// Create the template
+			$res = self::upsert_template( $project_slug, $fingerprint, $slug, $content_blocks, false );
+
+			if ( ! empty( $res['ok'] ) && ! empty( $res['created'] ) ) {
+				\VibeCode\Deploy\Logger::info( 'Created default post type single template.', array( 'post_type' => $post_type, 'slug' => $slug ), $project_slug );
+			}
+		}
+	}
+
+	/**
+	 * Ensure block templates exist for default WordPress post type archives
+	 * Creates home.html (blog posts index) and archive.html (category/tag/date archives) if missing
+	 */
+	public static function ensure_default_post_templates( string $project_slug, string $fingerprint ): void {
+		if ( ! self::block_templates_supported() ) {
+			return;
+		}
+
+		$header_slug = 'header';
+		$footer_slug = 'footer';
+
+		// Check if header/footer template parts exist
+		$header_part = self::get_template_part_by_slug( $header_slug );
+		$footer_part = self::get_template_part_by_slug( $footer_slug );
+
+		if ( ! $header_part || ! isset( $header_part->ID ) || ! $footer_part || ! isset( $footer_part->ID ) ) {
+			// Can't create templates without header/footer parts
+			return;
+		}
+
+		// Create home.html (blog posts index)
+		$home_slug = 'home';
+		$existing_home = self::get_template_by_slug( $home_slug );
+		if ( ! $existing_home || ! isset( $existing_home->ID ) ) {
+			$home_blocks = self::build_home_template_blocks( $header_slug, $footer_slug );
+			$res = self::upsert_template( $project_slug, $fingerprint, $home_slug, $home_blocks, false );
+			if ( ! empty( $res['ok'] ) && ! empty( $res['created'] ) ) {
+				\VibeCode\Deploy\Logger::info( 'Created default home template.', array( 'slug' => $home_slug ), $project_slug );
+			}
+		}
+
+		// Create archive.html (category/tag/date archives)
+		$archive_slug = 'archive';
+		$existing_archive = self::get_template_by_slug( $archive_slug );
+		if ( ! $existing_archive || ! isset( $existing_archive->ID ) ) {
+			$archive_blocks = self::build_archive_template_blocks( $header_slug, $footer_slug );
+			$res = self::upsert_template( $project_slug, $fingerprint, $archive_slug, $archive_blocks, false );
+			if ( ! empty( $res['ok'] ) && ! empty( $res['created'] ) ) {
+				\VibeCode\Deploy\Logger::info( 'Created default archive template.', array( 'slug' => $archive_slug ), $project_slug );
+			}
+		}
+	}
+
+	/**
+	 * Build default block template content for single posts (all post types)
+	 */
+	private static function build_single_template_blocks( string $header_slug, string $footer_slug, string $post_type ): string {
+		$header_slug = sanitize_key( $header_slug );
+		$footer_slug = sanitize_key( $footer_slug );
+		$post_type = sanitize_key( $post_type );
+
+		// Get class prefix from settings
+		$settings = \VibeCode\Deploy\Settings::get_all();
+		$class_prefix = isset( $settings['class_prefix'] ) && is_string( $settings['class_prefix'] ) ? trim( (string) $settings['class_prefix'] ) : '';
+		
+		// Build class names with prefix
+		$main_class = $class_prefix !== '' ? $class_prefix . 'main' : 'main';
+		$hero_class = $class_prefix !== '' ? $class_prefix . 'hero' : 'hero';
+		$hero_compact_class = $class_prefix !== '' ? $class_prefix . 'hero--compact' : 'hero--compact';
+		$hero_gold_class = $class_prefix !== '' ? $class_prefix . 'hero--gold' : 'hero--gold';
+		$hero_container_class = $class_prefix !== '' ? $class_prefix . 'hero__container' : 'hero__container';
+		$hero_content_class = $class_prefix !== '' ? $class_prefix . 'hero__content' : 'hero__content';
+		$hero_title_class = $class_prefix !== '' ? $class_prefix . 'hero__title' : 'hero__title';
+		$page_section_class = $class_prefix !== '' ? $class_prefix . 'page-section' : 'page-section';
+		$container_class = $class_prefix !== '' ? $class_prefix . 'container' : 'container';
+		$page_card_class = $class_prefix !== '' ? $class_prefix . 'page-card' : 'page-card';
+		$page_card_text_class = $class_prefix !== '' ? $class_prefix . 'page-card__text' : 'page-card__text';
+
+		$out = '';
+		if ( $header_slug !== '' ) {
+			$attrs = array( 'slug' => $header_slug, 'tagName' => 'header' );
+			$out .= '<!-- wp:template-part ' . wp_json_encode( $attrs ) . ' /-->' . "\n\n";
+		}
+
+		$out .= '<!-- wp:group {"tagName":"main","className":"' . esc_attr( $main_class ) . '"} -->' . "\n";
+		$out .= '<main id="main" class="wp-block-group ' . esc_attr( $main_class ) . '" role="main">' . "\n";
+		$out .= '<!-- wp:html -->' . "\n";
+		$out .= '<section class="' . esc_attr( $hero_class . ' ' . $hero_compact_class . ' ' . $hero_gold_class ) . '">' . "\n";
+		$out .= '<div class="' . esc_attr( $hero_container_class ) . '">' . "\n";
+		$out .= '<div class="' . esc_attr( $hero_content_class ) . '">' . "\n";
+		$out .= '<!-- wp:post-title {"level":1,"className":"' . esc_attr( $hero_title_class ) . '"} /-->' . "\n";
+		$out .= '</div>' . "\n";
+		$out .= '</div>' . "\n";
+		$out .= '</section>' . "\n";
+		$out .= '<!-- /wp:html -->' . "\n\n";
+		$out .= '<!-- wp:group {"className":"' . esc_attr( $page_section_class ) . '"} -->' . "\n";
+		$out .= '<section class="wp-block-group ' . esc_attr( $page_section_class ) . '">' . "\n";
+		$out .= '<!-- wp:group {"className":"' . esc_attr( $container_class ) . '"} -->' . "\n";
+		$out .= '<div class="wp-block-group ' . esc_attr( $container_class ) . '">' . "\n";
+		$out .= '<!-- wp:group {"className":"' . esc_attr( $page_card_class ) . '"} -->' . "\n";
+		$out .= '<div class="wp-block-group ' . esc_attr( $page_card_class ) . '">' . "\n";
+		$out .= '<!-- wp:group {"className":"' . esc_attr( $page_card_text_class ) . '"} -->' . "\n";
+		$out .= '<div class="wp-block-group ' . esc_attr( $page_card_text_class ) . '">' . "\n";
+		$out .= '<!-- wp:post-content {"layout":{"type":"constrained"}} /-->' . "\n";
+		$out .= '</div>' . "\n";
+		$out .= '<!-- /wp:group -->' . "\n";
+		$out .= '</div>' . "\n";
+		$out .= '<!-- /wp:group -->' . "\n";
+		$out .= '</div>' . "\n";
+		$out .= '<!-- /wp:group -->' . "\n";
+		$out .= '</section>' . "\n";
+		$out .= '<!-- /wp:group -->' . "\n";
+		$out .= '</main>' . "\n";
+		$out .= '<!-- /wp:group -->' . "\n\n";
+
+		if ( $footer_slug !== '' ) {
+			$attrs = array( 'slug' => $footer_slug, 'tagName' => 'footer' );
+			$out .= '<!-- wp:template-part ' . wp_json_encode( $attrs ) . ' /-->' . "\n";
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Build default block template content for home.html (blog posts index)
+	 */
+	private static function build_home_template_blocks( string $header_slug, string $footer_slug ): string {
+		$header_slug = sanitize_key( $header_slug );
+		$footer_slug = sanitize_key( $footer_slug );
+
+		// Get class prefix from settings
+		$settings = \VibeCode\Deploy\Settings::get_all();
+		$class_prefix = isset( $settings['class_prefix'] ) && is_string( $settings['class_prefix'] ) ? trim( (string) $settings['class_prefix'] ) : '';
+		
+		// Build class names with prefix
+		$main_class = $class_prefix !== '' ? $class_prefix . 'main' : 'main';
+		$page_section_class = $class_prefix !== '' ? $class_prefix . 'page-section' : 'page-section';
+		$container_class = $class_prefix !== '' ? $class_prefix . 'container' : 'container';
+		$page_card_class = $class_prefix !== '' ? $class_prefix . 'page-card' : 'page-card';
+		$page_card_title_class = $class_prefix !== '' ? $class_prefix . 'page-card__title' : 'page-card__title';
+		$page_card_meta_class = $class_prefix !== '' ? $class_prefix . 'page-card__meta' : 'page-card__meta';
+		$page_card_text_class = $class_prefix !== '' ? $class_prefix . 'page-card__text' : 'page-card__text';
+
+		$out = '';
+		if ( $header_slug !== '' ) {
+			$attrs = array( 'slug' => $header_slug, 'tagName' => 'header' );
+			$out .= '<!-- wp:template-part ' . wp_json_encode( $attrs ) . ' /-->' . "\n\n";
+		}
+
+		$out .= '<!-- wp:group {"tagName":"main","className":"' . esc_attr( $main_class ) . '"} -->' . "\n";
+		$out .= '<main id="main" class="wp-block-group ' . esc_attr( $main_class ) . '" role="main">' . "\n";
+		$out .= '<!-- wp:group {"className":"' . esc_attr( $page_section_class ) . '"} -->' . "\n";
+		$out .= '<section class="wp-block-group ' . esc_attr( $page_section_class ) . '">' . "\n";
+		$out .= '<!-- wp:group {"className":"' . esc_attr( $container_class ) . '"} -->' . "\n";
+		$out .= '<div class="wp-block-group ' . esc_attr( $container_class ) . '">' . "\n";
+		$out .= '<!-- wp:query {"queryId":0,"query":{"perPage":10,"pages":0,"offset":0,"postType":"post","order":"desc","orderBy":"date","author":"","search":"","exclude":[],"sticky":"","inherit":true}} -->' . "\n";
+		$out .= '<div class="wp-block-query">' . "\n";
+		$out .= '<!-- wp:post-template -->' . "\n";
+		$out .= '<!-- wp:group {"className":"' . esc_attr( $page_card_class ) . '","layout":{"type":"constrained"}} -->' . "\n";
+		$out .= '<div class="wp-block-group ' . esc_attr( $page_card_class ) . '">' . "\n";
+		$out .= '<!-- wp:post-title {"level":2,"isLink":true,"className":"' . esc_attr( $page_card_title_class ) . '"} /-->' . "\n";
+		$out .= '<!-- wp:post-date {"className":"' . esc_attr( $page_card_meta_class ) . '"} /-->' . "\n";
+		$out .= '<!-- wp:post-excerpt {"className":"' . esc_attr( $page_card_text_class ) . '"} /-->' . "\n";
+		$out .= '<!-- wp:post-terms {"term":"category","className":"' . esc_attr( $page_card_meta_class ) . '"} /-->' . "\n";
+		$out .= '</div>' . "\n";
+		$out .= '<!-- /wp:group -->' . "\n";
+		$out .= '<!-- /wp:post-template -->' . "\n";
+		$out .= '<!-- wp:query-pagination -->' . "\n";
+		$out .= '<div class="wp-block-query-pagination">' . "\n";
+		$out .= '<!-- wp:query-pagination-previous /-->' . "\n";
+		$out .= '<!-- wp:query-pagination-numbers /-->' . "\n";
+		$out .= '<!-- wp:query-pagination-next /-->' . "\n";
+		$out .= '</div>' . "\n";
+		$out .= '<!-- /wp:query-pagination -->' . "\n";
+		$out .= '</div>' . "\n";
+		$out .= '<!-- /wp:query -->' . "\n";
+		$out .= '</div>' . "\n";
+		$out .= '<!-- /wp:group -->' . "\n";
+		$out .= '</section>' . "\n";
+		$out .= '<!-- /wp:group -->' . "\n";
+		$out .= '</main>' . "\n";
+		$out .= '<!-- /wp:group -->' . "\n\n";
+
+		if ( $footer_slug !== '' ) {
+			$attrs = array( 'slug' => $footer_slug, 'tagName' => 'footer' );
+			$out .= '<!-- wp:template-part ' . wp_json_encode( $attrs ) . ' /-->' . "\n";
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Build default block template content for archive.html (category/tag/date archives)
+	 */
+	private static function build_archive_template_blocks( string $header_slug, string $footer_slug ): string {
+		$header_slug = sanitize_key( $header_slug );
+		$footer_slug = sanitize_key( $footer_slug );
+
+		// Get class prefix from settings
+		$settings = \VibeCode\Deploy\Settings::get_all();
+		$class_prefix = isset( $settings['class_prefix'] ) && is_string( $settings['class_prefix'] ) ? trim( (string) $settings['class_prefix'] ) : '';
+		
+		// Build class names with prefix
+		$main_class = $class_prefix !== '' ? $class_prefix . 'main' : 'main';
+		$page_section_class = $class_prefix !== '' ? $class_prefix . 'page-section' : 'page-section';
+		$container_class = $class_prefix !== '' ? $class_prefix . 'container' : 'container';
+		$page_card_class = $class_prefix !== '' ? $class_prefix . 'page-card' : 'page-card';
+		$page_card_title_class = $class_prefix !== '' ? $class_prefix . 'page-card__title' : 'page-card__title';
+		$page_card_meta_class = $class_prefix !== '' ? $class_prefix . 'page-card__meta' : 'page-card__meta';
+		$page_card_text_class = $class_prefix !== '' ? $class_prefix . 'page-card__text' : 'page-card__text';
+
+		$out = '';
+		if ( $header_slug !== '' ) {
+			$attrs = array( 'slug' => $header_slug, 'tagName' => 'header' );
+			$out .= '<!-- wp:template-part ' . wp_json_encode( $attrs ) . ' /-->' . "\n\n";
+		}
+
+		$out .= '<!-- wp:group {"tagName":"main","className":"' . esc_attr( $main_class ) . '"} -->' . "\n";
+		$out .= '<main id="main" class="wp-block-group ' . esc_attr( $main_class ) . '" role="main">' . "\n";
+		$out .= '<!-- wp:group {"className":"' . esc_attr( $page_section_class ) . '"} -->' . "\n";
+		$out .= '<section class="wp-block-group ' . esc_attr( $page_section_class ) . '">' . "\n";
+		$out .= '<!-- wp:group {"className":"' . esc_attr( $container_class ) . '"} -->' . "\n";
+		$out .= '<div class="wp-block-group ' . esc_attr( $container_class ) . '">' . "\n";
+		$out .= '<!-- wp:query-title {"type":"archive","className":"' . esc_attr( $page_card_title_class ) . '"} /-->' . "\n";
+		$out .= '<!-- wp:term-description /-->' . "\n";
+		$out .= '<!-- wp:query {"queryId":0,"query":{"perPage":10,"pages":0,"offset":0,"postType":"post","order":"desc","orderBy":"date","author":"","search":"","exclude":[],"sticky":"","inherit":true}} -->' . "\n";
+		$out .= '<div class="wp-block-query">' . "\n";
+		$out .= '<!-- wp:post-template -->' . "\n";
+		$out .= '<!-- wp:group {"className":"' . esc_attr( $page_card_class ) . '","layout":{"type":"constrained"}} -->' . "\n";
+		$out .= '<div class="wp-block-group ' . esc_attr( $page_card_class ) . '">' . "\n";
+		$out .= '<!-- wp:post-title {"level":2,"isLink":true,"className":"' . esc_attr( $page_card_title_class ) . '"} /-->' . "\n";
+		$out .= '<!-- wp:post-date {"className":"' . esc_attr( $page_card_meta_class ) . '"} /-->' . "\n";
+		$out .= '<!-- wp:post-excerpt {"className":"' . esc_attr( $page_card_text_class ) . '"} /-->' . "\n";
+		$out .= '<!-- wp:post-terms {"term":"category","className":"' . esc_attr( $page_card_meta_class ) . '"} /-->' . "\n";
+		$out .= '</div>' . "\n";
+		$out .= '<!-- /wp:group -->' . "\n";
+		$out .= '<!-- /wp:post-template -->' . "\n";
+		$out .= '<!-- wp:query-pagination -->' . "\n";
+		$out .= '<div class="wp-block-query-pagination">' . "\n";
+		$out .= '<!-- wp:query-pagination-previous /-->' . "\n";
+		$out .= '<!-- wp:query-pagination-numbers /-->' . "\n";
+		$out .= '<!-- wp:query-pagination-next /-->' . "\n";
+		$out .= '</div>' . "\n";
+		$out .= '<!-- /wp:query-pagination -->' . "\n";
+		$out .= '</div>' . "\n";
+		$out .= '<!-- /wp:query -->' . "\n";
+		$out .= '</div>' . "\n";
+		$out .= '<!-- /wp:group -->' . "\n";
+		$out .= '</section>' . "\n";
+		$out .= '<!-- /wp:group -->' . "\n";
+		$out .= '</main>' . "\n";
+		$out .= '<!-- /wp:group -->' . "\n\n";
+
+		if ( $footer_slug !== '' ) {
+			$attrs = array( 'slug' => $footer_slug, 'tagName' => 'footer' );
+			$out .= '<!-- wp:template-part ' . wp_json_encode( $attrs ) . ' /-->' . "\n";
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Validate template content for page templates.
+	 * 
+	 * Page templates should NOT include wp:post-content blocks because they define
+	 * the full page structure. If wp:post-content is present, it would render
+	 * the page's post_content, which we want to avoid for custom templates.
+	 *
+	 * @param string $slug Template slug (e.g., 'page-home').
+	 * @param string $content Template content to validate.
+	 * @return array Array with 'valid' (bool) and 'error' (string) keys.
+	 */
+	public static function validate_page_template( string $slug, string $content ): array {
+		// Only validate page templates (templates that start with 'page-')
+		if ( strpos( $slug, 'page-' ) !== 0 ) {
+			return array( 'valid' => true, 'error' => '' );
+		}
+		
+		// Check for wp:post-content blocks
+		if ( preg_match( '/<!--\s*wp:post-content/i', $content ) ) {
+			return array(
+				'valid' => false,
+				'error' => 'Page templates should not include wp:post-content blocks. Page templates define the full page structure, and wp:post-content would render the page editor content, which conflicts with the template design.',
+			);
+		}
+		
+		return array( 'valid' => true, 'error' => '' );
+	}
+
+	public static function upsert_template( string $project_slug, string $fingerprint, string $slug, string $content_blocks, bool $force_claim_unowned ): array {
 		$project_slug = sanitize_key( $project_slug );
 		$fingerprint = sanitize_text_field( $fingerprint );
 		$slug = sanitize_key( $slug );
@@ -628,6 +961,12 @@ final class TemplateService {
 		}
 		if ( ! post_type_exists( 'wp_template' ) ) {
 			return array( 'ok' => false, 'error' => 'wp_template post type not registered (block templates unsupported).' );
+		}
+		
+		// Validate page templates don't include wp:post-content
+		$validation = self::validate_page_template( $slug, $content_blocks );
+		if ( ! $validation['valid'] ) {
+			return array( 'ok' => false, 'error' => $validation['error'] );
 		}
 
 		$theme = self::current_theme_slug();
@@ -691,7 +1030,7 @@ final class TemplateService {
 		);
 	}
 
-	public static function deploy_template_parts_and_404_template( string $project_slug, string $fingerprint, string $build_root, array $slug_set, string $resources_base_url, bool $deploy_template_parts, bool $generate_404_template, bool $force_claim_templates ): array {
+	public static function deploy_template_parts_and_404_template( string $project_slug, string $fingerprint, string $build_root, array $slug_set, string $resources_base_url, bool $deploy_template_parts, bool $generate_404_template, bool $force_claim_templates, array $selected_templates = array(), array $selected_template_parts = array() ): array {
 		$created_parts = array();
 		$updated_parts = array();
 		$created_templates = array();
@@ -725,12 +1064,23 @@ final class TemplateService {
 			);
 		}
 
+		// Normalize selected filters
+		$selected_templates = array_map( 'sanitize_key', $selected_templates );
+		$selected_templates = array_filter( $selected_templates );
+		$selected_template_parts = array_map( 'sanitize_key', $selected_template_parts );
+		$selected_template_parts = array_filter( $selected_template_parts );
+
 		if ( $deploy_template_parts ) {
 			$files = self::list_template_part_files( $build_root );
 			foreach ( $files as $path ) {
 				$slug = (string) preg_replace( '/\.html$/', '', basename( $path ) );
 				$slug = sanitize_key( $slug );
 				if ( ! self::is_allowed_template_part_slug( $slug ) ) {
+					continue;
+				}
+
+				// Filter by selected template parts if specified
+				if ( ! empty( $selected_template_parts ) && ! in_array( $slug, $selected_template_parts, true ) ) {
 					continue;
 				}
 
@@ -789,6 +1139,11 @@ final class TemplateService {
 				$slug = (string) preg_replace( '/\.html$/', '', basename( $path ) );
 				$slug = sanitize_key( $slug );
 				if ( $slug === '' ) {
+					continue;
+				}
+
+				// Filter by selected templates if specified
+				if ( ! empty( $selected_templates ) && ! in_array( $slug, $selected_templates, true ) ) {
 					continue;
 				}
 

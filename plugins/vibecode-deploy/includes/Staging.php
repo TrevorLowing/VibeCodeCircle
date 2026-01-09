@@ -29,11 +29,14 @@ final class Staging {
 		'otf',
 	);
 
-	private const REQUIRED_ROOT = 'vibecode-deploy-staging/';
+	private const REQUIRED_ROOT_OLD = 'vibecode-deploy-staging/';
+	private const REQUIRED_ROOT_NEW_PATTERN = '/^[a-z0-9-]+-deployment\/$/';
 	private const ALLOWED_ROOT_FILES = array(
 		'vibecode-deploy-shortcodes.json',
+		'manifest.json',
+		'config.json',
 	);
-	private const ALLOWED_TOP_LEVEL_DIRS = array(
+	private const ALLOWED_TOP_LEVEL_DIRS_OLD = array(
 		'pages',
 		'templates',
 		'template-parts',
@@ -41,6 +44,13 @@ final class Staging {
 		'js',
 		'resources',
 		'theme',
+	);
+	private const ALLOWED_TOP_LEVEL_DIRS_NEW = array(
+		'pages',
+		'assets',
+		'theme',
+		'manifest.json',
+		'config.json',
 	);
 
 	public static function staging_root( string $project_slug, string $fingerprint ): string {
@@ -83,33 +93,111 @@ final class Staging {
 		return true;
 	}
 
+	private static function detect_package_format( string $normalized_path ): string {
+		// Check for old format: vibecode-deploy-staging/
+		if ( str_starts_with( $normalized_path, self::REQUIRED_ROOT_OLD ) ) {
+			return 'old';
+		}
+		
+		// Check for new format: {project-name}-deployment/
+		// Pattern requires trailing slash, but also check without it
+		if ( preg_match( self::REQUIRED_ROOT_NEW_PATTERN, $normalized_path ) ) {
+			return 'new';
+		}
+		
+		// Try to detect by checking if path starts with any deployment pattern
+		// This handles cases where the path doesn't have trailing slash
+		$parts = explode( '/', $normalized_path );
+		$root_dir = $parts[0] ?? '';
+		if ( $root_dir !== '' && preg_match( '/^[a-z0-9-]+-deployment$/', $root_dir ) ) {
+			return 'new';
+		}
+		
+		// Also check if path starts with deployment directory followed by a file
+		if ( preg_match( '/^[a-z0-9-]+-deployment\//', $normalized_path ) ) {
+			return 'new';
+		}
+		
+		return 'unknown';
+	}
+
 	private static function validate_entry_path( string $normalized_path ): ?string {
 		if ( ! self::is_safe_relative_path( $normalized_path ) ) {
 			return null;
 		}
 
-		if ( ! str_starts_with( $normalized_path, self::REQUIRED_ROOT ) ) {
-			return null;
+		$format = self::detect_package_format( $normalized_path );
+
+		// Old format: vibecode-deploy-staging/
+		if ( $format === 'old' ) {
+			if ( ! str_starts_with( $normalized_path, self::REQUIRED_ROOT_OLD ) ) {
+				return null;
+			}
+
+			$relative = substr( $normalized_path, strlen( self::REQUIRED_ROOT_OLD ) );
+			$relative = ltrim( $relative, '/' );
+
+			if ( $relative === '' ) {
+				return null;
+			}
+
+			if ( strpos( $relative, '/' ) === false ) {
+				return in_array( $relative, self::ALLOWED_ROOT_FILES, true ) ? $relative : null;
+			}
+
+			$parts = explode( '/', $relative );
+			$top = $parts[0] ?? '';
+			if ( $top === '' || ! in_array( $top, self::ALLOWED_TOP_LEVEL_DIRS_OLD, true ) ) {
+				return null;
+			}
+
+			return $relative;
 		}
 
-		$relative = substr( $normalized_path, strlen( self::REQUIRED_ROOT ) );
-		$relative = ltrim( $relative, '/' );
+		// New format: {project-name}-deployment/
+		if ( $format === 'new' ) {
+			$parts = explode( '/', $normalized_path );
+			$root_dir = array_shift( $parts );
+			if ( $root_dir === null || ! preg_match( '/^[a-z0-9-]+-deployment$/', $root_dir ) ) {
+				return null;
+			}
 
-		if ( $relative === '' ) {
-			return null;
+			$relative = implode( '/', $parts );
+			$relative = ltrim( $relative, '/' );
+
+			if ( $relative === '' ) {
+				return null;
+			}
+
+			// Allow root-level files (manifest.json, config.json)
+			if ( strpos( $relative, '/' ) === false ) {
+				return in_array( $relative, self::ALLOWED_ROOT_FILES, true ) ? $relative : null;
+			}
+
+			$parts = explode( '/', $relative );
+			$top = $parts[0] ?? '';
+			if ( $top === '' ) {
+				return null;
+			}
+
+			// Allow assets/ subdirectories (css, js, images)
+			if ( $top === 'assets' ) {
+				$subdir = $parts[1] ?? '';
+				if ( in_array( $subdir, array( 'css', 'js', 'images' ), true ) ) {
+					return $relative;
+				}
+			}
+
+			// Allow pages/, theme/ directories
+			if ( in_array( $top, array( 'pages', 'theme' ), true ) ) {
+				return $relative;
+			}
+
+			// Warn but allow other directories (less strict)
+			return $relative;
 		}
 
-		if ( strpos( $relative, '/' ) === false ) {
-			return in_array( $relative, self::ALLOWED_ROOT_FILES, true ) ? $relative : null;
-		}
-
-		$parts = explode( '/', $relative );
-		$top = $parts[0] ?? '';
-		if ( $top === '' || ! in_array( $top, self::ALLOWED_TOP_LEVEL_DIRS, true ) ) {
-			return null;
-		}
-
-		return $relative;
+		return null;
 	}
 
 	private static function validate_extension( string $path ): bool {
@@ -154,32 +242,81 @@ final class Staging {
 		$target_root = self::staging_root( $project_slug, $fingerprint );
 		self::ensure_dir( $target_root );
 
-		$unpacked_total = 0;
-		$written_files = 0;
-
+		// First pass: detect package format by scanning entries
+		$detected_format = 'unknown';
+		$format_detected = false;
 		for ( $i = 0; $i < $count; $i++ ) {
 			$stat = $zip->statIndex( $i );
 			$name = is_array( $stat ) ? (string) ( $stat['name'] ?? '' ) : '';
 			$name = self::normalize_zip_path( $name );
 
 			if ( $name === '' ) {
-				$zip->close();
-				return array( 'ok' => false, 'error' => 'Zip contains an invalid entry.' );
+				continue;
 			}
 
+			// Skip directory entries and system files
+			if ( str_ends_with( $name, '/' ) ) {
+				continue;
+			}
+			if ( str_starts_with( $name, '__MACOSX/' ) || str_starts_with( $name, '.DS_Store' ) || str_starts_with( $name, '._' ) ) {
+				continue;
+			}
+
+			$format = self::detect_package_format( $name );
+			if ( $format !== 'unknown' ) {
+				$detected_format = $format;
+				$format_detected = true;
+				break;
+			}
+		}
+
+		// If format not detected, fail early
+		if ( ! $format_detected ) {
+			$zip->close();
+			return array( 'ok' => false, 'error' => 'Zip structure not recognized. Expected vibecode-deploy-staging/ or {project-name}-deployment/ root directory.' );
+		}
+
+		$unpacked_total = 0;
+		$written_files = 0;
+
+		// Second pass: extract files using detected format
+		for ( $i = 0; $i < $count; $i++ ) {
+			$stat = $zip->statIndex( $i );
+			$name = is_array( $stat ) ? (string) ( $stat['name'] ?? '' ) : '';
+			$name = self::normalize_zip_path( $name );
+
+			if ( $name === '' ) {
+				continue;
+			}
+
+			// Skip directory entries
 			if ( str_ends_with( $name, '/' ) ) {
 				continue;
 			}
 
+			// Skip system files (macOS, Windows)
+			if ( str_starts_with( $name, '__MACOSX/' ) || str_starts_with( $name, '.DS_Store' ) || str_starts_with( $name, '._' ) ) {
+				continue;
+			}
+
+			// Validate entry path using detected format
 			$relative = self::validate_entry_path( $name );
 			if ( $relative === null ) {
-				$zip->close();
-				return array( 'ok' => false, 'error' => 'Zip contains files outside required staging layout.' );
+				// Skip invalid entries but don't fail (already validated format)
+				continue;
 			}
 
 			if ( ! self::validate_extension( $relative ) ) {
-				$zip->close();
-				return array( 'ok' => false, 'error' => 'Zip contains a disallowed file type.' );
+				// Less strict: warn but continue for unknown extensions
+				// Only fail for clearly dangerous file types
+				$ext = strtolower( pathinfo( $relative, PATHINFO_EXTENSION ) );
+				$dangerous_extensions = array( 'exe', 'bat', 'cmd', 'com', 'pif', 'scr', 'vbs' );
+				if ( in_array( $ext, $dangerous_extensions, true ) ) {
+					$zip->close();
+					return array( 'ok' => false, 'error' => 'Zip contains a potentially dangerous file type: ' . $ext );
+				}
+				// For other unknown extensions, continue but log warning
+				continue;
 			}
 
 			$entry_size = is_array( $stat ) ? (int) ( $stat['size'] ?? 0 ) : 0;

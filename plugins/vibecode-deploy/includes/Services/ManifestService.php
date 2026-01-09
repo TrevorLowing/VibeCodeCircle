@@ -81,4 +81,57 @@ final class ManifestService {
 		$val = get_option( self::last_deploy_option_key( $project_slug ), '' );
 		return is_string( $val ) ? $val : '';
 	}
+
+	/**
+	 * Get theme file content from manifest.
+	 *
+	 * @param string $project_slug Project slug.
+	 * @param string $fingerprint Fingerprint.
+	 * @param string $file_name Theme file name (e.g., 'functions.php', 'acf-json/group_123.json').
+	 * @return string|null File content or null if not found.
+	 */
+	public static function get_theme_file_snapshot( string $project_slug, string $fingerprint, string $file_name ): ?string {
+		$manifest = self::read_manifest( $project_slug, $fingerprint );
+		if ( ! is_array( $manifest ) ) {
+			return null;
+		}
+
+		$theme_files = isset( $manifest['theme_files'] ) && is_array( $manifest['theme_files'] ) ? $manifest['theme_files'] : array();
+		$file_name = sanitize_file_name( (string) $file_name );
+
+		if ( isset( $theme_files[ $file_name ] ) && is_string( $theme_files[ $file_name ] ) ) {
+			return $theme_files[ $file_name ];
+		}
+
+		// Check for ACF JSON files in nested structure
+		if ( strpos( $file_name, 'acf-json/' ) === 0 ) {
+			$acf_files = isset( $theme_files['acf-json'] ) && is_array( $theme_files['acf-json'] ) ? $theme_files['acf-json'] : array();
+			$json_file = str_replace( 'acf-json/', '', $file_name );
+			if ( isset( $acf_files[ $json_file ] ) && is_string( $acf_files[ $json_file ] ) ) {
+				return $acf_files[ $json_file ];
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Get CSS/JS asset information from manifest.
+	 *
+	 * @param string $project_slug Project slug.
+	 * @param string $fingerprint Fingerprint.
+	 * @return array Asset information with 'css' and 'js' keys containing file paths.
+	 */
+	public static function get_asset_snapshot( string $project_slug, string $fingerprint ): array {
+		$manifest = self::read_manifest( $project_slug, $fingerprint );
+		if ( ! is_array( $manifest ) ) {
+			return array( 'css' => array(), 'js' => array() );
+		}
+
+		$assets = isset( $manifest['assets'] ) && is_array( $manifest['assets'] ) ? $manifest['assets'] : array();
+		return array(
+			'css' => isset( $assets['css'] ) && is_array( $assets['css'] ) ? $assets['css'] : array(),
+			'js' => isset( $assets['js'] ) && is_array( $assets['js'] ) ? $assets['js'] : array(),
+		);
+	}
 }

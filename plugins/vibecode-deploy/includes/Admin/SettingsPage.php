@@ -6,6 +6,7 @@ use VibeCode\Deploy\Logger;
 use VibeCode\Deploy\Settings;
 use VibeCode\Deploy\Services\CleanupService;
 use VibeCode\Deploy\Services\EnvService;
+use VibeCode\Deploy\Services\RollbackService;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -16,7 +17,8 @@ final class SettingsPage {
 		add_action( 'admin_post_vibecode_deploy_purge_uploads', array( __CLASS__, 'purge_uploads' ) );
 		add_action( 'admin_post_vibecode_deploy_detach_pages', array( __CLASS__, 'detach_pages' ) );
 		add_action( 'admin_post_vibecode_deploy_purge_both', array( __CLASS__, 'purge_both' ) );
-		add_action( 'admin_post_vibecode_deploy_nuclear_delete_pages', array( __CLASS__, 'nuclear_delete_pages' ) );
+		add_action( 'admin_post_vibecode_deploy_nuclear_operation', array( __CLASS__, 'nuclear_operation' ) );
+		add_action( 'admin_post_vibecode_deploy_flush_caches', array( __CLASS__, 'flush_caches' ) );
 	}
 
 	public static function register_menu(): void {
@@ -187,17 +189,235 @@ final class SettingsPage {
 		echo '<p><input type="submit" class="button" value="' . esc_attr__( 'Purge Uploads + Detach Pages', 'vibecode-deploy' ) . '" onclick="return confirm(\'' . $purge_confirm . '\');" /></p>';
 		echo '</form>';
 
-		echo '<h3>' . esc_html__( 'Nuclear: delete Vibe Code Deploy-owned pages (project)', 'vibecode-deploy' ) . '</h3>';
+		echo '<h3>' . esc_html__( 'Nuclear Option: Granular Content Deletion', 'vibecode-deploy' ) . '</h3>';
 		if ( $project_slug !== '' ) {
 			/* translators: %s: Project slug */
-			echo '<p class="description">' . sprintf( esc_html__( 'Deletes all pages owned by %s. This cannot be undone.', 'vibecode-deploy' ), '<code>' . esc_html( $project_slug ) . '</code>' ) . '</p>';
-			echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
-			echo '<input type="hidden" name="action" value="vibecode_deploy_nuclear_delete_pages" />';
-			wp_nonce_field( 'vibecode_deploy_nuclear_delete_pages', 'vibecode_deploy_nuclear_nonce' );
-			echo '<p><label>' . esc_html__( 'Type', 'vibecode-deploy' ) . ' <code>DELETE VIBECODE DEPLOY PAGES</code> ' . esc_html__( 'to confirm', 'vibecode-deploy' ) . '<br /><input type="text" class="regular-text" name="vibecode_deploy_confirm" value="" /></label></p>';
-			$nuclear_confirm = esc_js( __( 'Final confirmation: delete all Vibe Code Deploy pages for this project?', 'vibecode-deploy' ) );
-			echo '<p><input type="submit" class="button" value="' . esc_attr__( 'Delete Vibe Code Deploy Pages', 'vibecode-deploy' ) . '" onclick="return confirm(\'' . $nuclear_confirm . '\');" /></p>';
+			echo '<p class="description">' . sprintf( esc_html__( 'Delete content owned by %s with granular control. Choose what to delete and whether to restore from previous deployment.', 'vibecode-deploy' ), '<code>' . esc_html( $project_slug ) . '</code>' ) . '</p>';
+			
+			// Get project content for selection
+			$project_pages = CleanupService::get_project_pages( $project_slug );
+			$project_templates = CleanupService::get_project_templates( $project_slug );
+			$project_template_parts = CleanupService::get_project_template_parts( $project_slug );
+			
+			// Get last deploy fingerprint for rollback
+			$last_fingerprint = \VibeCode\Deploy\Services\ManifestService::get_last_deploy_fingerprint( $project_slug );
+			$has_rollback = $last_fingerprint !== '' && \VibeCode\Deploy\Services\ManifestService::has_manifest( $project_slug, $last_fingerprint );
+			
+			echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" id="vibecode-deploy-nuclear-form">';
+			echo '<input type="hidden" name="action" value="vibecode_deploy_nuclear_operation" />';
+			wp_nonce_field( 'vibecode_deploy_nuclear_operation', 'vibecode_deploy_nuclear_nonce' );
+			
+			// Scope Selection
+			echo '<div style="margin-bottom: 1.5rem;">';
+			echo '<h4>' . esc_html__( 'Scope', 'vibecode-deploy' ) . '</h4>';
+			echo '<p>';
+			echo '<label><input type="radio" name="vibecode_deploy_nuclear_scope" value="everything" checked /> ' . esc_html__( 'Everything (default)', 'vibecode-deploy' ) . '</label><br />';
+			echo '<label><input type="radio" name="vibecode_deploy_nuclear_scope" value="by_type" /> ' . esc_html__( 'Choose by Type', 'vibecode-deploy' ) . '</label><br />';
+			echo '<label><input type="radio" name="vibecode_deploy_nuclear_scope" value="by_page" /> ' . esc_html__( 'Choose Page By Page Name', 'vibecode-deploy' ) . '</label>';
+			echo '</p>';
+			echo '</div>';
+			
+			// Type Selection (shown when "Choose by Type" selected)
+			echo '<div id="vibecode-deploy-nuclear-by-type" style="display: none; margin-bottom: 1.5rem;">';
+			echo '<h4>' . esc_html__( 'Select Types', 'vibecode-deploy' ) . '</h4>';
+			echo '<p>';
+			echo '<label><input type="checkbox" name="vibecode_deploy_nuclear_types[]" value="pages" /> ' . esc_html__( 'Pages', 'vibecode-deploy' ) . ' (' . count( $project_pages ) . ')</label><br />';
+			echo '<label><input type="checkbox" name="vibecode_deploy_nuclear_types[]" value="templates" /> ' . esc_html__( 'Templates', 'vibecode-deploy' ) . ' (' . count( $project_templates ) . ')</label><br />';
+			echo '<label><input type="checkbox" name="vibecode_deploy_nuclear_types[]" value="template_parts" /> ' . esc_html__( 'Template Parts', 'vibecode-deploy' ) . ' (' . count( $project_template_parts ) . ')</label><br />';
+			echo '<label><input type="checkbox" name="vibecode_deploy_nuclear_types[]" value="theme_files" /> ' . esc_html__( 'Theme Files (functions.php)', 'vibecode-deploy' ) . '</label><br />';
+			echo '<label><input type="checkbox" name="vibecode_deploy_nuclear_types[]" value="acf_json" /> ' . esc_html__( 'ACF JSON Files', 'vibecode-deploy' ) . '</label><br />';
+			echo '<label><input type="checkbox" name="vibecode_deploy_nuclear_types[]" value="assets" /> ' . esc_html__( 'CSS/JS Assets', 'vibecode-deploy' ) . '</label>';
+			echo '</p>';
+			echo '</div>';
+			
+			// Page Selection (shown when "Choose Page By Page Name" selected)
+			echo '<div id="vibecode-deploy-nuclear-by-page" style="display: none; margin-bottom: 1.5rem;">';
+			echo '<h4>' . esc_html__( 'Select Pages', 'vibecode-deploy' ) . '</h4>';
+			if ( ! empty( $project_pages ) ) {
+				echo '<p><button type="button" class="button" id="vibecode-deploy-select-all-pages">' . esc_html__( 'Select All', 'vibecode-deploy' ) . '</button> ';
+				echo '<button type="button" class="button" id="vibecode-deploy-deselect-all-pages">' . esc_html__( 'Deselect All', 'vibecode-deploy' ) . '</button></p>';
+				echo '<div style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px;">';
+				foreach ( $project_pages as $page ) {
+					$page_slug = esc_attr( (string) ( $page['slug'] ?? '' ) );
+					$page_title = esc_html( (string) ( $page['title'] ?? $page_slug ) );
+					echo '<label style="display: block; margin-bottom: 5px;">';
+					echo '<input type="checkbox" name="vibecode_deploy_nuclear_pages[]" value="' . $page_slug . '" /> ';
+					echo '<strong>' . $page_title . '</strong> <code>' . $page_slug . '</code>';
+					echo '</label>';
+				}
+				echo '</div>';
+			} else {
+				echo '<p>' . esc_html__( 'No pages found for this project.', 'vibecode-deploy' ) . '</p>';
+			}
+			echo '</div>';
+			
+			// Action Selection
+			echo '<div style="margin-bottom: 1.5rem;">';
+			echo '<h4>' . esc_html__( 'Action', 'vibecode-deploy' ) . '</h4>';
+			echo '<p>';
+			echo '<label><input type="radio" name="vibecode_deploy_nuclear_action" value="delete" /> ' . esc_html__( 'No Restore (just delete)', 'vibecode-deploy' ) . '</label><br />';
+			$rollback_label = esc_html__( 'Restore Previous / RollBack', 'vibecode-deploy' );
+			if ( ! $has_rollback ) {
+				$rollback_label .= ' <span style="color: #d63638;">(' . esc_html__( 'No previous deployment found', 'vibecode-deploy' ) . ')</span>';
+			}
+			echo '<label><input type="radio" name="vibecode_deploy_nuclear_action" value="rollback"' . ( $has_rollback ? ' checked' : '' ) . ( ! $has_rollback ? ' disabled' : '' ) . ' /> ' . $rollback_label . '</label>';
+			if ( ! $has_rollback ) {
+				echo '<input type="hidden" name="vibecode_deploy_nuclear_action" value="delete" />';
+			}
+			echo '</p>';
+			if ( $has_rollback ) {
+				echo '<p class="description">' . sprintf( esc_html__( 'Rollback from fingerprint: %s', 'vibecode-deploy' ), '<code>' . esc_html( $last_fingerprint ) . '</code>' ) . '</p>';
+			}
+			echo '</div>';
+			
+			// Confirmation
+			echo '<div style="margin-bottom: 1.5rem;">';
+			echo '<p><label>' . esc_html__( 'Type', 'vibecode-deploy' ) . ' <code>DELETE</code> ' . esc_html__( 'to confirm', 'vibecode-deploy' ) . '<br />';
+			echo '<input type="text" class="regular-text" name="vibecode_deploy_nuclear_confirm" value="" id="vibecode-deploy-nuclear-confirm" /></label></p>';
+			echo '</div>';
+			
+			// Summary (will be populated by JavaScript)
+			echo '<div id="vibecode-deploy-nuclear-summary" style="margin-bottom: 1.5rem; padding: 10px; background: #f0f0f1; border-left: 4px solid #2271b1; display: none;"></div>';
+			
+			echo '<p><input type="submit" class="button button-primary" value="' . esc_attr__( 'Execute Nuclear Operation', 'vibecode-deploy' ) . '" id="vibecode-deploy-nuclear-submit" /></p>';
 			echo '</form>';
+			
+			// Quick Cache Flush option
+			echo '<hr />';
+			echo '<h3>' . esc_html__( 'Quick Cache Flush', 'vibecode-deploy' ) . '</h3>';
+			echo '<p>' . esc_html__( 'Flush all caches without deleting content. Use this before re-importing to ensure fresh deployment.', 'vibecode-deploy' ) . '</p>';
+			echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
+			echo '<input type="hidden" name="action" value="vibecode_deploy_flush_caches" />';
+			wp_nonce_field( 'vibecode_deploy_flush_caches', 'vibecode_deploy_flush_caches_nonce' );
+			echo '<p><input type="submit" class="button button-secondary" value="' . esc_attr__( 'Flush All Caches', 'vibecode-deploy' ) . '" /></p>';
+			echo '</form>';
+			
+			// JavaScript for UI interactions
+			?>
+			<script>
+			(function() {
+				'use strict';
+				var form = document.getElementById('vibecode-deploy-nuclear-form');
+				if (!form) return;
+				
+				var scopeRadios = form.querySelectorAll('input[name="vibecode_deploy_nuclear_scope"]');
+				var byTypeDiv = document.getElementById('vibecode-deploy-nuclear-by-type');
+				var byPageDiv = document.getElementById('vibecode-deploy-nuclear-by-page');
+				var summaryDiv = document.getElementById('vibecode-deploy-nuclear-summary');
+				var confirmInput = document.getElementById('vibecode-deploy-nuclear-confirm');
+				var submitBtn = document.getElementById('vibecode-deploy-nuclear-submit');
+				
+				function updateUI() {
+					var scope = form.querySelector('input[name="vibecode_deploy_nuclear_scope"]:checked')?.value || 'everything';
+					byTypeDiv.style.display = (scope === 'by_type') ? 'block' : 'none';
+					byPageDiv.style.display = (scope === 'by_page') ? 'block' : 'none';
+					updateSummary();
+				}
+				
+				function updateSummary() {
+					var scope = form.querySelector('input[name="vibecode_deploy_nuclear_scope"]:checked')?.value || 'everything';
+					var action = form.querySelector('input[name="vibecode_deploy_nuclear_action"]:checked')?.value || 'delete';
+					var summary = [];
+					
+					if (scope === 'everything') {
+						summary.push('Everything will be deleted');
+					} else if (scope === 'by_type') {
+						var types = Array.from(form.querySelectorAll('input[name="vibecode_deploy_nuclear_types[]"]:checked')).map(cb => cb.value);
+						if (types.length > 0) {
+							summary.push('Types: ' + types.join(', '));
+						} else {
+							summary.push('No types selected');
+						}
+					} else if (scope === 'by_page') {
+						var pages = Array.from(form.querySelectorAll('input[name="vibecode_deploy_nuclear_pages[]"]:checked')).map(cb => cb.value);
+						summary.push('Pages: ' + pages.length + ' selected');
+					}
+					
+					summary.push('Action: ' + (action === 'rollback' ? 'Delete and Restore' : 'Delete Only'));
+					
+					if (summary.length > 0) {
+						summaryDiv.innerHTML = '<strong>' + summary.join(' | ') + '</strong>';
+						summaryDiv.style.display = 'block';
+					} else {
+						summaryDiv.style.display = 'none';
+					}
+				}
+				
+				function validateForm() {
+					var confirm = confirmInput.value.trim();
+					var scope = form.querySelector('input[name="vibecode_deploy_nuclear_scope"]:checked')?.value || 'everything';
+					var isValid = confirm === 'DELETE';
+					
+					if (scope === 'by_type') {
+						var types = Array.from(form.querySelectorAll('input[name="vibecode_deploy_nuclear_types[]"]:checked'));
+						isValid = isValid && types.length > 0;
+					} else if (scope === 'by_page') {
+						var pages = Array.from(form.querySelectorAll('input[name="vibecode_deploy_nuclear_pages[]"]:checked'));
+						isValid = isValid && pages.length > 0;
+					}
+					
+					submitBtn.disabled = !isValid;
+					return isValid;
+				}
+				
+				scopeRadios.forEach(function(radio) {
+					radio.addEventListener('change', function() {
+						updateUI();
+						validateForm();
+					});
+				});
+				
+				form.querySelectorAll('input[type="checkbox"], input[type="radio"]').forEach(function(input) {
+					input.addEventListener('change', function() {
+						updateSummary();
+						validateForm();
+					});
+				});
+				
+				confirmInput.addEventListener('input', validateForm);
+				
+				document.getElementById('vibecode-deploy-select-all-pages')?.addEventListener('click', function() {
+					form.querySelectorAll('input[name="vibecode_deploy_nuclear_pages[]"]').forEach(function(cb) {
+						cb.checked = true;
+					});
+					updateSummary();
+					validateForm();
+				});
+				
+				document.getElementById('vibecode-deploy-deselect-all-pages')?.addEventListener('click', function() {
+					form.querySelectorAll('input[name="vibecode_deploy_nuclear_pages[]"]').forEach(function(cb) {
+						cb.checked = false;
+					});
+					updateSummary();
+					validateForm();
+				});
+				
+				form.addEventListener('submit', function(e) {
+					if (!validateForm()) {
+						e.preventDefault();
+						alert('<?php echo esc_js( __( 'Please complete all required fields and type DELETE to confirm.', 'vibecode-deploy' ) ); ?>');
+						return false;
+					}
+					
+					var scope = form.querySelector('input[name="vibecode_deploy_nuclear_scope"]:checked')?.value || 'everything';
+					var action = form.querySelector('input[name="vibecode_deploy_nuclear_action"]:checked')?.value || 'delete';
+					var summaryText = summaryDiv.textContent || '';
+					
+					var confirmMsg = '<?php echo esc_js( __( 'Final confirmation: Execute nuclear operation?', 'vibecode-deploy' ) ); ?>\n\n' + summaryText;
+					if (!confirm(confirmMsg)) {
+						e.preventDefault();
+						return false;
+					}
+				});
+				
+				// Initial state
+				updateUI();
+				validateForm();
+			})();
+			</script>
+			<?php
+		} else {
+			echo '<p><strong>' . esc_html__( 'Project Slug is required', 'vibecode-deploy' ) . '</strong> ' . esc_html__( 'to use the nuclear option.', 'vibecode-deploy' ) . '</p>';
 		}
 		echo '</div>';
 
@@ -282,26 +502,125 @@ final class SettingsPage {
 		self::redirect_result( __( 'Purge uploads + detach pages', 'vibecode-deploy' ), true, $count );
 	}
 
-	public static function nuclear_delete_pages(): void {
+	public static function nuclear_operation(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Forbidden.' );
+			wp_die( esc_html__( 'Forbidden.', 'vibecode-deploy' ) );
 		}
-		check_admin_referer( 'vibecode_deploy_nuclear_delete_pages', 'vibecode_deploy_nuclear_nonce' );
+		check_admin_referer( 'vibecode_deploy_nuclear_operation', 'vibecode_deploy_nuclear_nonce' );
 
-		$confirm = isset( $_POST['vibecode_deploy_confirm'] ) ? sanitize_text_field( (string) $_POST['vibecode_deploy_confirm'] ) : '';
-		if ( $confirm !== 'DELETE VIBECODE DEPLOY PAGES' ) {
-			self::redirect_result( 'Delete Vibe Code Deploy pages', false );
+		$confirm = isset( $_POST['vibecode_deploy_nuclear_confirm'] ) ? sanitize_text_field( (string) $_POST['vibecode_deploy_nuclear_confirm'] ) : '';
+		if ( $confirm !== 'DELETE' ) {
+			self::redirect_result( __( 'Nuclear operation', 'vibecode-deploy' ), false );
+			return;
 		}
 
 		$opts = Settings::get_all();
 		$project_slug = (string) $opts['project_slug'];
 		if ( $project_slug === '' ) {
-			self::redirect_result( __( 'Delete Vibe Code Deploy pages', 'vibecode-deploy' ), false );
+			self::redirect_result( __( 'Nuclear operation', 'vibecode-deploy' ), false );
+			return;
 		}
 
-		$count = CleanupService::delete_pages_for_project( $project_slug );
-		Logger::info( 'Nuclear delete pages complete.', array( 'project_slug' => $project_slug, 'count' => $count ), $project_slug );
-		self::redirect_result( __( 'Delete Vibe Code Deploy pages', 'vibecode-deploy' ), true, $count );
+		$scope = isset( $_POST['vibecode_deploy_nuclear_scope'] ) ? sanitize_key( (string) $_POST['vibecode_deploy_nuclear_scope'] ) : 'everything';
+		// Nuclear operation always deletes for clean slate - action parameter ignored
+		$action = 'delete';
+		
+		$selected_types = array();
+		if ( isset( $_POST['vibecode_deploy_nuclear_types'] ) && is_array( $_POST['vibecode_deploy_nuclear_types'] ) ) {
+			$selected_types = array_map( 'sanitize_key', $_POST['vibecode_deploy_nuclear_types'] );
+			$selected_types = array_filter( $selected_types );
+		}
+		
+		$selected_pages = array();
+		if ( isset( $_POST['vibecode_deploy_nuclear_pages'] ) && is_array( $_POST['vibecode_deploy_nuclear_pages'] ) ) {
+			$selected_pages = array_map( 'sanitize_key', $_POST['vibecode_deploy_nuclear_pages'] );
+			$selected_pages = array_filter( $selected_pages );
+		}
+
+		// Validate scope and selections
+		if ( $scope === 'by_type' && empty( $selected_types ) ) {
+			self::redirect_result( __( 'Nuclear operation', 'vibecode-deploy' ), false );
+			return;
+		}
+		if ( $scope === 'by_page' && empty( $selected_pages ) ) {
+			self::redirect_result( __( 'Nuclear operation', 'vibecode-deploy' ), false );
+			return;
+		}
+
+		// Execute nuclear operation
+		// Nuclear operation = clean slate (delete everything, no restore)
+		$results = CleanupService::nuclear_operation( $project_slug, $scope, $selected_types, $selected_pages, $action );
+		
+		// Note: Nuclear operation with 'delete' action provides a clean slate - it deletes everything
+		// Rollback is a separate operation that should be run independently if you want to restore
+		// We don't combine delete + rollback because nuclear should be a true clean slate
+
+		$total_deleted = (int) ( $results['deleted_pages'] ?? 0 ) + (int) ( $results['deleted_templates'] ?? 0 ) + (int) ( $results['deleted_template_parts'] ?? 0 );
+		$total_restored = (int) ( $results['restored_pages'] ?? 0 ) + (int) ( $results['restored_templates'] ?? 0 ) + (int) ( $results['restored_template_parts'] ?? 0 );
+		
+		// Separate actual errors from warnings
+		$actual_errors = isset( $results['actual_errors'] ) && is_array( $results['actual_errors'] ) ? $results['actual_errors'] : array();
+		$warnings = isset( $results['warnings'] ) && is_array( $results['warnings'] ) ? $results['warnings'] : array();
+		$all_messages = isset( $results['errors'] ) && is_array( $results['errors'] ) ? $results['errors'] : array();
+		
+		// Count only actual errors (non-skippable), not warnings
+		$error_count = count( $actual_errors );
+		
+		// Log detailed error information if present
+		if ( $error_count > 0 || ! empty( $all_messages ) ) {
+			Logger::error( 'Nuclear operation had errors.', array(
+				'project_slug' => $project_slug,
+				'scope' => $scope,
+				'action' => $action,
+				'error_count' => $error_count,
+				'warning_count' => count( $warnings ),
+				'errors' => $actual_errors,
+				'warnings' => $warnings,
+				'all_messages' => $all_messages, // For backward compatibility
+				'results' => $results,
+			), $project_slug );
+		} else {
+			Logger::info( 'Nuclear operation complete.', array(
+				'project_slug' => $project_slug,
+				'scope' => $scope,
+				'action' => $action,
+				'results' => $results,
+			), $project_slug );
+		}
+		
+		$message = sprintf(
+			__( 'Deleted: %d items. Restored: %d items.', 'vibecode-deploy' ),
+			$total_deleted,
+			$total_restored
+		);
+		
+		self::redirect_result( __( 'Nuclear operation', 'vibecode-deploy' ), empty( $results['errors'] ), $total_deleted );
+	}
+
+	public static function flush_caches(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Forbidden.', 'vibecode-deploy' ) );
+		}
+		check_admin_referer( 'vibecode_deploy_flush_caches', 'vibecode_deploy_flush_caches_nonce' );
+		
+		$opts = Settings::get_all();
+		$project_slug = (string) $opts['project_slug'];
+		
+		$results = CleanupService::flush_all_caches( $project_slug );
+		
+		if ( empty( $results['errors'] ) ) {
+			Logger::info( 'Cache flush complete.', array(
+				'project_slug' => $project_slug,
+				'results' => $results,
+			), $project_slug );
+			self::redirect_result( __( 'Cache flush', 'vibecode-deploy' ), true );
+		} else {
+			Logger::error( 'Cache flush had errors.', array(
+				'project_slug' => $project_slug,
+				'errors' => $results['errors'],
+			), $project_slug );
+			self::redirect_result( __( 'Cache flush', 'vibecode-deploy' ), false );
+		}
 	}
 
 	public static function field_project_slug(): void {

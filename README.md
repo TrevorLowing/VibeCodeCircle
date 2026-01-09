@@ -32,38 +32,109 @@ When deploying theme files (functions.php, ACF JSON), the plugin uses smart merg
 
 ## Installation
 
-1. Download the **plugin ZIP file** (`vibecode-deploy.zip`)
+1. Download the **plugin ZIP file** from `dist/vibecode-deploy.zip`
 2. Go to **Plugins → Add New** in WordPress
 3. Click **Upload Plugin** and select the plugin ZIP
 4. Activate the plugin
 
+**Note:** See [Build Guide](docs/BUILD.md) for instructions on building the plugin zip file.
+
 ## Quick Start
 
-### 1. Prepare Your HTML Files
+### 1. Download Project Starter Pack
+
+For new projects, download the starter pack with build scripts:
+
+1. Go to **Vibe Code Deploy → Starter Pack**
+2. Click **Download Starter Pack**
+3. Extract the ZIP to your project's `scripts/` directory
+4. Review and customize `.cursorrules.template` for your project
+
+The starter pack includes:
+- `build-deployment-package.sh` - Main build script
+- `generate-manifest.php` - Manifest generator
+- `generate-functions-php.php` - Functions.php generator
+- `README.md` - Setup instructions
+- `.cursorrules.template` - Project rules template
+
+### 2. Prepare Your HTML Files
 
 Organize your HTML files with the correct structure. See the **Staging Zip Structure** section below.
 
-### 2. Create a Staging ZIP
+### 3. Create a Deployment Package
 
-Use the build script or manually create a ZIP with the required structure:
+**Option A: Using Build Script (Recommended)**
+
 ```bash
-# From the testing directory
-./scripts/build-staging-zip.sh
+# Run the build script from your project root
+./scripts/build-deployment-package.sh
 ```
 
-### 3. Deploy
+This creates a simplified deployment package with:
+- `manifest.json` - Package metadata and checksums
+- `config.json` - Deployment settings
+- All pages, assets, and theme files organized
+
+**Option B: Manual Build (Legacy Format)**
+
+Staging zips can also be built manually. See [Build Guide](docs/BUILD.md) for detailed instructions.
+
+```bash
+# Build staging zip from CFA project
+cd /path/to/CFA
+zip -r vibecode-deploy-staging.zip vibecode-deploy-staging \
+  -x "*.DS_Store" "__MACOSX/*" "*/__MACOSX/*" "._*"
+```
+
+### 4. Deploy
 
 1. Go to **Vibe Code Deploy → Import Build**
-2. Upload your **staging ZIP** (NOT the plugin ZIP)
+2. Upload your **deployment package ZIP** (NOT the plugin ZIP)
 3. Run preflight to review changes
 4. Deploy when ready
+5. Use **Health Check** page to verify deployment
 
-## Staging Zip Structure (IMPORTANT)
+## Deployment Package Structure
 
-Your staging ZIP MUST follow this structure:
+Vibe Code Deploy supports two package formats:
+
+### Simplified Format (Recommended)
 
 ```
-your-staging.zip
+{project-name}-deployment.zip
+└── {project-name}-deployment/
+    ├── manifest.json              # Package metadata and checksums
+    ├── config.json                # Deployment settings
+    ├── pages/                     # HTML pages
+    │   ├── home.html
+    │   ├── about.html
+    │   └── ...
+    ├── assets/                    # All assets in one place
+    │   ├── css/
+    │   │   ├── styles.css
+    │   │   └── icons.css
+    │   ├── js/
+    │   │   └── main.js
+    │   └── images/
+    │       └── ...
+    └── theme/                     # Optional: Theme files
+        ├── functions.php          # Smart merge with existing
+        └── acf-json/              # ACF field group definitions
+            └── group_*.json
+```
+
+**Benefits:**
+- Simpler structure (assets consolidated)
+- Built-in metadata (manifest.json)
+- Configuration file (config.json)
+- Easier to understand and maintain
+
+**Build:** Use the starter pack build script to generate this format automatically.
+
+### Legacy Format (Still Supported)
+
+```
+vibecode-deploy-staging.zip
 └── vibecode-deploy-staging/
     ├── pages/
     │   ├── home.html              # Required
@@ -80,12 +151,12 @@ your-staging.zip
     │   ├── functions.php          # Smart merge with existing
     │   └── acf-json/              # ACF field group definitions
     │       └── group_*.json
-    └── rules.md                   # Optional
+    └── vibecode-deploy-shortcodes.json  # Optional: Shortcode rules
 ```
 
-**⚠️ CRITICAL**: Do NOT upload the plugin ZIP as a staging ZIP. They are different files:
+**⚠️ CRITICAL**: Do NOT upload the plugin ZIP as a deployment package. They are different files:
 - **Plugin ZIP**: Contains the plugin code (install once)
-- **Staging ZIP**: Contains your HTML pages and assets (upload for deployment)
+- **Deployment Package**: Contains your HTML pages and assets (upload for deployment)
 
 ## HTML Structure Guidelines
 

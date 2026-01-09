@@ -1,0 +1,225 @@
+# Cursor Development Rules - [Project Name]
+
+**Project:** [Project Name]  
+**Purpose:** Enforce consistency and best practices across development  
+**Last Updated:** [Date]
+
+---
+
+## Critical Rules
+
+### 🚨 ALWAYS Use Context7 for Documentation
+
+**When to use Context7:**
+- Code generation requiring library/framework knowledge
+- Setup or configuration steps for external services
+- Library/API documentation lookups
+- Integration examples and best practices
+- Framework-specific patterns and conventions
+
+**How to use Context7:**
+1. Use `mcp0_resolve-library-id` to find the correct library
+2. Use `mcp0_get-library-docs` with specific topic for focused results
+3. Reference documentation in code comments when implementing
+
+### 🚨 ALWAYS Use FontAwesome Pro Icons
+
+**NEVER use:**
+- Emoji characters (🚀, 👥, etc.)
+- Other icon libraries (Material Icons, Feather, etc.)
+- SVG files directly in HTML
+- Icon fonts from other sources
+
+**ALWAYS use:**
+- FontAwesome Pro icons via custom implementation
+- Icon definitions in `js/icons.js`
+- HTML structure: `<div class="icon" data-icon="icon-name"></div>`
+- Semantic icon names
+
+### 🚨 ALWAYS Document Changed Files
+
+**When making any changes, ALWAYS note which files were modified:**
+- List all HTML files changed
+- List all JavaScript files changed
+- List all CSS files changed
+- Include file paths relative to project root
+- Note if files were created, modified, or deleted
+
+---
+
+## File Organization Rules
+
+### External Files Only - No Inline Code
+
+**CSS:**
+- ❌ NEVER use inline `<style>` tags
+- ❌ NEVER use `style=""` attributes
+- ✅ ALWAYS add styles to `css/styles.css`
+- ✅ Use CSS custom properties for colors
+
+**JavaScript:**
+- ❌ NEVER use inline `<script>` tags
+- ❌ NEVER use `onclick=""` or similar attributes
+- ✅ ALWAYS add code to `js/main.js`
+- ✅ Use event delegation and modern ES6+ syntax
+
+### File Structure
+
+```
+✅ Correct:
+<head>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <!-- content -->
+    <script src="js/main.js"></script>
+</body>
+```
+
+---
+
+## Code Style Rules
+
+### HTML
+
+**BEM Naming:**
+```html
+✅ Correct:
+<div class="component component--modifier">
+    <div class="component__element">Content</div>
+</div>
+```
+
+**Accessibility:**
+- Alt text on all images
+- ARIA labels on interactive elements
+- Semantic heading hierarchy (h1 → h2 → h3)
+- Keyboard navigation support
+
+### CSS
+
+**Use Custom Properties:**
+```css
+✅ Correct:
+.element {
+    background: var(--background-card);
+    color: var(--text-main);
+}
+```
+
+**Mobile-First:**
+```css
+✅ Correct:
+.element {
+    font-size: 1rem; /* mobile base */
+}
+@media (min-width: 768px) {
+    .element {
+        font-size: 1.25rem; /* tablet+ */
+    }
+}
+```
+
+**NEVER Use !important:**
+- Breaks CSS cascade and specificity
+- Makes debugging difficult
+- Creates maintenance problems
+
+### JavaScript
+
+**REQUIRED: IIFE Encapsulation:**
+```javascript
+✅ Correct:
+(function() {
+    'use strict';
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        // All code here
+    });
+})();
+```
+
+**Modern ES6+ Syntax:**
+- Use `const` and `let` (never `var`)
+- Use arrow functions
+- Use template literals
+- Use destructuring
+
+---
+
+## Deployment Rules
+
+### Build Process
+
+1. Run `./scripts/build-deployment-package.sh` to create deployment package
+2. Upload generated ZIP via Vibe Code Deploy → Import Build
+3. Run preflight to validate
+4. Deploy to WordPress site
+
+### Package Structure
+
+```
+{project-name}-deployment/
+├── manifest.json        # Package metadata
+├── config.json          # Deployment settings
+├── pages/               # HTML pages
+├── assets/               # All assets
+│   ├── css/
+│   ├── js/
+│   └── images/
+└── theme/                # Theme files
+    ├── functions.php
+    └── acf-json/
+```
+
+---
+
+## Testing Requirements
+
+### Browser Testing
+**Test in:** Chrome (latest), Firefox (latest), Safari (latest), Edge (latest)
+**Test on:** Desktop (1920x1080, 1366x768), Tablet (768px, 1024px), Mobile (375px, 414px)
+
+### Functionality Testing
+**Every page must:**
+- Load in < 2 seconds
+- Work without JavaScript (progressive enhancement)
+- Be keyboard navigable
+- Pass WCAG 2.1 Level AA
+- Have no console errors
+
+---
+
+## Prohibited Practices
+
+### ❌ NEVER Do These
+
+1. Use emoji instead of FontAwesome Pro icons
+2. Add inline styles or scripts
+3. Write JavaScript without IIFE wrapper
+4. Forget 'use strict' in IIFE
+5. Use `!important` in CSS
+6. Use `var` in JavaScript
+7. Skip accessibility attributes
+8. Hardcode URLs or paths
+
+---
+
+## Quick Reference
+
+### Adding a New Page
+1. Create HTML file in root
+2. Link to `css/styles.css`
+3. Add content with BEM classes
+4. Link to `js/main.js`
+5. Test responsive layout
+6. Commit with descriptive message
+
+### Modifying Styles
+1. Locate component in `css/styles.css`
+2. Use existing color variables
+3. Follow BEM naming
+4. Test mobile-first
+5. Check all breakpoints
+6. Verify no visual regressions
+7. Commit with component name

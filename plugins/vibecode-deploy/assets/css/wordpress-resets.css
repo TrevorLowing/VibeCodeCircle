@@ -1,0 +1,116 @@
+/**
+ * WordPress Default Style Resets
+ * 
+ * Generalized resets to ensure deployed pages match local HTML exactly.
+ * These resets override WordPress default styles without project-specific fonts.
+ * 
+ * Projects should add their own font-family declarations in their CSS files.
+ * 
+ * CSS Loading Order:
+ * 1. WordPress Core Styles (priority 10)
+ * 2. Google Fonts (priority 15, step 0)
+ * 3. WordPress Resets CSS (priority 15, step 0.5) ← This file
+ * 4. Project CSS (priority 15, step 1-2)
+ */
+
+/* ==========================================================================
+   1. Admin Bar Displacement Fix
+   ========================================================================== */
+
+/* WordPress admin bar adds margin-top to html when logged in, causing layout shifts */
+html { 
+    margin-top: 0 !important; 
+}
+
+/* ==========================================================================
+   2. Entry Content Block Margins Reset
+   ========================================================================== */
+
+/* WordPress adds default margins to all direct children of .entry-content */
+.entry-content > *,
+.entry-content > *:first-child,
+.entry-content > *:last-child {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+/* ==========================================================================
+   3. WordPress Block Group Spacing Reset
+   ========================================================================== */
+
+/* Reset wp-block-group spacing to prevent extra margins/padding from WordPress defaults */
+/* Only reset generic wp-block-group, preserve spacing for components with custom classes */
+/* Projects can override by adding their own class prefixes (e.g., [class*="project-"], [class*="site-"]) */
+.wp-block-group:not([class*="cfa-"]):not([class*="wp-block"]):not([class*="is-layout"]) {
+    margin: 0;
+    padding: 0;
+}
+
+/* Note: Projects should add their own class prefix to preserve spacing for their components */
+/* Example: If your project uses "my-site-" prefix, add :not([class*="my-site-"]) to the selector above */
+
+/* ==========================================================================
+   4. WordPress Block Columns Reset
+   ========================================================================== */
+
+/* WordPress adds default margins to block columns */
+.wp-block-columns {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+/* ==========================================================================
+   5. WordPress Paragraph Margins Reset
+   ========================================================================== */
+
+/* Reset WordPress default margins on paragraphs */
+.wp-block-paragraph {
+    margin: 0 !important;
+}
+
+/* ==========================================================================
+   6. WordPress Align Full/Wide Block Handling
+   ========================================================================== */
+
+/* WordPress "Align Full" class - full viewport width */
+.alignfull {
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    max-width: 100vw;
+    width: 100vw;
+}
+
+/* WordPress "Align Wide" class - wider than content but not full width */
+.alignwide {
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    max-width: calc(100vw - 2rem);
+    width: calc(100vw - 2rem);
+}
+
+/* ==========================================================================
+   7. Screen Reader Text Styling
+   ========================================================================== */
+
+/* Clear the "Skip to content" or Screen Reader text - ensure it's properly hidden */
+.screen-reader-text {
+    border: 0;
+    clip: rect(1px, 1px, 1px, 1px);
+    clip-path: inset(50%);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    width: 1px;
+    word-wrap: normal;
+}
+
+/* ==========================================================================
+   8. Font Family Resets (Projects Add Their Own)
+   ========================================================================== */
+
+/* Note: Font-family resets should be added by projects in their own CSS files */
+/* Projects can add resets like: */
+/* body { font-family: 'Project Font', sans-serif !important; } */
+/* h1, h2, h3, h4, h5, h6 { font-family: 'Heading Font', serif !important; } */

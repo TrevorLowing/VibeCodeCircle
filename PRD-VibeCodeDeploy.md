@@ -28,6 +28,7 @@ Vibe Code Deploy is a WordPress plugin that converts static HTML websites into G
 - Validate ZIP structure before processing
 - Extract to WordPress uploads directory
 - Support versioned builds with fingerprints
+- **Automatic class prefix detection**: If class prefix is not configured in Settings, plugin automatically detects it from staging files (HTML/CSS) during upload and saves it to settings
 
 #### 2.1.2 HTML to Block Conversion
 - Convert HTML pages to Gutenberg blocks
@@ -40,18 +41,28 @@ Vibe Code Deploy is a WordPress plugin that converts static HTML websites into G
 - Rewrite asset URLs to point to plugin location
 - Support for local assets only (css/, js/, resources/)
 - Exclude external URLs and CDN resources
+- **WordPress CSS Reset System**: Automatically enqueues comprehensive WordPress reset styles to neutralize WordPress default styles and ensure visual parity with local HTML
+- **WordPress CSS Reset System**: Automatically enqueues comprehensive WordPress reset styles to neutralize WordPress default styles and ensure visual parity with local HTML
 
 #### 2.1.4 Template Part Extraction
 - Automatically extract header from home.html
 - Automatically extract footer from home.html
 - Create WordPress template parts (wp_template_part)
 - Support for block theme template hierarchy
+- **EtchWP compatibility**: Uses block templates (`.html` files) exclusively - no PHP template fallback
+- **Post type templates**: Automatically creates default block templates (`single-{post_type}.html`) for all registered public post types (including built-in 'post')
+- **Default post archives**: Automatically creates `home.html` (blog posts index) and `archive.html` (category/tag/date archives) for default WordPress post type
 
 #### 2.1.5 Page Management
 - Create/update/skip existing pages based on ownership
 - Support for front page setting
 - Maintain page hierarchy and navigation
 - Custom post type support with shortcode validation
+- **Automatic page template assignment**: Automatically detects block templates (`page-{slug}`) during deployment (block templates only, no PHP template fallback)
+- **Automatic post type template creation**: Automatically creates default block templates (`single-{post_type}.html`) for all registered public post types (including built-in 'post')
+- **Automatic archive template creation**: Automatically creates `home.html` and `archive.html` templates for default WordPress post type blog functionality
+- **Automatic class prefix detection**: If class prefix is not set in Settings, plugin automatically detects it from staging files during upload/import and saves it to settings
+- **Automatic class prefix detection**: If class prefix is not set in Settings, plugin automatically detects it from staging files during upload/import and saves it to settings
 
 #### 2.1.6 Preflight Validation
 - Check for missing assets before deployment
@@ -168,6 +179,29 @@ staging-zip.zip
 - Hooks for custom validation
 - Integration points for third-party tools
 
+### 3.6 Block Authoring Standards
+- **Block Templates Only**: All templates use WordPress block markup (`.html` files stored as `wp_template` posts)
+- **Template Parts**: Header and footer use `wp:template-part` blocks referencing `wp_template_part` posts
+- **Block Markup**: Templates use standard Gutenberg blocks:
+  - `wp:template-part` for header/footer
+  - `wp:group` for layout containers
+  - `wp:post-title`, `wp:post-content`, `wp:post-date` for post data
+  - `wp:query`, `wp:post-template` for post loops
+  - `wp:html` for custom HTML (e.g., hero sections with custom classes)
+- **No PHP Templates**: Plugin does not create or assign PHP template files (`.php`) - block templates only
+- **WordPress Fallbacks**: PHP files (`index.php`, `page.php`) are created by ThemeSetupService only as WordPress theme requirements, but block templates always take precedence
+- **Template Hierarchy**: Plugin respects WordPress block theme template hierarchy (e.g., `single-{post_type}.html`, `page-{slug}.html`, `home.html`, `archive.html`)
+- **Class Prefix Consistency**: All automatically generated templates use the configured class prefix from plugin settings (e.g., `cfa-`, `my-site-`). This ensures templates match the CSS class naming convention used in deployed pages:
+  - Single post templates use prefixed classes: `{prefix}main`, `{prefix}hero`, `{prefix}page-section`, `{prefix}container`, `{prefix}page-card`
+  - Archive templates use prefixed classes: `{prefix}main`, `{prefix}page-section`, `{prefix}container`, `{prefix}page-card`
+  - Home templates use prefixed classes: `{prefix}main`, `{prefix}page-section`, `{prefix}container`, `{prefix}page-card`
+  - If no prefix is configured, templates use unprefixed class names (e.g., `main`, `hero`, `page-section`)
+- **Automatic Template Creation**: During deployment, plugin automatically creates:
+  - `single-{post_type}.html` for all public post types (including built-in 'post')
+  - `home.html` for blog posts index (default WordPress post type)
+  - `archive.html` for category/tag/date archives (default WordPress post type)
+  - All templates include header/footer template parts and proper styling classes with configured prefix
+
 ## 4. User Interface Requirements
 
 ### 4.1 Admin Menu Structure
@@ -199,7 +233,7 @@ staging-zip.zip
 - Validation options
 - Default deployment preferences
 
-## 5. Security Requirements
+## 6. Security Requirements
 
 ### 5.1 File Upload Security
 - ZIP file validation
@@ -219,7 +253,7 @@ staging-zip.zip
 - Optional telemetry
 - User data protection
 
-## 6. Performance Requirements
+## 7. Performance Requirements
 
 ### 6.1 Processing Limits
 - Maximum ZIP size: 100MB
@@ -233,7 +267,7 @@ staging-zip.zip
 - Asset compression
 - Caching strategies
 
-## 7. Compatibility Requirements
+## 8. Compatibility Requirements
 
 ### 7.1 WordPress Compatibility
 - Support for latest WordPress version
@@ -244,8 +278,8 @@ staging-zip.zip
 ### 7.2 Theme Compatibility
 - Etch theme (primary)
 - Etch child themes
-- Block themes
-- Classic themes (limited functionality)
+- Block themes (full functionality)
+- Classic themes: PHP fallback files (index.php, page.php) are created for WordPress theme requirements, but block templates take precedence
 
 ### 7.3 Plugin Compatibility
 - EtchWP preprocessor
@@ -253,7 +287,7 @@ staging-zip.zip
 - SEO plugins
 - Caching plugins
 
-## 8. Testing Requirements
+## 9. Testing Requirements
 
 ### 8.1 Unit Testing
 - All service classes
@@ -273,7 +307,7 @@ staging-zip.zip
 - Documentation accuracy
 - Feature completeness
 
-## 9. Documentation Requirements
+## 10. Documentation Requirements
 
 ### 9.1 User Documentation
 - Installation guide
@@ -293,7 +327,7 @@ staging-zip.zip
 - File structure
 - Configuration options
 
-## 10. Deployment Requirements
+## 11. Deployment Requirements
 
 ### 10.1 Distribution
 - WordPress.org repository
@@ -307,7 +341,7 @@ staging-zip.zip
 - Backward compatibility
 - Update notifications
 
-## 11. Success Metrics
+## 12. Success Metrics
 
 ### 11.1 Usage Metrics
 - Number of deployments
@@ -321,7 +355,7 @@ staging-zip.zip
 - Error rates
 - User satisfaction
 
-## 12. Future Enhancements
+## 13. Future Enhancements
 
 ### 12.1 Planned Features
 - Multi-site management
@@ -335,7 +369,7 @@ staging-zip.zip
 - Design tools
 - Analytics platforms
 
-## 13. Risk Assessment
+## 14. Risk Assessment
 
 ### 13.1 Technical Risks
 - **WordPress core changes**: Plugin relies on block template system
@@ -359,7 +393,7 @@ staging-zip.zip
 - **Error handling**: Clear error messages and logs
 - **Backup features**: Rollback capability for failed deployments
 
-## 14. Timeline
+## 15. Timeline
 
 ### 14.1 Development Phases
 1. Core functionality (completed)
