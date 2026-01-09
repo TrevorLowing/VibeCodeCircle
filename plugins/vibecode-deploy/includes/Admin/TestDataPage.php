@@ -94,18 +94,27 @@ class TestDataPage {
 			}
 		}
 
-		// Get current CPT status
-		$cpts = array(
-			'advisory',
-			'investigation',
-			'evidence_record',
-			'foia_request',
-			'foia_update',
-			'survey',
-		);
+		// Get all registered custom post types (exclude built-in types)
+		$all_cpts = get_post_types( array(
+			'public' => true,
+			'_builtin' => false,
+		), 'names' );
+
+		// Also include non-public CPTs that have show_ui enabled
+		$non_public_cpts = get_post_types( array(
+			'public' => false,
+			'show_ui' => true,
+			'_builtin' => false,
+		), 'names' );
+
+		$all_cpts = array_merge( $all_cpts, $non_public_cpts );
+		$all_cpts = array_unique( $all_cpts );
+
+		// Sort alphabetically for consistent display
+		sort( $all_cpts );
 
 		$cpt_status = array();
-		foreach ( $cpts as $cpt ) {
+		foreach ( $all_cpts as $cpt ) {
 			$exists = post_type_exists( $cpt );
 			$counts = $exists ? wp_count_posts( $cpt ) : null;
 			$cpt_status[ $cpt ] = array(
@@ -228,14 +237,12 @@ class TestDataPage {
 
 			<div class="card" style="max-width: 800px; margin-top: 20px;">
 				<h2><?php echo esc_html__( 'About Test Data', 'vibecode-deploy' ); ?></h2>
-				<p><?php echo esc_html__( 'Test data includes:', 'vibecode-deploy' ); ?></p>
+				<p><?php echo esc_html__( 'Test data is automatically generated for all registered Custom Post Types using lorem ipsum content.', 'vibecode-deploy' ); ?></p>
 				<ul style="list-style: disc; margin-left: 20px;">
-					<li><?php echo esc_html__( 'Advisory: 3 example advisories with different classifications', 'vibecode-deploy' ); ?></li>
-					<li><?php echo esc_html__( 'Investigation: 2 example investigations (if none exist)', 'vibecode-deploy' ); ?></li>
-					<li><?php echo esc_html__( 'Evidence Record: 3 example evidence records', 'vibecode-deploy' ); ?></li>
-					<li><?php echo esc_html__( 'FOIA Request: 2 example FOIA requests (if none exist)', 'vibecode-deploy' ); ?></li>
-					<li><?php echo esc_html__( 'FOIA Update: 2 example updates (if none exist)', 'vibecode-deploy' ); ?></li>
-					<li><?php echo esc_html__( 'Survey: 2 example surveys with active dates', 'vibecode-deploy' ); ?></li>
+					<li><?php echo esc_html__( 'Each CPT will receive 3 sample posts with lorem ipsum content', 'vibecode-deploy' ); ?></li>
+					<li><?php echo esc_html__( 'Generic meta fields are added using the pattern: {cpt_slug}_test_field_{number}', 'vibecode-deploy' ); ?></li>
+					<li><?php echo esc_html__( 'A test date field is added: {cpt_slug}_test_date', 'vibecode-deploy' ); ?></li>
+					<li><?php echo esc_html__( 'All posts are published immediately', 'vibecode-deploy' ); ?></li>
 				</ul>
 				<p><strong><?php echo esc_html__( 'Note:', 'vibecode-deploy' ); ?></strong> <?php echo esc_html__( 'CPTs that already have published posts will be skipped to avoid creating duplicate test data.', 'vibecode-deploy' ); ?></p>
 			</div>
