@@ -10,10 +10,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 use VibeCode\Deploy\Settings;
 
-$project_slug = 'cfa';
 $settings = Settings::get_all();
-if ( ! empty( $settings['project_slug'] ) ) {
-	$project_slug = $settings['project_slug'];
+$project_slug = $settings['project_slug'] ?? '';
+if ( $project_slug === '' ) {
+	echo "Error: No project_slug configured in settings. Please configure it in Vibe Code Deploy → Settings.\n";
+	exit( 1 );
 }
 
 $theme_slug = get_stylesheet(); // Use active theme (child theme if exists)

@@ -40,13 +40,13 @@ html {
 
 /* Reset wp-block-group spacing to prevent extra margins/padding from WordPress defaults */
 /* Only reset generic wp-block-group, preserve spacing for components with custom classes */
-/* Projects can override by adding their own class prefixes (e.g., [class*="project-"], [class*="site-"]) */
-.wp-block-group:not([class*="cfa-"]):not([class*="wp-block"]):not([class*="is-layout"]) {
+/* Projects can override by adding their own class prefixes in their project CSS */
+.wp-block-group:not([class*="wp-block"]):not([class*="is-layout"]) {
     margin: 0;
     padding: 0;
 }
 
-/* Note: Projects should add their own class prefix to preserve spacing for their components */
+/* Note: Projects should add their own class prefix exclusions in their project CSS if needed */
 /* Example: If your project uses "my-site-" prefix, add :not([class*="my-site-"]) to the selector above */
 
 /* ==========================================================================
@@ -107,10 +107,50 @@ html {
 }
 
 /* ==========================================================================
-   8. Font Family Resets (Projects Add Their Own)
+   8. Font-family Resets (Generalized - Let Project CSS Define Fonts)
    ========================================================================== */
 
-/* Note: Font-family resets should be added by projects in their own CSS files */
-/* Projects can add resets like: */
-/* body { font-family: 'Project Font', sans-serif !important; } */
-/* h1, h2, h3, h4, h5, h6 { font-family: 'Heading Font', serif !important; } */
+/* Reset font-family to inherit - allows project CSS to define fonts */
+/* Projects should add their own font-family declarations in their CSS files */
+body,
+body * {
+    font-family: inherit !important;
+}
+
+h1, h2, h3, h4, h5, h6,
+.wp-block-heading {
+    font-family: inherit !important;
+}
+
+/* ==========================================================================
+   9. Font-size Resets (Generalized - Let Project CSS Define Sizes)
+   ========================================================================== */
+
+/* Reset font-size to inherit - allows project CSS to define sizes */
+/* Projects should add their own font-size declarations in their CSS files */
+body,
+body * {
+    font-size: inherit !important;
+}
+
+/* ==========================================================================
+   10. Line-height Resets (Generalized - Let Project CSS Define Line-height)
+   ========================================================================== */
+
+/* Reset line-height to inherit - allows project CSS to define line-height */
+/* Projects should add their own line-height declarations in their CSS files */
+body,
+body * {
+    line-height: inherit !important;
+}
+
+/* ==========================================================================
+   11. Font-weight Resets (Generalized - Let Project CSS Define Weights)
+   ========================================================================== */
+
+/* Reset font-weight to inherit - allows project CSS to define weights */
+/* Projects should add their own font-weight declarations in their CSS files */
+body,
+body * {
+    font-weight: inherit !important;
+}

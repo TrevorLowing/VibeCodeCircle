@@ -12,7 +12,11 @@ use VibeCode\Deploy\Settings;
 use VibeCode\Deploy\Services\BuildService;
 
 $settings = Settings::get_all();
-$project_slug = $settings['project_slug'] ?? 'cfa';
+$project_slug = $settings['project_slug'] ?? '';
+if ( $project_slug === '' ) {
+	echo "Error: No project_slug configured in settings. Please configure it in Vibe Code Deploy → Settings.\n";
+	exit( 1 );
+}
 $fingerprint = BuildService::get_active_fingerprint( $project_slug );
 
 if ( ! $fingerprint ) {

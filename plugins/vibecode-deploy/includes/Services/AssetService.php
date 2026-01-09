@@ -3,6 +3,7 @@
 namespace VibeCode\Deploy\Services;
 
 use VibeCode\Deploy\Logger;
+use VibeCode\Deploy\Settings;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -18,7 +19,7 @@ final class AssetService {
 		return $path;
 	}
 
-	public static function extract_head_assets( \DOMDocument $dom ): array {
+	public static function extract_head_assets( \DOMDocument $dom, string $project_slug = '' ): array {
 		$css = array();
 		$js = array();
 		$fonts = array(); // Google Fonts and other external font links
@@ -56,10 +57,11 @@ final class AssetService {
 		
 		// Log extracted CSS files for debugging
 		if ( ! empty( $css ) ) {
+			$log_project_slug = $project_slug !== '' ? $project_slug : ( Settings::get_all()['project_slug'] ?? '' );
 			\VibeCode\Deploy\Logger::info( 'Extracted CSS assets from HTML head.', array(
 				'css_files' => $css,
 				'count' => count( $css ),
-			), 'cfa' );
+			), $log_project_slug );
 		}
 
 		$scripts = $xpath->query( '//script[@src]' );

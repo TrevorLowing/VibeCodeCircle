@@ -332,7 +332,9 @@ final class DeployService {
 			} else {
 				libxml_use_internal_errors( true );
 				$dom = new \DOMDocument();
-				$loaded = $dom->loadHTML( $raw );
+				$dom->encoding = 'UTF-8';
+				// Add UTF-8 encoding declaration to prevent character corruption
+				$loaded = $dom->loadHTML( '<?xml encoding="UTF-8">' . $raw );
 				libxml_clear_errors();
 				if ( ! $loaded ) {
 					$warnings[] = 'Unable to parse HTML.';
@@ -375,7 +377,7 @@ final class DeployService {
 						}
 					}
 
-					$assets = AssetService::extract_head_assets( $dom );
+					$assets = AssetService::extract_head_assets( $dom, $project_slug );
 					$css = isset( $assets['css'] ) && is_array( $assets['css'] ) ? $assets['css'] : array();
 					$js = isset( $assets['js'] ) && is_array( $assets['js'] ) ? $assets['js'] : array();
 
@@ -615,7 +617,9 @@ final class DeployService {
 
 			libxml_use_internal_errors( true );
 			$dom = new \DOMDocument();
-			$loaded = $dom->loadHTML( $raw );
+			$dom->encoding = 'UTF-8';
+			// Add UTF-8 encoding declaration to prevent character corruption
+			$loaded = $dom->loadHTML( '<?xml encoding="UTF-8">' . $raw );
 			libxml_clear_errors();
 			if ( ! $loaded ) {
 				$errors++;
@@ -860,7 +864,9 @@ final class DeployService {
 
 			libxml_use_internal_errors( true );
 			$dom = new \DOMDocument();
-			$loaded = $dom->loadHTML( $raw );
+			$dom->encoding = 'UTF-8';
+			// Add UTF-8 encoding declaration to prevent character corruption
+			$loaded = $dom->loadHTML( '<?xml encoding="UTF-8">' . $raw );
 			libxml_clear_errors();
 			if ( ! $loaded ) {
 				$errors++;
@@ -929,7 +935,7 @@ final class DeployService {
 				}
 			}
 
-			$assets = AssetService::extract_head_assets( $dom );
+			$assets = AssetService::extract_head_assets( $dom, $project_slug );
 
 			$content = self::inner_html( $dom, $main );
 			// Rewrite asset URLs FIRST (resources/ -> plugin URL) before rewrite_urls processes them

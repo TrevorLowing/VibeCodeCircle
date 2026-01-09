@@ -287,7 +287,9 @@ defined( 'ABSPATH' ) || exit;
 
 		libxml_use_internal_errors( true );
 		$dom = new \DOMDocument();
-		$loaded = $dom->loadHTML( $raw );
+		$dom->encoding = 'UTF-8';
+		// Add UTF-8 encoding declaration to prevent character corruption
+		$loaded = $dom->loadHTML( '<?xml encoding="UTF-8">' . $raw );
 		libxml_clear_errors();
 		if ( ! $loaded ) {
 			return array( 'created' => 0, 'updated' => 0, 'skipped' => 0, 'errors' => 1, 'created_parts' => array(), 'updated_parts' => array(), 'error_messages' => array( 'Unable to parse pages/home.html for template part extraction.' ) );
@@ -404,7 +406,9 @@ defined( 'ABSPATH' ) || exit;
 
 		libxml_use_internal_errors( true );
 		$dom = new \DOMDocument();
-		$loaded = $dom->loadHTML( $raw );
+		$dom->encoding = 'UTF-8';
+		// Add UTF-8 encoding declaration to prevent character corruption
+		$loaded = $dom->loadHTML( '<?xml encoding="UTF-8">' . $raw );
 		libxml_clear_errors();
 		if ( ! $loaded ) {
 			return array( 'total' => 0, 'items' => array() );

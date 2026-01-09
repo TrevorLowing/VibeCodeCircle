@@ -3,6 +3,7 @@
 namespace VibeCode\Deploy\Services;
 
 use VibeCode\Deploy\Logger;
+use VibeCode\Deploy\Settings;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -80,7 +81,8 @@ final class ThemeDeployService {
 				// If merge failed and backup exists, restore it
 				if ( file_exists( $backup_file ) && isset( $results['snapshots']['functions.php'] ) ) {
 					file_put_contents( $theme_file, $results['snapshots']['functions.php'] );
-					Logger::info( 'Restored functions.php from backup after failed merge.', array(), 'cfa' );
+					$project_slug = Settings::get_all()['project_slug'] ?? '';
+					Logger::info( 'Restored functions.php from backup after failed merge.', array(), $project_slug );
 				}
 			}
 		}
@@ -554,7 +556,8 @@ final class ThemeDeployService {
 		$temp_file = sys_get_temp_dir() . '/vibecode-deploy-syntax-check-' . uniqid( '', true ) . '.php';
 		
 		if ( file_put_contents( $temp_file, $php_code ) === false ) {
-			Logger::warning( 'Could not create temp file for PHP syntax validation.', array(), 'cfa' );
+			$project_slug = Settings::get_all()['project_slug'] ?? '';
+			Logger::warning( 'Could not create temp file for PHP syntax validation.', array(), $project_slug );
 			// Don't block deployment if we can't validate, but log it
 			return array( 'valid' => true, 'error' => 'Could not create temp file for validation' );
 		}

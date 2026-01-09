@@ -27,9 +27,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 require_once dirname( dirname( __FILE__ ) ) . '/includes/Services/ClassPrefixDetector.php';
 require_once dirname( dirname( __FILE__ ) ) . '/includes/Services/BuildService.php';
+require_once dirname( dirname( __FILE__ ) ) . '/includes/Settings.php';
 
 use VibeCode\Deploy\Services\ClassPrefixDetector;
 use VibeCode\Deploy\Services\BuildService;
+use VibeCode\Deploy\Settings;
 
 $tests_passed = 0;
 $tests_failed = 0;
@@ -178,9 +180,14 @@ array_map( 'unlink', glob( $test_dir3 . '/**/*' ) );
 array_map( 'rmdir', array_reverse( glob( $test_dir3 . '/**' ) ) );
 rmdir( $test_dir3 );
 
-// Test 4: Test with actual CFA staging files (if available)
-echo PHP_EOL . "Test 4: Testing with actual CFA staging files..." . PHP_EOL;
-$project_slug = 'cfa';
+// Test 4: Test with actual staging files (if available)
+echo PHP_EOL . "Test 4: Testing with actual staging files..." . PHP_EOL;
+$settings = Settings::get_all();
+$project_slug = $settings['project_slug'] ?? '';
+if ( $project_slug === '' ) {
+	echo "Skipping Test 4: No project_slug configured in settings." . PHP_EOL;
+	exit;
+}
 $fingerprints = BuildService::list_build_fingerprints( $project_slug );
 
 if ( ! empty( $fingerprints ) ) {

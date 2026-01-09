@@ -238,6 +238,11 @@ vibecode-deploy/
 4. Creates build record with fingerprint
 5. Stores staging files in uploads directory
 
+**Staging ZIP Naming:**
+- **Recommended:** Use project-prefixed names (e.g., `{project-slug}-vibecode-deploy-staging.zip`) to avoid conflicts when working with multiple projects in the same workspace
+- **Plugin accepts:** Any ZIP filename - the plugin does not enforce specific naming conventions
+- **Example:** For a project with slug `cfa`, use `cfa-vibecode-deploy-staging.zip` instead of generic `vibecode-deploy-staging.zip`
+
 **Staging Structure:**
 ```
 vibecode-deploy-staging/

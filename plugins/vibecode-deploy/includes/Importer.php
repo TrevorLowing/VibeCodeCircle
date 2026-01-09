@@ -374,6 +374,22 @@ final class Importer {
 				if ( $text === '' ) {
 					continue;
 				}
+				
+				// Check if parent is an inline element (like <a>, <span>, etc.)
+				// If so, don't wrap text in <p> tags - preserve as plain text
+				$parent_tag = '';
+				if ( $parent instanceof \DOMElement ) {
+					$parent_tag = strtolower( $parent->tagName );
+				}
+				$inline_elements = array( 'a', 'span', 'strong', 'em', 'b', 'i', 'u', 'small', 'sub', 'sup', 'code', 'kbd', 'samp', 'var', 'mark', 'time', 'abbr', 'cite', 'q', 'dfn', 'button', 'label' );
+				
+				if ( in_array( $parent_tag, $inline_elements, true ) ) {
+					// For inline elements, preserve text as-is (no <p> wrapper)
+					$blocks .= esc_html( $text );
+					continue;
+				}
+				
+				// For block-level parents, convert to paragraph block
 				$blocks .= self::block_open(
 					'paragraph',
 					array(
@@ -519,20 +535,12 @@ final class Importer {
 			}
 
 			// Preserve original classes on the original element
-			// CRITICAL: This ensures CSS classes like 'cfa-hero--compact' are preserved during Gutenberg conversion
+			// CRITICAL: This ensures CSS classes are preserved during Gutenberg conversion
 			// We add 'wp-block-group' to the original element (not a wrapper div) to maintain semantic HTML
 			$class_attr = '';
 			if ( isset( $attrs['class'] ) && is_string( $attrs['class'] ) && $attrs['class'] !== '' ) {
 				$original_classes = $attrs['class'];
 				$class_attr = ' class="' . esc_attr( $original_classes ) . ' wp-block-group"';
-				
-				// Log preservation of important classes for debugging
-				if ( strpos( $original_classes, 'cfa-hero' ) !== false || strpos( $original_classes, 'cfa-page-hero' ) !== false ) {
-					Logger::info( 'Preserved hero classes during HTML to block conversion.', array(
-						'original_classes' => $original_classes,
-						'tag' => $tag,
-					), 'cfa' );
-				}
 			} else {
 				$class_attr = ' class="wp-block-group"';
 			}
@@ -589,7 +597,9 @@ final class Importer {
 	public static function html_to_etch_blocks( string $html ): string {
 		libxml_use_internal_errors( true );
 		$dom = new \DOMDocument();
-		$loaded = $dom->loadHTML( '<!doctype html><html><body><div id="vibecode-deploy-import-root">' . $html . '</div></body></html>' );
+		$dom->encoding = 'UTF-8';
+		// Add UTF-8 encoding declaration to prevent character corruption
+		$loaded = $dom->loadHTML( '<?xml encoding="UTF-8"><!doctype html><html><body><div id="vibecode-deploy-import-root">' . $html . '</div></body></html>' );
 		libxml_clear_errors();
 
 		if ( ! $loaded ) {

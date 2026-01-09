@@ -89,7 +89,6 @@ final class ShortcodePlaceholderService {
 	/**
 	 * Check if a comment is a shortcode placeholder.
 	 *
-	 * Supports both VIBECODE_SHORTCODE and CFA_SHORTCODE prefixes for backward compatibility.
 	 * Handles both raw comment text and full HTML comment format (<!-- ... -->).
 	 *
 	 * @param string $comment HTML comment text (with or without <!-- --> markers).
@@ -107,8 +106,7 @@ final class ShortcodePlaceholderService {
 			return false;
 		}
 		$prefix = self::get_placeholder_prefix();
-		// Support both VIBECODE_SHORTCODE and CFA_SHORTCODE for backward compatibility
-		return stripos( $comment, $prefix ) === 0 || stripos( $comment, 'CFA_SHORTCODE' ) === 0;
+		return stripos( $comment, $prefix ) === 0;
 	}
 
 	/**
@@ -127,8 +125,7 @@ final class ShortcodePlaceholderService {
 		}
 
 		$prefix = self::get_placeholder_prefix();
-		// Support both VIBECODE_SHORTCODE and CFA_SHORTCODE for backward compatibility
-		$rest = preg_replace( '/^(?:' . preg_quote( $prefix, '/' ) . '|CFA_SHORTCODE)\b\s*/i', '', $comment );
+		$rest = preg_replace( '/^' . preg_quote( $prefix, '/' ) . '\b\s*/i', '', $comment );
 		$rest = is_string( $rest ) ? trim( $rest ) : '';
 		if ( $rest === '' ) {
 			return array( 'ok' => false, 'error' => 'Missing shortcode name.' );
