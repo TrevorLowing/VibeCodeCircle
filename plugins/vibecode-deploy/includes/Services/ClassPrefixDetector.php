@@ -67,6 +67,7 @@ final class ClassPrefixDetector {
 		\VibeCode\Deploy\Logger::info( 'Class prefix detection: HTML files scanned.', array( 'html_files_scanned' => $html_files_scanned, 'prefixes_found' => count( $prefixes ) ), '' );
 
 		// Scan CSS files (only if no prefix found in HTML)
+		$css_files = array(); // Initialize to prevent null count() error
 		if ( empty( $prefixes ) ) {
 			$css_files = self::find_files( $build_root, array( 'css' ) );
 			\VibeCode\Deploy\Logger::info( 'Class prefix detection: scanning CSS files.', array( 'build_root' => $build_root, 'css_files_count' => count( $css_files ) ), '' );
