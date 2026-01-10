@@ -140,6 +140,11 @@ final class ImportPage {
 					$error = 'Uploaded zip exceeds max size.';
 					Logger::error( 'Upload blocked: zip exceeds max size.', array( 'project_slug' => (string) $settings['project_slug'], 'size' => $size, 'max' => Staging::ZIP_MAX_BYTES ), (string) $settings['project_slug'] );
 				} else {
+					Logger::info( 'Calling wp_handle_upload.', array(
+						'file_name' => isset( $file['name'] ) ? (string) $file['name'] : '',
+						'file_size' => $size,
+					), (string) $settings['project_slug'] );
+					
 					$upload = wp_handle_upload(
 						$file,
 						array(
@@ -150,8 +155,16 @@ final class ImportPage {
 
 					if ( ! is_array( $upload ) || isset( $upload['error'] ) ) {
 						$error = is_array( $upload ) ? (string) ( $upload['error'] ?? 'Upload failed.' ) : 'Upload failed.';
-						Logger::error( 'Upload failed.', array( 'project_slug' => (string) $settings['project_slug'], 'error' => $error ), (string) $settings['project_slug'] );
+						Logger::error( 'Upload failed.', array( 
+							'project_slug' => (string) $settings['project_slug'], 
+							'error' => $error,
+							'upload_result' => is_array( $upload ) ? $upload : 'not_array',
+						), (string) $settings['project_slug'] );
 					} else {
+						Logger::info( 'wp_handle_upload succeeded.', array(
+							'upload_file' => isset( $upload['file'] ) ? (string) $upload['file'] : '',
+							'upload_url' => isset( $upload['url'] ) ? (string) $upload['url'] : '',
+						), (string) $settings['project_slug'] );
 						// Auto-detect project_slug from JSON file if not set
 						$project_slug_to_use = (string) $settings['project_slug'];
 						if ( $project_slug_to_use === '' ) {
