@@ -366,7 +366,17 @@ final class ImportPage {
 		}
 
 		if ( isset( $_POST['vibecode_deploy_run_import'] ) ) {
+			Logger::info( 'Deploy POST detected.', array(
+				'post_keys' => array_keys( $_POST ),
+				'has_fingerprint' => isset( $_POST['vibecode_deploy_fingerprint'] ),
+				'fingerprint_value' => isset( $_POST['vibecode_deploy_fingerprint'] ) ? sanitize_text_field( (string) $_POST['vibecode_deploy_fingerprint'] ) : '',
+				'has_nonce' => isset( $_POST['vibecode_deploy_run_import_nonce'] ),
+				'project_slug' => (string) $settings['project_slug'],
+			), (string) $settings['project_slug'] );
+			
 			check_admin_referer( 'vibecode_deploy_run_import', 'vibecode_deploy_run_import_nonce' );
+			Logger::info( 'Deploy nonce verified.', array( 'project_slug' => (string) $settings['project_slug'] ), (string) $settings['project_slug'] );
+			
 			$selected_fingerprint = isset( $_POST['vibecode_deploy_fingerprint'] ) ? sanitize_text_field( (string) $_POST['vibecode_deploy_fingerprint'] ) : '';
 			$set_front_page = ! empty( $_POST['vibecode_deploy_set_front_page'] );
 			$force_claim_unowned = ! empty( $_POST['vibecode_deploy_force_claim_unowned'] );
