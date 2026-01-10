@@ -26,12 +26,29 @@ The plugin zip contains the WordPress plugin code for installation.
 
 ### Output
 
-- **Files:** 
-  - `dist/vibecode-deploy.zip` (standard name, overwritten on each build)
-  - `dist/vibecode-deploy-{version}.zip` (versioned name, e.g., `vibecode-deploy-0.1.1.zip`)
+- **File:** `dist/vibecode-deploy-{version}.zip` (versioned name only, e.g., `vibecode-deploy-0.1.2.zip`)
 - **Contents:** `plugins/vibecode-deploy/` directory
 - **Excludes:** Test files, git files, documentation, build scripts
-- **Version:** Automatically extracted from plugin header
+- **Version:** Auto-incremented patch version (e.g., 0.1.1 → 0.1.2) on each build
+
+### Version Management
+
+**🚨 CRITICAL RULES:**
+
+1. **Only versioned zip is created** - The build script creates only `vibecode-deploy-{version}.zip`, not an unversioned `vibecode-deploy.zip`
+2. **Auto-increment on build** - The patch version (third number) is automatically incremented by 1 on each build
+   - Example: `0.1.1` → `0.1.2` → `0.1.3`
+3. **Version updated in code** - The build script automatically updates:
+   - `Version:` header in `vibecode-deploy.php`
+   - `VIBECODE_DEPLOY_PLUGIN_VERSION` constant in `vibecode-deploy.php`
+4. **No manual version edits** - Do not manually edit version numbers; the build script handles this
+5. **Version format** - Must follow semantic versioning: `MAJOR.MINOR.PATCH` (e.g., `0.1.2`)
+
+**Why versioned only?**
+- Prevents confusion about which version is "latest"
+- Enables multiple versions to coexist in `dist/`
+- Makes it clear which version was deployed
+- Follows WordPress plugin distribution best practices
 
 ### Manual Build
 

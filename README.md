@@ -230,7 +230,7 @@ wp vibecode-deploy purge --type=template-parts
 ## Documentation
 
 ### User Documentation
-- **Deployment Guide**: See `DEPLOYMENT-GUIDE.md` for step-by-step instructions
+- **Deployment Guide**: See `docs/DEPLOYMENT-GUIDE.md` for step-by-step instructions
 - **Help Page**: See the **Help** page in the plugin admin area for:
   - System status checker
   - Detailed troubleshooting guide
@@ -242,7 +242,7 @@ wp vibecode-deploy purge --type=template-parts
   - **Etch Theme Compatibility**: See [Monitoring for Compatibility](docs/DEVELOPER_GUIDE.md#monitoring-for-compatibility) section for maintaining compatibility with official Etch theme updates
 - **WordPress Plugin Best Practices**: See `docs/WORDPRESS_PLUGIN_BEST_PRACTICES.md` for comprehensive WordPress plugin development guidelines
 - **API Reference**: See `docs/API_REFERENCE.md` for service class documentation
-- **Product Requirements**: See `PRD-VibeCodeDeploy.md` for complete requirements
+- **Product Requirements**: See `docs/PRD-VibeCodeDeploy.md` for complete requirements
 
 ## Support
 

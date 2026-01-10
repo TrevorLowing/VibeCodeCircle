@@ -41,9 +41,9 @@ html {
 /* Reset wp-block-group spacing to prevent extra margins/padding from WordPress defaults */
 /* Only reset generic wp-block-group, preserve spacing for components with custom classes */
 /* Projects can override by adding their own class prefixes in their project CSS */
-.wp-block-group:not([class*="wp-block"]):not([class*="is-layout"]) {
-    margin: 0;
-    padding: 0;
+.wp-block-group:not([class*="wp-block"]):not([class*="is-layout"]):not([class*="cfa-"]) {
+    margin: 0 !important;
+    padding: 0 !important;
 }
 
 /* Note: Projects should add their own class prefix exclusions in their project CSS if needed */
@@ -54,9 +54,9 @@ html {
    ========================================================================== */
 
 /* WordPress adds default margins to block columns */
-.wp-block-columns {
-    margin-top: 0;
-    margin-bottom: 0;
+.wp-block-columns:not([class*="cfa-"]) {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
 }
 
 /* ==========================================================================
@@ -64,8 +64,9 @@ html {
    ========================================================================== */
 
 /* Reset WordPress default margins on paragraphs */
-.wp-block-paragraph {
+.wp-block-paragraph:not([class*="cfa-"]) {
     margin: 0 !important;
+    padding: 0 !important;
 }
 
 /* ==========================================================================
@@ -107,14 +108,28 @@ html {
 }
 
 /* ==========================================================================
+   7.5. Body-Level Font Resets (Establish Baseline)
+   ========================================================================== */
+
+/* Note: We do NOT reset body-level properties here because project CSS should define them */
+/* Resetting body properties would remove project CSS values, causing issues */
+/* Instead, we reset WordPress-injected elements only, allowing them to inherit from body */
+
+/* ==========================================================================
    8. Font-family Resets (Generalized - Let Project CSS Define Fonts)
    ========================================================================== */
 
 /* Reset font-family ONLY on WordPress-injected elements, not on project elements */
 /* This prevents WordPress from injecting default fonts while preserving project fonts */
+/* Keep 'inherit' for font-family so elements inherit from body, which project CSS defines */
 .wp-block-group:not([class*="cfa-"]):not([class*="wp-block"]):not([class*="is-layout"]),
 .wp-block-paragraph:not([class*="cfa-"]),
 .wp-block-heading:not([class*="cfa-"]),
+.wp-block-column:not([class*="cfa-"]),
+.wp-block-columns:not([class*="cfa-"]),
+.wp-block-list:not([class*="cfa-"]),
+.wp-block-quote:not([class*="cfa-"]),
+[class*="wp-block-"]:not([class*="cfa-"]):not([class*="wp-block-group"]):not([class*="wp-block-paragraph"]):not([class*="wp-block-heading"]):not([class*="wp-block-column"]):not([class*="wp-block-columns"]):not([class*="wp-block-list"]):not([class*="wp-block-quote"]),
 .entry-content > *:not([class*="cfa-"]) {
     font-family: inherit !important;
 }
@@ -124,11 +139,23 @@ html {
    ========================================================================== */
 
 /* Reset font-size ONLY on WordPress-injected elements, not on project elements */
+/* Using 'unset' instead of 'inherit' to completely remove the property, allowing project CSS to define it */
 .wp-block-group:not([class*="cfa-"]):not([class*="wp-block"]):not([class*="is-layout"]),
 .wp-block-paragraph:not([class*="cfa-"]),
 .wp-block-heading:not([class*="cfa-"]),
+h1.wp-block-heading:not([class*="cfa-"]),
+h2.wp-block-heading:not([class*="cfa-"]),
+h3.wp-block-heading:not([class*="cfa-"]),
+h4.wp-block-heading:not([class*="cfa-"]),
+h5.wp-block-heading:not([class*="cfa-"]),
+h6.wp-block-heading:not([class*="cfa-"]),
+.wp-block-column:not([class*="cfa-"]),
+.wp-block-columns:not([class*="cfa-"]),
+.wp-block-list:not([class*="cfa-"]),
+.wp-block-quote:not([class*="cfa-"]),
+[class*="wp-block-"]:not([class*="cfa-"]):not([class*="wp-block-group"]):not([class*="wp-block-paragraph"]):not([class*="wp-block-heading"]):not([class*="wp-block-column"]):not([class*="wp-block-columns"]):not([class*="wp-block-list"]):not([class*="wp-block-quote"]),
 .entry-content > *:not([class*="cfa-"]) {
-    font-size: inherit !important;
+    font-size: unset !important;
 }
 
 /* ==========================================================================
@@ -136,11 +163,23 @@ html {
    ========================================================================== */
 
 /* Reset line-height ONLY on WordPress-injected elements, not on project elements */
+/* Using 'unset' instead of 'inherit' to completely remove the property, allowing project CSS to define it */
 .wp-block-group:not([class*="cfa-"]):not([class*="wp-block"]):not([class*="is-layout"]),
 .wp-block-paragraph:not([class*="cfa-"]),
 .wp-block-heading:not([class*="cfa-"]),
+h1.wp-block-heading:not([class*="cfa-"]),
+h2.wp-block-heading:not([class*="cfa-"]),
+h3.wp-block-heading:not([class*="cfa-"]),
+h4.wp-block-heading:not([class*="cfa-"]),
+h5.wp-block-heading:not([class*="cfa-"]),
+h6.wp-block-heading:not([class*="cfa-"]),
+.wp-block-column:not([class*="cfa-"]),
+.wp-block-columns:not([class*="cfa-"]),
+.wp-block-list:not([class*="cfa-"]),
+.wp-block-quote:not([class*="cfa-"]),
+[class*="wp-block-"]:not([class*="cfa-"]):not([class*="wp-block-group"]):not([class*="wp-block-paragraph"]):not([class*="wp-block-heading"]):not([class*="wp-block-column"]):not([class*="wp-block-columns"]):not([class*="wp-block-list"]):not([class*="wp-block-quote"]),
 .entry-content > *:not([class*="cfa-"]) {
-    line-height: inherit !important;
+    line-height: unset !important;
 }
 
 /* ==========================================================================
@@ -148,9 +187,21 @@ html {
    ========================================================================== */
 
 /* Reset font-weight ONLY on WordPress-injected elements, not on project elements */
+/* Using 'unset' instead of 'inherit' to completely remove the property, allowing project CSS to define it */
 .wp-block-group:not([class*="cfa-"]):not([class*="wp-block"]):not([class*="is-layout"]),
 .wp-block-paragraph:not([class*="cfa-"]),
 .wp-block-heading:not([class*="cfa-"]),
+h1.wp-block-heading:not([class*="cfa-"]),
+h2.wp-block-heading:not([class*="cfa-"]),
+h3.wp-block-heading:not([class*="cfa-"]),
+h4.wp-block-heading:not([class*="cfa-"]),
+h5.wp-block-heading:not([class*="cfa-"]),
+h6.wp-block-heading:not([class*="cfa-"]),
+.wp-block-column:not([class*="cfa-"]),
+.wp-block-columns:not([class*="cfa-"]),
+.wp-block-list:not([class*="cfa-"]),
+.wp-block-quote:not([class*="cfa-"]),
+[class*="wp-block-"]:not([class*="cfa-"]):not([class*="wp-block-group"]):not([class*="wp-block-paragraph"]):not([class*="wp-block-heading"]):not([class*="wp-block-column"]):not([class*="wp-block-columns"]):not([class*="wp-block-list"]):not([class*="wp-block-quote"]),
 .entry-content > *:not([class*="cfa-"]) {
-    font-weight: inherit !important;
+    font-weight: unset !important;
 }

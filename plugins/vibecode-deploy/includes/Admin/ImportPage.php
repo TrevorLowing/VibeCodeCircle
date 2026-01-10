@@ -61,10 +61,8 @@ final class ImportPage {
 		if ( isset( $_POST['vibecode_deploy_upload_zip'] ) ) {
 			check_admin_referer( 'vibecode_deploy_upload_zip', 'vibecode_deploy_nonce' );
 
-			if ( $settings['project_slug'] === '' ) {
-				$error = __( 'Project Slug is required.', 'vibecode-deploy' );
-				Logger::error( 'Upload blocked: missing project slug.', array(), '' );
-			} elseif ( $settings['class_prefix'] !== '' && ! preg_match( '/^[a-z0-9-]+-$/', (string) $settings['class_prefix'] ) ) {
+			// Validate class prefix format if set
+			if ( $settings['class_prefix'] !== '' && ! preg_match( '/^[a-z0-9-]+-$/', (string) $settings['class_prefix'] ) ) {
 				$error = __( 'Class Prefix is invalid.', 'vibecode-deploy' );
 				Logger::error( 'Upload blocked: invalid class prefix.', array( 'project_slug' => (string) $settings['project_slug'], 'class_prefix' => (string) $settings['class_prefix'] ), (string) $settings['project_slug'] );
 			} elseif ( empty( $_FILES['vibecode_deploy_zip']['tmp_name'] ) || ! is_uploaded_file( (string) $_FILES['vibecode_deploy_zip']['tmp_name'] ) ) {
@@ -92,39 +90,62 @@ final class ImportPage {
 						$error = is_array( $upload ) ? (string) ( $upload['error'] ?? 'Upload failed.' ) : 'Upload failed.';
 						Logger::error( 'Upload failed.', array( 'project_slug' => (string) $settings['project_slug'], 'error' => $error ), (string) $settings['project_slug'] );
 					} else {
-						Logger::info( 'Zip uploaded; extracting to staging.', array( 'project_slug' => (string) $settings['project_slug'] ), (string) $settings['project_slug'] );
-						$result = Staging::extract_zip_to_staging( (string) $upload['file'], (string) $settings['project_slug'] );
-						@unlink( (string) $upload['file'] );
-
-						if ( ! is_array( $result ) || empty( $result['ok'] ) ) {
-							$error = is_array( $result ) ? (string) ( $result['error'] ?? 'Extraction failed.' ) : 'Extraction failed.';
-							Logger::error( 'Extraction failed.', array( 'project_slug' => (string) $settings['project_slug'], 'error' => $error ), (string) $settings['project_slug'] );
-						} else {
-							$selected_fingerprint = (string) $result['fingerprint'];
-							
-							// Auto-detect class prefix if not set
-							if ( $settings['class_prefix'] === '' ) {
-								$build_root = BuildService::build_root_path( (string) $settings['project_slug'], $selected_fingerprint );
-								$detected_prefix = ClassPrefixDetector::detect_from_staging( $build_root );
+						// Auto-detect project_slug from JSON file if not set
+						$project_slug_to_use = (string) $settings['project_slug'];
+						if ( $project_slug_to_use === '' ) {
+							$detected_slug = self::detect_project_slug_from_zip( (string) $upload['file'] );
+							if ( $detected_slug !== '' ) {
+								// Update settings with detected project slug
+								$updated_settings = $settings;
+								$updated_settings['project_slug'] = $detected_slug;
+								update_option( Settings::OPTION_NAME, $updated_settings );
+								$settings = Settings::get_all(); // Refresh settings
+								$project_slug_to_use = $detected_slug;
 								
-								if ( $detected_prefix !== '' ) {
-									// Update settings with detected prefix
-									$updated_settings = $settings;
-									$updated_settings['class_prefix'] = $detected_prefix;
-									update_option( Settings::OPTION_NAME, $updated_settings );
-									$settings = Settings::get_all(); // Refresh settings
-									
-									$notice = 'Staging uploaded: ' . esc_html( $selected_fingerprint ) . ' (' . esc_html( (string) $result['files'] ) . ' files). Class prefix auto-detected: <code>' . esc_html( $detected_prefix ) . '</code>';
-									Logger::info( 'Class prefix auto-detected from staging files.', array( 'project_slug' => (string) $settings['project_slug'], 'detected_prefix' => $detected_prefix ), (string) $settings['project_slug'] );
-								} else {
-									$notice = 'Staging uploaded: ' . esc_html( $selected_fingerprint ) . ' (' . esc_html( (string) $result['files'] ) . ' files). <strong>Warning:</strong> Class prefix could not be auto-detected. Please set it manually in Settings.';
-									Logger::warning( 'Class prefix auto-detection failed.', array( 'project_slug' => (string) $settings['project_slug'] ), (string) $settings['project_slug'] );
-								}
+								$notice = 'Project slug auto-detected from staging zip: <code>' . esc_html( $detected_slug ) . '</code>.';
+								Logger::info( 'Project slug auto-detected from staging zip.', array( 'detected_slug' => $detected_slug ), $detected_slug );
 							} else {
-								$notice = 'Staging uploaded: ' . esc_html( $selected_fingerprint ) . ' (' . esc_html( (string) $result['files'] ) . ' files)';
+								$error = __( 'Project Slug is required. Could not auto-detect from staging zip. Please set it in Vibe Code Deploy → Configuration.', 'vibecode-deploy' );
+								Logger::error( 'Upload blocked: missing project slug and auto-detection failed.', array(), '' );
+								@unlink( (string) $upload['file'] );
 							}
-							
-							Logger::info( 'Staging extracted.', array( 'project_slug' => (string) $settings['project_slug'], 'fingerprint' => $selected_fingerprint, 'files' => (int) ( $result['files'] ?? 0 ) ), (string) $settings['project_slug'] );
+						}
+						
+						if ( ! isset( $error ) ) {
+							Logger::info( 'Zip uploaded; extracting to staging.', array( 'project_slug' => $project_slug_to_use ), $project_slug_to_use );
+							$result = Staging::extract_zip_to_staging( (string) $upload['file'], $project_slug_to_use );
+							@unlink( (string) $upload['file'] );
+
+							if ( ! is_array( $result ) || empty( $result['ok'] ) ) {
+								$error = is_array( $result ) ? (string) ( $result['error'] ?? 'Extraction failed.' ) : 'Extraction failed.';
+								Logger::error( 'Extraction failed.', array( 'project_slug' => $project_slug_to_use, 'error' => $error ), $project_slug_to_use );
+							} else {
+								$selected_fingerprint = (string) $result['fingerprint'];
+								
+								// Auto-detect class prefix if not set
+								if ( $settings['class_prefix'] === '' ) {
+									$build_root = BuildService::build_root_path( $project_slug_to_use, $selected_fingerprint );
+									$detected_prefix = ClassPrefixDetector::detect_from_staging( $build_root );
+									
+									if ( $detected_prefix !== '' ) {
+										// Update settings with detected prefix
+										$updated_settings = $settings;
+										$updated_settings['class_prefix'] = $detected_prefix;
+										update_option( Settings::OPTION_NAME, $updated_settings );
+										$settings = Settings::get_all(); // Refresh settings
+										
+										$notice = ( isset( $notice ) ? $notice . ' ' : '' ) . 'Staging uploaded: ' . esc_html( $selected_fingerprint ) . ' (' . esc_html( (string) $result['files'] ) . ' files). Class prefix auto-detected: <code>' . esc_html( $detected_prefix ) . '</code>';
+										Logger::info( 'Class prefix auto-detected from staging files.', array( 'project_slug' => $project_slug_to_use, 'detected_prefix' => $detected_prefix ), $project_slug_to_use );
+									} else {
+										$notice = ( isset( $notice ) ? $notice . ' ' : '' ) . 'Staging uploaded: ' . esc_html( $selected_fingerprint ) . ' (' . esc_html( (string) $result['files'] ) . ' files). <strong>Warning:</strong> Class prefix could not be auto-detected. Please set it manually in Settings.';
+										Logger::warning( 'Class prefix auto-detection failed.', array( 'project_slug' => $project_slug_to_use ), $project_slug_to_use );
+									}
+								} else {
+									$notice = ( isset( $notice ) ? $notice . ' ' : '' ) . 'Staging uploaded: ' . esc_html( $selected_fingerprint ) . ' (' . esc_html( (string) $result['files'] ) . ' files)';
+								}
+								
+								Logger::info( 'Staging extracted.', array( 'project_slug' => $project_slug_to_use, 'fingerprint' => $selected_fingerprint, 'files' => (int) ( $result['files'] ?? 0 ) ), $project_slug_to_use );
+							}
 						}
 					}
 				}
@@ -979,6 +1000,48 @@ final class ImportPage {
 		echo '</div>';
 
 		echo '</div>';
+	}
+
+	/**
+	 * Detect project_slug from JSON file inside zip without extracting.
+	 *
+	 * @param string $zip_path Path to zip file.
+	 * @return string Detected project_slug or empty string if not found.
+	 */
+	private static function detect_project_slug_from_zip( string $zip_path ): string {
+		if ( ! file_exists( $zip_path ) || ! class_exists( '\\ZipArchive' ) ) {
+			return '';
+		}
+
+		$zip = new \ZipArchive();
+		$opened = $zip->open( $zip_path );
+		if ( $opened !== true ) {
+			return '';
+		}
+
+		$config_filename = 'vibecode-deploy-shortcodes.json';
+		$possible_paths = array(
+			$config_filename,
+			'vibecode-deploy-staging/' . $config_filename,
+		);
+
+		$project_slug = '';
+		foreach ( $possible_paths as $path ) {
+			$index = $zip->locateName( $path );
+			if ( $index !== false ) {
+				$content = $zip->getFromIndex( $index );
+				if ( is_string( $content ) && $content !== '' ) {
+					$decoded = json_decode( $content, true );
+					if ( is_array( $decoded ) && isset( $decoded['project_slug'] ) && is_string( $decoded['project_slug'] ) ) {
+						$project_slug = sanitize_key( trim( $decoded['project_slug'] ) );
+						break;
+					}
+				}
+			}
+		}
+
+		$zip->close();
+		return $project_slug;
 	}
 
 	public static function rollback_last_deploy(): void {

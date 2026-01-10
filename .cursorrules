@@ -92,23 +92,48 @@ plugin-name/
 
 ### Version Management
 
-**REQUIRED**: Increment plugin version for all code changes.
+**🚨 CRITICAL RULES:**
 
-- **ALWAYS increment version** when making any code changes to the plugin
-- **Minimum increment**: Patch version (e.g., `0.1.0` → `0.1.1`)
-- **Update locations**:
-  1. Plugin header `Version:` in main plugin file (`vibecode-deploy.php`)
-  2. `VIBECODE_DEPLOY_PLUGIN_VERSION` constant definition
-  3. Fallback version strings in `ThemeSetupService.php` and `ThemeSetupService-safe.php` (if present)
-- **Version format**: Semantic versioning (`MAJOR.MINOR.PATCH`)
-- **Why**: Version increments ensure browser cache busting for CSS/JS assets and proper upgrade detection
+1. **Auto-increment on build** - The build script (`scripts/build-plugin-zip.sh`) automatically increments the patch version (third number) by 1 on each build
+   - Example: `0.1.1` → `0.1.2` → `0.1.3`
+   - The script updates both the `Version:` header and `VIBECODE_DEPLOY_PLUGIN_VERSION` constant
+2. **Do NOT manually edit version** - Never manually change version numbers in `vibecode-deploy.php`; the build script handles this automatically
+3. **Version format**: Semantic versioning (`MAJOR.MINOR.PATCH`, e.g., `0.1.2`)
+4. **Why**: Version increments ensure browser cache busting for CSS/JS assets and proper upgrade detection
 
 **Example**:
 ```php
-// vibecode-deploy.php
- * Version: 0.1.1
-define( 'VIBECODE_DEPLOY_PLUGIN_VERSION', '0.1.1' );
+// vibecode-deploy.php (auto-updated by build script)
+ * Version: 0.1.2
+define( 'VIBECODE_DEPLOY_PLUGIN_VERSION', '0.1.2' );
 ```
+
+**Manual version edits (if needed):**
+- Only edit version manually if you need to increment MAJOR or MINOR (not PATCH)
+- PATCH version is always auto-incremented by the build script
+- If you manually change MAJOR or MINOR, the next build will increment PATCH from your manual value
+
+### Build Process
+
+**🚨 CRITICAL RULES:**
+
+1. **Only versioned zip is created** - The build script creates only `dist/vibecode-deploy-{version}.zip`, NOT an unversioned `vibecode-deploy.zip`
+   - Example output: `dist/vibecode-deploy-0.1.2.zip`
+   - The unversioned zip is redundant and not created
+2. **Version auto-incremented** - Each build automatically increments the patch version by 1
+3. **Version updated in code** - The build script automatically updates:
+   - `Version:` header in `vibecode-deploy.php`
+   - `VIBECODE_DEPLOY_PLUGIN_VERSION` constant in `vibecode-deploy.php`
+4. **Build command**: `./scripts/build-plugin-zip.sh`
+5. **Output location**: `dist/vibecode-deploy-{version}.zip` (versioned only)
+
+**Why versioned only?**
+- Prevents confusion about which version is "latest"
+- Enables multiple versions to coexist in `dist/`
+- Makes it clear which version was deployed
+- Follows WordPress plugin distribution best practices
+
+**Reference**: See `docs/BUILD.md` for complete build documentation
 
 ### Admin UI Standards
 
@@ -230,6 +255,72 @@ define( 'VIBECODE_DEPLOY_PLUGIN_VERSION', '0.1.1' );
 3. Fire at appropriate time
 4. Pass relevant data as parameters
 5. Allow filtering of data with filters
+
+---
+
+## File Organization Rules
+
+### Documentation and Reports Organization - REQUIRED
+
+**Standard Folder Structure:**
+All projects must use the following folder structure for documentation and diagnostic files:
+
+```
+{project-root}/
+├── docs/                          # Core project documentation
+│   ├── PRD-VibeCodeDeploy.md      # Product Requirements Document
+│   ├── DEPLOYMENT-GUIDE.md        # Deployment guide
+│   ├── DEVELOPER_GUIDE.md         # Developer guide
+│   └── ...                        # Other permanent documentation
+│
+├── reports/                       # Diagnostic reports and audits
+│   ├── deployment/                # Deployment-related reports
+│   │   ├── compliance-reviews/    # Compliance audit reports
+│   │   ├── visual-comparisons/    # Visual comparison reports
+│   │   └── deployment-status/     # Deployment readiness docs
+│   ├── development/               # Development-related reports
+│   │   ├── implementation-summaries/
+│   │   ├── code-reviews/
+│   │   └── feature-status/
+│   └── archive/                   # Archived reports (older than 90 days)
+│
+└── {project files}                # Plugin code, scripts, etc.
+```
+
+**File Categorization Rules:**
+
+1. **`docs/` Folder - Permanent Documentation**
+   - Long-term project documentation that should be version-controlled
+   - Examples: `PRD-VibeCodeDeploy.md`, `DEPLOYMENT-GUIDE.md`, `DEVELOPER_GUIDE.md`, `ARCHITECTURE.md`
+   - Criteria: Files referenced regularly and provide ongoing value
+
+2. **`reports/` Folder - Diagnostic Reports**
+   - Audit reports, implementation summaries, code reviews, development status
+   - Subfolders organize by category (deployment, development)
+   - Use date-based naming: `{category}-{description}-{YYYY-MM-DD}.md`
+   - Example: `development-implementation-summary-2025-01-10.md`
+
+3. **Root Directory - Minimal Files Only**
+   - Only essential project files and configuration
+   - `README.md`, `CHANGELOG.md`, configuration files
+   - **NOT allowed:** Diagnostic reports, audit documents, temporary documentation
+
+**Cleanup and Archival Rules:**
+
+1. **90-Day Rule:** Reports older than 90 days should be moved to `reports/archive/`
+2. **Version Consolidation:** Keep only the most recent comprehensive version of duplicate reports
+3. **Completed Fixes:** Move documentation of completed fixes to `reports/archive/` after verification
+4. **Quarterly Cleanup:** Review `reports/archive/` and delete files older than 1 year (unless marked as "KEEP")
+
+**Naming Conventions:**
+- Reports: `{category}-{description}-{YYYY-MM-DD}.md`
+- Documentation: `{TITLE}.md` (PascalCase or UPPERCASE)
+- Avoid: `*_LATEST.md`, `*_FULL.md`, `*_v2.md` (use dates instead)
+
+**When Creating New Reports:**
+- Create in appropriate `reports/` subfolder (not root)
+- Use descriptive, date-based naming
+- Reference this structure in report if needed
 
 ---
 

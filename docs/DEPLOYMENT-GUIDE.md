@@ -8,6 +8,45 @@ This guide provides step-by-step instructions for deploying static HTML sites to
 2. **Plugin Installed**: Vibe Code Deploy plugin activated
 3. **Theme**: Etch theme or child theme (recommended)
 4. **HTML Files**: Prepared with correct structure
+5. **Plugin Settings Configured**: Project Slug and Class Prefix must be set before deployment
+
+### Plugin Settings Configuration
+
+**Project Slug Auto-Detection (v0.1.4+):**
+- The plugin now **automatically detects** `project_slug` from `vibecode-deploy-shortcodes.json` in the zip file
+- If `project_slug` is not set in WordPress settings, the plugin will:
+  1. Read the JSON file from the zip (without extracting)
+  2. Extract the `project_slug` value
+  3. Automatically set it in WordPress settings
+  4. Continue with upload
+- **You can still set it manually** in Configuration for consistency or if auto-detection fails
+
+**Class Prefix Auto-Detection:**
+- The plugin automatically detects class prefix from CSS files after extraction
+- If not set, it will be auto-detected and saved to settings
+
+**Recommended (but not required):**
+1. Go to **Vibe Code Deploy → Configuration**
+2. Set **Project Slug** (e.g., `bgp`, `cfa`, `my-site`)
+   - Should match the `project_slug` in `vibecode-deploy-shortcodes.json`
+   - Used for shortcode prefix validation and build organization
+   - **Optional** - will be auto-detected from JSON if not set
+3. Set **Class Prefix** (e.g., `bgp-`, `cfa-`, `my-site-`)
+   - Must end with a dash (e.g., `bgp-` not `bgp`)
+   - Used for CSS class prefix validation
+   - **Optional** - will be auto-detected from CSS files if not set
+4. Click **Save Changes** (optional - auto-detection will handle it)
+
+**If Auto-Detection Fails:**
+- If the JSON file is missing or invalid, you'll see: "Project Slug is required. Could not auto-detect from staging zip."
+- In this case, manually set it in **Vibe Code Deploy → Configuration**
+- Make sure `vibecode-deploy-shortcodes.json` exists in your staging zip with `project_slug` field
+
+**Why Manual Configuration is Still Recommended:**
+- Ensures consistency across multiple deployments
+- Allows you to verify the slug before upload
+- Faster (no need to read zip file)
+- Required if JSON file is missing or malformed
 
 ## Step 1: Prepare Your HTML Files
 
@@ -49,6 +88,58 @@ Each HTML page must follow this structure:
 3. **Main**: Only content inside `<main>` becomes page content
 4. **CSS Classes**: Use BEM naming with project prefix (e.g., `my-site-*` or configure in plugin settings)
 
+### CPT Consideration Before Deployment
+
+**Before deploying, review your static HTML content to identify items that should be Custom Post Types (CPTs) instead of hardcoded content.**
+
+**When to Use CPTs:**
+- **Product listings** - Products, services, or items with similar structure
+- **FAQs** - Frequently asked questions organized by category
+- **Testimonials/Case Studies** - Customer success stories or reviews
+- **Team Members** - Staff or team member profiles
+- **Portfolio Items** - Projects, work samples, or portfolio entries
+- **Blog Posts** - If you have a blog or news section
+- **Events** - Upcoming events, workshops, or announcements
+- **Resources** - Downloads, guides, or resource library items
+
+**Benefits of Using CPTs:**
+- ✅ Easy content management via WordPress admin
+- ✅ No need to edit HTML files for content updates
+- ✅ Consistent structure and formatting
+- ✅ Better SEO with proper post types
+- ✅ Filtering and querying capabilities
+- ✅ Future-proof for content growth
+
+**Implementation Steps:**
+1. **Identify repetitive content** - Look for repeated HTML structures (cards, lists, grids)
+2. **Design CPT structure** - Plan fields, taxonomies, and relationships
+3. **Create CPT in theme** - Register CPT and taxonomies in `functions.php`
+4. **Create ACF field groups** - Define custom fields for content
+5. **Create shortcodes** - Build shortcode handlers to display CPT content
+6. **Replace HTML with placeholders** - Use `<!-- VIBECODE_SHORTCODE shortcode_name -->` comments
+7. **Update shortcode config** - Add to `vibecode-deploy-shortcodes.json`
+
+**Example:**
+Instead of hardcoding 10 product cards in HTML:
+```html
+<!-- Hardcoded (not recommended) -->
+<div class="product-card">
+    <h3>Product Name</h3>
+    <p>Description...</p>
+    <span>Price: $99</span>
+</div>
+```
+
+Use a CPT with shortcode:
+```html
+<!-- VIBECODE_SHORTCODE bgp_products type="system" -->
+```
+
+**After Deployment:**
+- Content will need to be manually entered into WordPress admin
+- Shortcodes will render the content dynamically
+- Future updates can be made without editing HTML files
+
 ## Step 2: Create Staging ZIP
 
 ### Option A: Use Build Script
@@ -87,12 +178,42 @@ cp vibecode-deploy-staging.zip /path/to/VibeCodeCircle/dist/
 
 **Note:** All distribution files (plugin and staging zips) should be placed in `VibeCodeCircle/dist/` directory. See [Build Guide](docs/BUILD.md) for complete build instructions.
 
-## Step 3: Deploy to WordPress
+## Step 3: Configure Plugin Settings (REQUIRED)
+
+**Before uploading, configure plugin settings:**
+
+1. Go to **Vibe Code Deploy → Configuration**
+2. Set **Project Slug**:
+   - Must match `project_slug` in your `vibecode-deploy-shortcodes.json` file
+   - Example: If JSON has `"project_slug": "bgp"`, set it to `bgp` in settings
+   - **Required** - deployment will fail without this
+3. Set **Class Prefix**:
+   - Must end with a dash (e.g., `bgp-`, `cfa-`)
+   - Example: If your CSS uses `bgp-header`, set prefix to `bgp-`
+   - **Required** - deployment will fail without this
+4. Click **Save Changes**
+
+**Validation:**
+- Plugin validates that shortcodes match project prefix (e.g., `bgp_products` for project slug `bgp`)
+- Plugin validates that CSS classes match class prefix (e.g., `bgp-header` for prefix `bgp-`)
+
+## Step 4: Deploy to WordPress
+
+### ⚠️ CRITICAL: Configure Settings FIRST
+
+**The plugin validates WordPress settings BEFORE allowing upload. The JSON file's `project_slug` is metadata only - WordPress settings are what matter.**
+
+**If you see "Project Slug is required" error:**
+1. Go to **Vibe Code Deploy → Configuration** (NOT Import Build)
+2. Set Project Slug and Class Prefix
+3. Click **Save Changes**
+4. THEN go to Import Build and upload
 
 ### 1. Upload Staging ZIP
 1. Go to **Vibe Code Deploy → Import Build**
 2. Click **Choose File** and select your staging ZIP
 3. Click **Upload Staging Zip**
+4. **If upload fails with "Project Slug is required"**: Go back to Configuration, set the fields, save, then try again
 
 ### 2. Run Preflight
 1. Select the build fingerprint from dropdown
@@ -111,7 +232,7 @@ cp vibecode-deploy-staging.zip /path/to/VibeCodeCircle/dist/
    - Validate CPT shortcodes
 2. Click **Deploy**
 
-## Step 4: Post-Deployment Tasks
+## Step 5: Post-Deployment Tasks
 
 ### 1. Check Pages
 - Visit each page to verify content

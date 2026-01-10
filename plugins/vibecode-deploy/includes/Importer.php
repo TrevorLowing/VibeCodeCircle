@@ -49,6 +49,12 @@ final class Importer {
 				if ( $project_slug !== '' ) {
 					$fonts = get_post_meta( $post_id, self::META_ASSET_FONTS, true );
 					if ( is_array( $fonts ) && ! empty( $fonts ) ) {
+						Logger::info( 'Enqueuing Google Fonts for page.', array(
+							'post_id' => $post_id,
+							'project_slug' => $project_slug,
+							'font_count' => count( $fonts ),
+							'font_urls' => $fonts,
+						) );
 						foreach ( $fonts as $font_url ) {
 							if ( ! is_string( $font_url ) || $font_url === '' ) {
 								continue;
@@ -57,8 +63,23 @@ final class Importer {
 							// Check if already enqueued to avoid duplicates
 							if ( ! wp_style_is( $handle, 'enqueued' ) && ! wp_style_is( $handle, 'done' ) ) {
 								wp_enqueue_style( $handle, $font_url, array(), null );
+								Logger::info( 'Enqueued Google Font.', array(
+									'handle' => $handle,
+									'url' => $font_url,
+								) );
+							} else {
+								Logger::info( 'Google Font already enqueued, skipping.', array(
+									'handle' => $handle,
+									'url' => $font_url,
+								) );
 							}
 						}
+					} else {
+						Logger::info( 'No fonts found in post meta for page.', array(
+							'post_id' => $post_id,
+							'project_slug' => $project_slug,
+							'fonts_meta' => $fonts,
+						) );
 					}
 				}
 			}
