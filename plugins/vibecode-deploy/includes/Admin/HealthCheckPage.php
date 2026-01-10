@@ -54,7 +54,7 @@ final class HealthCheckPage {
 
 		$settings = Settings::get_all();
 		$project_slug = isset( $settings['project_slug'] ) ? (string) $settings['project_slug'] : '';
-		$active_fingerprint = BuildService::active_fingerprint( $project_slug );
+		$active_fingerprint = $project_slug !== '' ? BuildService::get_active_fingerprint( $project_slug ) : '';
 
 		$validation_results = null;
 		if ( $project_slug !== '' && $active_fingerprint !== '' ) {
