@@ -477,7 +477,7 @@ final class ImportPage {
 		} elseif ( $failed !== '' ) {
 			/* translators: %s: Error message */
 			echo '<div class="notice notice-error"><p>' . sprintf( esc_html__( 'Rollback failed: %s. Check', 'vibecode-deploy' ), '<code>' . esc_html( $failed ) . '</code>' ) . ' ' . esc_html__( 'Vibe Code Deploy', 'vibecode-deploy' ) . ' → ' . esc_html__( 'Logs', 'vibecode-deploy' ) . '.</p></div>';
-		} elseif ( $error !== '' ) {
+		} elseif ( isset( $error ) && $error !== '' && $error !== null ) {
 			echo '<div class="notice notice-error"><p>' . esc_html( $error ) . '</p></div>';
 		} elseif ( $notice !== '' ) {
 			echo '<div class="notice notice-success"><p>' . $notice . '</p></div>';
