@@ -117,15 +117,25 @@ define( 'VIBECODE_DEPLOY_PLUGIN_VERSION', '0.1.2' );
 
 **🚨 CRITICAL RULES:**
 
-1. **Only versioned zip is created** - The build script creates only `dist/vibecode-deploy-{version}.zip`, NOT an unversioned `vibecode-deploy.zip`
+1. **ALWAYS build plugin zip after code changes** - After making ANY changes to plugin code, you MUST build the plugin zip:
+   ```bash
+   cd /Users/tlowing/CascadeProjects/windsurf-project/VibeCodeCircle
+   ./scripts/build-plugin-zip.sh
+   ```
+   - The zip file is required for WordPress installation
+   - Build script is at: `scripts/build-plugin-zip.sh`
+   - Output goes to: `dist/vibecode-deploy-{version}.zip`
+   - **Never commit without building the zip first**
+
+2. **Only versioned zip is created** - The build script creates only `dist/vibecode-deploy-{version}.zip`, NOT an unversioned `vibecode-deploy.zip`
    - Example output: `dist/vibecode-deploy-0.1.2.zip`
    - The unversioned zip is redundant and not created
-2. **Version auto-incremented** - Each build automatically increments the patch version by 1
-3. **Version updated in code** - The build script automatically updates:
+3. **Version auto-incremented** - Each build automatically increments the patch version by 1
+4. **Version updated in code** - The build script automatically updates:
    - `Version:` header in `vibecode-deploy.php`
    - `VIBECODE_DEPLOY_PLUGIN_VERSION` constant in `vibecode-deploy.php`
-4. **Build command**: `./scripts/build-plugin-zip.sh`
-5. **Output location**: `dist/vibecode-deploy-{version}.zip` (versioned only)
+5. **Build command**: `./scripts/build-plugin-zip.sh`
+6. **Output location**: `dist/vibecode-deploy-{version}.zip` (versioned only)
 
 **Why versioned only?**
 - Prevents confusion about which version is "latest"
