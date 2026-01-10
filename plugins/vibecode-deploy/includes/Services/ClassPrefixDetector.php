@@ -24,6 +24,10 @@ final class ClassPrefixDetector {
 			return '';
 		}
 
+		// Set a reasonable timeout for detection (10 seconds max)
+		$original_time_limit = ini_get( 'max_execution_time' );
+		@set_time_limit( 10 );
+
 		$prefixes = array();
 		// Common class names to detect (order matters - most common first)
 		$common_classes = array( 'main', 'hero', 'header', 'footer', 'container', 'button', 'btn', 'page-section', 'page-card', 'page-content', 'nav', 'logo' );
