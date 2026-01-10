@@ -378,15 +378,34 @@ final class ImportPage {
 
 		echo '<div class="card" style="max-width: 1100px;">';
 		echo '<h2 class="title">1) ' . esc_html__( 'Upload Staging Zip', 'vibecode-deploy' ) . '</h2>';
-		echo '<form method="post" enctype="multipart/form-data">';
+		echo '<form method="post" enctype="multipart/form-data" id="vibecode-deploy-upload-form">';
 		wp_nonce_field( 'vibecode_deploy_upload_zip', 'vibecode_deploy_nonce' );
 		echo '<table class="form-table" role="presentation">';
-		echo '<tr><th scope="row">' . esc_html__( 'Zip file', 'vibecode-deploy' ) . '</th><td><input type="file" name="vibecode_deploy_zip" accept=".zip" required /><p class="description">' . esc_html__( 'Upload a staging bundle exported from your local build.', 'vibecode-deploy' ) . '</p></td></tr>';
+		echo '<tr><th scope="row">' . esc_html__( 'Zip file', 'vibecode-deploy' ) . '</th><td><input type="file" name="vibecode_deploy_zip" id="vibecode-deploy-zip-input" accept=".zip" required /><p class="description">' . esc_html__( 'Select a staging bundle exported from your local build. It will upload automatically.', 'vibecode-deploy' ) . '</p></td></tr>';
 		echo '</table>';
-		echo '<p><input type="submit" class="button button-primary" name="vibecode_deploy_upload_zip" value="' . esc_attr__( 'Upload Staging Zip', 'vibecode-deploy' ) . '" /></p>';
+		echo '<p><input type="submit" class="button button-primary" name="vibecode_deploy_upload_zip" id="vibecode-deploy-upload-submit" value="' . esc_attr__( 'Upload Staging Zip', 'vibecode-deploy' ) . '" style="display: none;" /></p>';
 		echo '</form>';
 		/* translators: %s: Max size in MB */
 		echo '<p class="description">' . sprintf( esc_html__( 'Max zip size: %s', 'vibecode-deploy' ), esc_html( (string) (int) ( Staging::ZIP_MAX_BYTES / 1024 / 1024 ) ) . 'MB' ) . '</p>';
+		echo '<script>
+		(function() {
+			var form = document.getElementById("vibecode-deploy-upload-form");
+			var fileInput = document.getElementById("vibecode-deploy-zip-input");
+			var submitBtn = document.getElementById("vibecode-deploy-upload-submit");
+			
+			if (form && fileInput && submitBtn) {
+				fileInput.addEventListener("change", function() {
+					if (fileInput.files && fileInput.files.length > 0) {
+						// Show submit button briefly, then auto-submit
+						submitBtn.style.display = "inline-block";
+						setTimeout(function() {
+							form.submit();
+						}, 100);
+					}
+				});
+			}
+		})();
+		</script>';
 		echo '</div>';
 
 		echo '<div class="card" style="max-width: 1100px;">';
