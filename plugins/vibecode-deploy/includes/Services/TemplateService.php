@@ -626,19 +626,38 @@ defined( 'ABSPATH' ) || exit;
 	 * Ensure block templates exist for all registered public post types (including built-in 'post')
 	 * Creates default single-{post_type}.html templates if missing
 	 */
-	public static function ensure_post_type_templates( string $project_slug, string $fingerprint ): void {
+	public static function ensure_post_type_templates( string $project_slug, string $fingerprint ): array {
+		$results = array(
+			'created' => array(),
+			'existing' => array(),
+			'errors' => array(),
+			'skipped' => array(),
+		);
+
 		if ( ! self::block_templates_supported() ) {
-			return;
+			\VibeCode\Deploy\Logger::warning( 'Block templates not supported, skipping CPT template creation.', array(), $project_slug );
+			return $results;
 		}
 
 		// Get only custom post types (exclude built-in types like 'post', 'page', 'attachment')
-		$post_types = get_post_types( array(
+		$public_cpts = get_post_types( array(
 			'public' => true,
 			'_builtin' => false,
 		), 'names' );
 
+		// Also include non-public CPTs that have show_ui enabled (they may still need templates)
+		$non_public_cpts = get_post_types( array(
+			'public' => false,
+			'show_ui' => true,
+			'_builtin' => false,
+		), 'names' );
+
+		$post_types = array_merge( $public_cpts, $non_public_cpts );
+		$post_types = array_unique( $post_types );
+
 		if ( empty( $post_types ) ) {
-			return;
+			\VibeCode\Deploy\Logger::info( 'No custom post types found, skipping CPT template creation.', array(), $project_slug );
+			return $results;
 		}
 
 		$theme_dir = get_stylesheet_directory();
@@ -651,14 +670,28 @@ defined( 'ABSPATH' ) || exit;
 		$footer_part = self::get_template_part_by_slug( $footer_slug );
 
 		if ( ! $header_part || ! isset( $header_part->ID ) || ! $footer_part || ! isset( $footer_part->ID ) ) {
-			// Can't create templates without header/footer parts
-			return;
+			\VibeCode\Deploy\Logger::warning( 'Cannot create CPT templates: header/footer template parts missing.', array(
+				'header_exists' => $header_part && isset( $header_part->ID ),
+				'footer_exists' => $footer_part && isset( $footer_part->ID ),
+			), $project_slug );
+			return $results;
 		}
+
+		\VibeCode\Deploy\Logger::info( 'Ensuring CPT single templates exist.', array(
+			'post_types' => $post_types,
+			'header_part_id' => $header_part->ID,
+			'footer_part_id' => $footer_part->ID,
+			'theme' => $theme_slug,
+		), $project_slug );
 
 		foreach ( $post_types as $post_type ) {
 			// Skip WordPress internal block types
 			$internal_types = array( 'wp_template', 'wp_template_part', 'wp_global_styles', 'wp_block', 'wp_navigation' );
 			if ( in_array( $post_type, $internal_types, true ) ) {
+				$results['skipped'][] = array(
+					'post_type' => $post_type,
+					'reason' => 'WordPress internal type',
+				);
 				continue;
 			}
 
@@ -667,6 +700,16 @@ defined( 'ABSPATH' ) || exit;
 
 			// Only create if template doesn't exist
 			if ( $existing && isset( $existing->ID ) ) {
+				$results['existing'][] = array(
+					'post_type' => $post_type,
+					'slug' => $slug,
+					'template_id' => $existing->ID,
+				);
+				\VibeCode\Deploy\Logger::info( 'CPT single template already exists, skipping.', array(
+					'post_type' => $post_type,
+					'slug' => $slug,
+					'template_id' => $existing->ID,
+				), $project_slug );
 				continue;
 			}
 
@@ -677,9 +720,50 @@ defined( 'ABSPATH' ) || exit;
 			$res = self::upsert_template( $project_slug, $fingerprint, $slug, $content_blocks, false );
 
 			if ( ! empty( $res['ok'] ) && ! empty( $res['created'] ) ) {
-				\VibeCode\Deploy\Logger::info( 'Created default post type single template.', array( 'post_type' => $post_type, 'slug' => $slug ), $project_slug );
+				$results['created'][] = array(
+					'post_type' => $post_type,
+					'slug' => $slug,
+					'template_id' => $res['post_id'],
+				);
+				\VibeCode\Deploy\Logger::info( 'Created default post type single template.', array(
+					'post_type' => $post_type,
+					'slug' => $slug,
+					'template_id' => $res['post_id'],
+				), $project_slug );
+			} elseif ( ! empty( $res['ok'] ) && empty( $res['created'] ) ) {
+				$results['existing'][] = array(
+					'post_type' => $post_type,
+					'slug' => $slug,
+					'template_id' => $res['post_id'] ?? 0,
+				);
+			} else {
+				$results['errors'][] = array(
+					'post_type' => $post_type,
+					'slug' => $slug,
+					'error' => $res['error'] ?? 'Unknown error',
+				);
+				\VibeCode\Deploy\Logger::error( 'Failed to create CPT single template.', array(
+					'post_type' => $post_type,
+					'slug' => $slug,
+					'error' => $res['error'] ?? 'Unknown error',
+				), $project_slug );
 			}
 		}
+
+		// Verify all created templates are queryable
+		foreach ( $results['created'] as $created ) {
+			$verify = self::get_template_by_slug( $created['slug'] );
+			if ( ! $verify || ! isset( $verify->ID ) || (int) $verify->ID !== (int) $created['template_id'] ) {
+				\VibeCode\Deploy\Logger::warning( 'Template created but not immediately queryable.', array(
+					'post_type' => $created['post_type'],
+					'slug' => $created['slug'],
+					'expected_id' => $created['template_id'],
+					'found_id' => $verify && isset( $verify->ID ) ? $verify->ID : 0,
+				), $project_slug );
+			}
+		}
+
+		return $results;
 	}
 
 	/**
@@ -738,6 +822,9 @@ defined( 'ABSPATH' ) || exit;
 		$settings = \VibeCode\Deploy\Settings::get_all();
 		$class_prefix = isset( $settings['class_prefix'] ) && is_string( $settings['class_prefix'] ) ? trim( (string) $settings['class_prefix'] ) : '';
 		
+		// Get theme slug for template part references
+		$theme_slug = self::current_theme_slug();
+		
 		// Build class names with prefix
 		$main_class = $class_prefix !== '' ? $class_prefix . 'main' : 'main';
 		$hero_class = $class_prefix !== '' ? $class_prefix . 'hero' : 'hero';
@@ -754,6 +841,9 @@ defined( 'ABSPATH' ) || exit;
 		$out = '';
 		if ( $header_slug !== '' ) {
 			$attrs = array( 'slug' => $header_slug, 'tagName' => 'header' );
+			if ( $theme_slug !== '' ) {
+				$attrs['theme'] = $theme_slug;
+			}
 			$out .= '<!-- wp:template-part ' . wp_json_encode( $attrs ) . ' /-->' . "\n\n";
 		}
 
@@ -790,6 +880,9 @@ defined( 'ABSPATH' ) || exit;
 
 		if ( $footer_slug !== '' ) {
 			$attrs = array( 'slug' => $footer_slug, 'tagName' => 'footer' );
+			if ( $theme_slug !== '' ) {
+				$attrs['theme'] = $theme_slug;
+			}
 			$out .= '<!-- wp:template-part ' . wp_json_encode( $attrs ) . ' /-->' . "\n";
 		}
 
@@ -1024,11 +1117,45 @@ defined( 'ABSPATH' ) || exit;
 		}
 
 		if ( $theme !== '' ) {
-			wp_set_object_terms( $post_id, $theme, 'wp_theme', false );
+			$term_set = wp_set_object_terms( $post_id, $theme, 'wp_theme', false );
+			if ( is_wp_error( $term_set ) ) {
+				\VibeCode\Deploy\Logger::error( 'Failed to set wp_theme taxonomy for template.', array(
+					'template_slug' => $slug,
+					'post_id' => $post_id,
+					'theme' => $theme,
+					'error' => $term_set->get_error_message(),
+				), $project_slug );
+			}
 		}
 		update_post_meta( $post_id, Importer::META_PROJECT_SLUG, $project_slug );
 		update_post_meta( $post_id, Importer::META_SOURCE_PATH, 'templates/' . $slug . '.html' );
 		update_post_meta( $post_id, Importer::META_FINGERPRINT, $fingerprint );
+
+		// Verify template is queryable after creation
+		$verify_template = self::get_template_by_slug( $slug );
+		if ( ! $verify_template || ! isset( $verify_template->ID ) || (int) $verify_template->ID !== $post_id ) {
+			\VibeCode\Deploy\Logger::warning( 'Template created but not immediately queryable.', array(
+				'template_slug' => $slug,
+				'post_id' => $post_id,
+				'theme' => $theme,
+			), $project_slug );
+		}
+
+		// Log template creation/update
+		if ( $created ) {
+			\VibeCode\Deploy\Logger::info( 'Template created successfully.', array(
+				'template_slug' => $slug,
+				'post_id' => $post_id,
+				'theme' => $theme,
+				'post_name' => (string) ( get_post( $post_id )->post_name ?? '' ),
+			), $project_slug );
+		} else {
+			\VibeCode\Deploy\Logger::info( 'Template updated successfully.', array(
+				'template_slug' => $slug,
+				'post_id' => $post_id,
+				'theme' => $theme,
+			), $project_slug );
+		}
 
 		return array(
 			'ok' => true,

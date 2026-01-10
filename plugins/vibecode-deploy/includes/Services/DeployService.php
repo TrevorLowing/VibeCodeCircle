@@ -1090,7 +1090,27 @@ final class DeployService {
 		}
 
 		// Auto-create block templates for all post types if they don't exist
-		TemplateService::ensure_post_type_templates( $project_slug, $fingerprint );
+		$cpt_template_results = TemplateService::ensure_post_type_templates( $project_slug, $fingerprint );
+		
+		// Verify CPT templates were created successfully
+		if ( ! empty( $cpt_template_results['created'] ) ) {
+			Logger::info( 'CPT single templates created successfully.', array(
+				'created_count' => count( $cpt_template_results['created'] ),
+				'created_templates' => $cpt_template_results['created'],
+			), $project_slug );
+		}
+		if ( ! empty( $cpt_template_results['errors'] ) ) {
+			Logger::warning( 'Some CPT templates failed to create.', array(
+				'error_count' => count( $cpt_template_results['errors'] ),
+				'errors' => $cpt_template_results['errors'],
+			), $project_slug );
+		}
+		if ( ! empty( $cpt_template_results['existing'] ) ) {
+			Logger::info( 'Some CPT templates already existed.', array(
+				'existing_count' => count( $cpt_template_results['existing'] ),
+				'existing_templates' => $cpt_template_results['existing'],
+			), $project_slug );
+		}
 		
 		// Auto-create default post type archive templates (home.html, archive.html)
 		TemplateService::ensure_default_post_templates( $project_slug, $fingerprint );
