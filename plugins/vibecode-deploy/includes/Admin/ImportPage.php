@@ -87,6 +87,8 @@ final class ImportPage {
 		if ( isset( $_POST['vibecode_deploy_upload_zip'] ) || ( ! empty( $_FILES['vibecode_deploy_zip'] ) && isset( $_POST['vibecode_deploy_nonce'] ) ) ) {
 			Logger::info( 'Upload POST request received.', array(
 				'project_slug' => (string) $settings['project_slug'],
+				'triggered_by_button' => isset( $_POST['vibecode_deploy_upload_zip'] ),
+				'triggered_by_file' => ! empty( $_FILES['vibecode_deploy_zip'] ),
 				'has_files' => isset( $_FILES['vibecode_deploy_zip'] ),
 				'file_name' => isset( $_FILES['vibecode_deploy_zip']['name'] ) ? (string) $_FILES['vibecode_deploy_zip']['name'] : '',
 				'file_size' => isset( $_FILES['vibecode_deploy_zip']['size'] ) ? (int) $_FILES['vibecode_deploy_zip']['size'] : 0,
