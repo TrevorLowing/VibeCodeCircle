@@ -455,9 +455,9 @@ final class ImportPage {
 		echo '<form method="post" enctype="multipart/form-data" id="vibecode-deploy-upload-form" action="' . esc_url( admin_url( 'admin.php?page=vibecode-deploy-import' ) ) . '">';
 		wp_nonce_field( 'vibecode_deploy_upload_zip', 'vibecode_deploy_nonce' );
 		echo '<table class="form-table" role="presentation">';
-		echo '<tr><th scope="row">' . esc_html__( 'Zip file', 'vibecode-deploy' ) . '</th><td><input type="file" name="vibecode_deploy_zip" id="vibecode-deploy-zip-input" accept=".zip" required /><p class="description">' . esc_html__( 'Select a staging bundle exported from your local build. It will upload automatically.', 'vibecode-deploy' ) . '</p></td></tr>';
+		echo '<tr><th scope="row">' . esc_html__( 'Zip file', 'vibecode-deploy' ) . '</th><td><input type="file" name="vibecode_deploy_zip" id="vibecode-deploy-zip-input" accept=".zip" required /><p class="description">' . esc_html__( 'Select a staging bundle exported from your local build. It will upload automatically when a file is selected.', 'vibecode-deploy' ) . '</p></td></tr>';
 		echo '</table>';
-		echo '<p><input type="submit" class="button button-primary" name="vibecode_deploy_upload_zip" id="vibecode-deploy-upload-submit" value="' . esc_attr__( 'Upload Staging Zip', 'vibecode-deploy' ) . '" style="display: none;" /></p>';
+		echo '<p><input type="submit" class="button button-primary" name="vibecode_deploy_upload_zip" id="vibecode-deploy-upload-submit" value="' . esc_attr__( 'Upload Staging Zip', 'vibecode-deploy' ) . '" /></p>';
 		echo '</form>';
 		/* translators: %s: Max size in MB */
 		echo '<p class="description">' . sprintf( esc_html__( 'Max zip size: %s', 'vibecode-deploy' ), esc_html( (string) (int) ( Staging::ZIP_MAX_BYTES / 1024 / 1024 ) ) . 'MB' ) . '</p>';
@@ -465,30 +465,55 @@ final class ImportPage {
 		(function() {
 			var form = document.getElementById("vibecode-deploy-upload-form");
 			var fileInput = document.getElementById("vibecode-deploy-zip-input");
+			var submitBtn = document.getElementById("vibecode-deploy-upload-submit");
 			
-			if (form && fileInput) {
-				fileInput.addEventListener("change", function(e) {
-					console.log("File selected:", fileInput.files);
-					if (fileInput.files && fileInput.files.length > 0) {
-						console.log("Auto-submitting form...");
-						// Auto-submit immediately without showing button
-						form.submit();
-					} else {
-						console.log("No files selected");
-					}
+			if (!form || !fileInput) {
+				console.error("Vibe Code Deploy: Form elements not found", {form: form, fileInput: fileInput});
+				return;
+			}
+			
+			// Hide submit button initially
+			if (submitBtn) {
+				submitBtn.style.display = "none";
+			}
+			
+			fileInput.addEventListener("change", function(e) {
+				console.log("Vibe Code Deploy: File selected", {
+					files: fileInput.files,
+					fileCount: fileInput.files ? fileInput.files.length : 0,
+					fileName: fileInput.files && fileInput.files.length > 0 ? fileInput.files[0].name : ""
 				});
 				
-				form.addEventListener("submit", function(e) {
-					console.log("Form submitting...");
-					if (!fileInput.files || fileInput.files.length === 0) {
-						console.log("Preventing submit - no file");
-						e.preventDefault();
-						return false;
-					}
+				if (fileInput.files && fileInput.files.length > 0) {
+					console.log("Vibe Code Deploy: Auto-submitting form...");
+					// Auto-submit immediately
+					setTimeout(function() {
+						form.submit();
+					}, 50);
+				} else {
+					console.log("Vibe Code Deploy: No files selected");
+				}
+			});
+			
+			form.addEventListener("submit", function(e) {
+				console.log("Vibe Code Deploy: Form submit event fired", {
+					hasFiles: !!(fileInput.files && fileInput.files.length > 0),
+					fileCount: fileInput.files ? fileInput.files.length : 0
 				});
-			} else {
-				console.error("Form or file input not found", {form: form, fileInput: fileInput});
-			}
+				
+				if (!fileInput.files || fileInput.files.length === 0) {
+					console.log("Vibe Code Deploy: Preventing submit - no file");
+					e.preventDefault();
+					alert("Please select a zip file first.");
+					return false;
+				}
+			});
+			
+			console.log("Vibe Code Deploy: Upload form initialized", {
+				form: form ? "found" : "missing",
+				fileInput: fileInput ? "found" : "missing",
+				submitBtn: submitBtn ? "found" : "missing"
+			});
 		})();
 		</script>';
 		echo '</div>';
