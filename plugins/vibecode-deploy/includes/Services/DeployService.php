@@ -1298,8 +1298,8 @@ final class DeployService {
 		}
 
 		// Deploy theme files (functions.php, ACF JSON) from staging
-		$theme = function_exists( 'wp_get_theme' ) ? wp_get_theme() : null;
-		$theme_slug = $theme && method_exists( $theme, 'get_stylesheet' ) ? (string) $theme->get_stylesheet() : '';
+		// Use child theme slug derived from project slug (auto-created and activated if needed)
+		$theme_slug = ThemeDeployService::get_child_theme_slug( $project_slug );
 		$theme_snapshots = array();
 		if ( $theme_slug !== '' ) {
 			$theme_deploy = ThemeDeployService::deploy_theme_files( $build_root, $theme_slug, $selected_theme_files );

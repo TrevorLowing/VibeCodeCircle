@@ -18,6 +18,20 @@ defined( 'ABSPATH' ) || exit;
 final class ThemeDeployService {
 
 	/**
+	 * Get child theme slug from project slug.
+	 *
+	 * @param string $project_slug Project slug.
+	 * @return string Child theme slug (e.g., 'cfa-etch-child').
+	 */
+	public static function get_child_theme_slug( string $project_slug ): string {
+		$project_slug = sanitize_key( $project_slug );
+		if ( $project_slug === '' ) {
+			return 'default-etch-child';
+		}
+		return $project_slug . '-etch-child';
+	}
+
+	/**
 	 * Deploy theme files from staging build to child theme.
 	 *
 	 * @param string $build_root Path to extracted staging build root.
@@ -36,10 +50,25 @@ final class ThemeDeployService {
 		$theme_dir = WP_CONTENT_DIR . '/themes/' . $theme_slug;
 		$staging_theme_dir = $build_root . '/theme';
 
-		// Ensure child theme exists
-		if ( ! self::ensure_child_theme_exists( $theme_slug ) ) {
-			$results['errors'][] = "Failed to create or verify child theme: {$theme_slug}";
+		// Ensure child theme exists and is activated
+		$theme_setup = self::ensure_child_theme_exists( $theme_slug );
+		if ( ! $theme_setup['success'] ) {
+			$error_msg = $theme_setup['error'] ?? "Failed to create or verify child theme: {$theme_slug}";
+			$results['errors'][] = $error_msg;
 			return $results;
+		}
+
+		// Log theme creation/activation
+		if ( $theme_setup['created'] ) {
+			Logger::info( 'Child theme created.', array( 'theme_slug' => $theme_slug ) );
+		}
+		if ( $theme_setup['activated'] ) {
+			Logger::info( 'Child theme activated.', array( 'theme_slug' => $theme_slug ) );
+		} elseif ( $theme_setup['error'] !== null ) {
+			Logger::warning( 'Child theme activation failed.', array(
+				'theme_slug' => $theme_slug,
+				'error' => $theme_setup['error'],
+			) );
 		}
 
 		// Determine which files to deploy
@@ -935,18 +964,31 @@ final class ThemeDeployService {
 	 *
 	 * @param string $theme_slug Child theme slug.
 	 * @param string $parent_theme Parent theme slug (default: 'etch-theme').
-	 * @return bool True if theme exists or was created successfully.
+	 * @return array Result with 'success' (bool), 'created' (bool), 'activated' (bool), 'error' (string|null).
 	 */
-	private static function ensure_child_theme_exists( string $theme_slug, string $parent_theme = 'etch-theme' ): bool {
+	private static function ensure_child_theme_exists( string $theme_slug, string $parent_theme = 'etch-theme' ): array {
+		$result = array(
+			'success' => false,
+			'created' => false,
+			'activated' => false,
+			'error' => null,
+		);
+
 		$theme_dir = WP_CONTENT_DIR . '/themes/' . $theme_slug;
+		$theme_existed = is_dir( $theme_dir );
 
 		// If theme already exists, verify it's a child theme
-		if ( is_dir( $theme_dir ) ) {
+		if ( $theme_existed ) {
 			$style_file = $theme_dir . '/style.css';
 			if ( file_exists( $style_file ) ) {
 				$style_content = file_get_contents( $style_file );
 				if ( strpos( $style_content, 'Template:' ) !== false ) {
-					return true; // Already a child theme
+					// Theme exists and is a child theme - try to activate it
+					$activation_result = self::activate_child_theme( $theme_slug );
+					$result['success'] = true;
+					$result['activated'] = $activation_result['activated'];
+					$result['error'] = $activation_result['error'];
+					return $result;
 				}
 			}
 		}
@@ -967,16 +1009,74 @@ Version: 1.0.0
 ";
 
 		if ( file_put_contents( $style_file, $style_content ) === false ) {
-			return false;
+			$result['error'] = "Failed to create style.css";
+			return $result;
 		}
 
 		// Create basic index.php if it doesn't exist
 		$index_file = $theme_dir . '/index.php';
 		if ( ! file_exists( $index_file ) ) {
 			$index_content = "<?php\n// Silence is golden.\n";
-			file_put_contents( $index_file, $index_content );
+			if ( file_put_contents( $index_file, $index_content ) === false ) {
+				$result['error'] = "Failed to create index.php";
+				return $result;
+			}
 		}
 
-		return true;
+		$result['success'] = true;
+		$result['created'] = ! $theme_existed;
+
+		// Activate the child theme
+		$activation_result = self::activate_child_theme( $theme_slug );
+		$result['activated'] = $activation_result['activated'];
+		if ( $activation_result['error'] !== null ) {
+			$result['error'] = $activation_result['error'];
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Activate child theme if not already active.
+	 *
+	 * @param string $theme_slug Child theme slug.
+	 * @return array Result with 'activated' (bool) and 'error' (string|null).
+	 */
+	private static function activate_child_theme( string $theme_slug ): array {
+		$result = array(
+			'activated' => false,
+			'error' => null,
+		);
+
+		// Check if user has permission to switch themes
+		if ( ! current_user_can( 'switch_themes' ) ) {
+			$result['error'] = 'User does not have permission to switch themes';
+			return $result;
+		}
+
+		// Check if theme exists
+		$theme = wp_get_theme( $theme_slug );
+		if ( ! $theme->exists() ) {
+			$result['error'] = "Theme does not exist: {$theme_slug}";
+			return $result;
+		}
+
+		// Check if theme is already active
+		$active_theme = wp_get_theme();
+		if ( $active_theme->get_stylesheet() === $theme_slug ) {
+			$result['activated'] = false; // Already active
+			return $result;
+		}
+
+		// Switch to the child theme
+		$switch_result = switch_theme( $theme_slug );
+		if ( is_wp_error( $switch_result ) ) {
+			$result['error'] = $switch_result->get_error_message();
+			return $result;
+		}
+
+		$result['activated'] = true;
+		Logger::info( 'Child theme activated.', array( 'theme_slug' => $theme_slug ) );
+		return $result;
 	}
 }
