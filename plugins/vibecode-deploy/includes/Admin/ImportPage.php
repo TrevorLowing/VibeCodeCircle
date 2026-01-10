@@ -36,6 +36,9 @@ final class ImportPage {
 			return;
 		}
 
+		// Get settings early for logging
+		$settings = Settings::get_all();
+
 		// Log ALL requests to this page for debugging (including GET)
 		Logger::info( 'Import page render started.', array(
 			'request_method' => isset( $_SERVER['REQUEST_METHOD'] ) ? (string) $_SERVER['REQUEST_METHOD'] : 'unknown',
@@ -59,8 +62,6 @@ final class ImportPage {
 				'request_method' => isset( $_SERVER['REQUEST_METHOD'] ) ? (string) $_SERVER['REQUEST_METHOD'] : '',
 			), (string) $settings['project_slug'] );
 		}
-
-		$settings = Settings::get_all();
 		$notice = '';
 		$error = '';
 		$preflight = null;
