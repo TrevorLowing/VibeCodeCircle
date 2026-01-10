@@ -391,9 +391,22 @@ final class ImportPage {
 		echo '<div class="card" style="max-width: 1100px;">';
 		echo '<h2 class="title">2) ' . esc_html__( 'Select Build', 'vibecode-deploy' ) . '</h2>';
 
+		// Refresh settings in case they were updated during POST processing (e.g., auto-detection)
+		$settings = Settings::get_all();
 		$project_slug = (string) $settings['project_slug'];
 		$fingerprints = $project_slug !== '' ? BuildService::list_build_fingerprints( $project_slug ) : array();
 		$active_fingerprint = $project_slug !== '' ? BuildService::get_active_fingerprint( $project_slug ) : '';
+		
+		// Debug: Log fingerprint listing for troubleshooting
+		if ( $project_slug !== '' && empty( $fingerprints ) ) {
+			$staging_dir = BuildService::get_project_staging_dir( $project_slug );
+			Logger::warning( 'No fingerprints found after upload.', array(
+				'project_slug' => $project_slug,
+				'staging_dir' => $staging_dir,
+				'staging_dir_exists' => is_dir( $staging_dir ),
+				'selected_fingerprint' => $selected_fingerprint,
+			), $project_slug );
+		}
 		if ( $selected_fingerprint === '' ) {
 			if ( $active_fingerprint !== '' ) {
 				$selected_fingerprint = $active_fingerprint;
