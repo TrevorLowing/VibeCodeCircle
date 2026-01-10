@@ -31,10 +31,17 @@ final class ClassPrefixDetector {
 		// Scan HTML files
 		$html_files = self::find_files( $build_root, array( 'html' ) );
 		\VibeCode\Deploy\Logger::info( 'Class prefix detection: scanning HTML files.', array( 'build_root' => $build_root, 'html_files_count' => count( $html_files ) ), '' );
+		$html_files_scanned = 0;
 		foreach ( $html_files as $file ) {
-			$content = file_get_contents( $file );
-			if ( ! is_string( $content ) ) {
+			$html_files_scanned++;
+			$content = @file_get_contents( $file );
+			if ( ! is_string( $content ) || strlen( $content ) === 0 ) {
 				continue;
+			}
+
+			// Limit content size to prevent memory issues (first 100KB should be enough for class detection)
+			if ( strlen( $content ) > 100000 ) {
+				$content = substr( $content, 0, 100000 );
 			}
 
 			// Look for class attributes with common class names
@@ -46,31 +53,56 @@ final class ClassPrefixDetector {
 					$prefix = self::extract_prefix( $full_class, $class_name );
 					if ( $prefix !== '' ) {
 						$prefixes[ $prefix ] = ( $prefixes[ $prefix ] ?? 0 ) + 1;
+						// Found a prefix, can break early
+						break;
 					}
 				}
+			}
+			
+			// If we found a prefix, no need to scan more files
+			if ( ! empty( $prefixes ) ) {
+				break;
 			}
 		}
+		\VibeCode\Deploy\Logger::info( 'Class prefix detection: HTML files scanned.', array( 'html_files_scanned' => $html_files_scanned, 'prefixes_found' => count( $prefixes ) ), '' );
 
-		// Scan CSS files
-		$css_files = self::find_files( $build_root, array( 'css' ) );
-		\VibeCode\Deploy\Logger::info( 'Class prefix detection: scanning CSS files.', array( 'build_root' => $build_root, 'css_files_count' => count( $css_files ) ), '' );
-		foreach ( $css_files as $file ) {
-			$content = file_get_contents( $file );
-			if ( ! is_string( $content ) ) {
-				continue;
-			}
+		// Scan CSS files (only if no prefix found in HTML)
+		if ( empty( $prefixes ) ) {
+			$css_files = self::find_files( $build_root, array( 'css' ) );
+			\VibeCode\Deploy\Logger::info( 'Class prefix detection: scanning CSS files.', array( 'build_root' => $build_root, 'css_files_count' => count( $css_files ) ), '' );
+			$css_files_scanned = 0;
+			foreach ( $css_files as $file ) {
+				$css_files_scanned++;
+				$content = @file_get_contents( $file );
+				if ( ! is_string( $content ) || strlen( $content ) === 0 ) {
+					continue;
+				}
 
-			// Look for CSS selectors with common class names
-			foreach ( $common_classes as $class_name ) {
-				// Pattern: .prefix-main, .prefix-hero, etc.
-				if ( preg_match( '/\.([a-z0-9-]+-' . preg_quote( $class_name, '/' ) . ')\b/i', $content, $matches ) ) {
-					$full_class = $matches[1];
-					$prefix = self::extract_prefix( $full_class, $class_name );
-					if ( $prefix !== '' ) {
-						$prefixes[ $prefix ] = ( $prefixes[ $prefix ] ?? 0 ) + 1;
+				// Limit content size to prevent memory issues (first 200KB should be enough for class detection)
+				if ( strlen( $content ) > 200000 ) {
+					$content = substr( $content, 0, 200000 );
+				}
+
+				// Look for CSS selectors with common class names
+				foreach ( $common_classes as $class_name ) {
+					// Pattern: .prefix-main, .prefix-hero, etc.
+					if ( preg_match( '/\.([a-z0-9-]+-' . preg_quote( $class_name, '/' ) . ')\b/i', $content, $matches ) ) {
+						$full_class = $matches[1];
+						$prefix = self::extract_prefix( $full_class, $class_name );
+						if ( $prefix !== '' ) {
+							$prefixes[ $prefix ] = ( $prefixes[ $prefix ] ?? 0 ) + 1;
+							// Found a prefix, can break early
+							break;
+						}
 					}
 				}
+				
+				// If we found a prefix, no need to scan more files
+				if ( ! empty( $prefixes ) ) {
+					break;
+				}
 			}
+			\VibeCode\Deploy\Logger::info( 'Class prefix detection: CSS files scanned.', array( 'css_files_scanned' => $css_files_scanned, 'prefixes_found' => count( $prefixes ) ), '' );
 		}
 
 		// Return the most common prefix (with highest count)
