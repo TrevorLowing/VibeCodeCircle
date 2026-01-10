@@ -20,6 +20,7 @@ final class ClassPrefixDetector {
 	 */
 	public static function detect_from_staging( string $build_root ): string {
 		if ( ! is_dir( $build_root ) ) {
+			\VibeCode\Deploy\Logger::warning( 'Class prefix detection: build_root does not exist.', array( 'build_root' => $build_root ), '' );
 			return '';
 		}
 
@@ -29,6 +30,7 @@ final class ClassPrefixDetector {
 
 		// Scan HTML files
 		$html_files = self::find_files( $build_root, array( 'html' ) );
+		\VibeCode\Deploy\Logger::info( 'Class prefix detection: scanning HTML files.', array( 'build_root' => $build_root, 'html_files_count' => count( $html_files ) ), '' );
 		foreach ( $html_files as $file ) {
 			$content = file_get_contents( $file );
 			if ( ! is_string( $content ) ) {
@@ -51,6 +53,7 @@ final class ClassPrefixDetector {
 
 		// Scan CSS files
 		$css_files = self::find_files( $build_root, array( 'css' ) );
+		\VibeCode\Deploy\Logger::info( 'Class prefix detection: scanning CSS files.', array( 'build_root' => $build_root, 'css_files_count' => count( $css_files ) ), '' );
 		foreach ( $css_files as $file ) {
 			$content = file_get_contents( $file );
 			if ( ! is_string( $content ) ) {
@@ -72,6 +75,12 @@ final class ClassPrefixDetector {
 
 		// Return the most common prefix (with highest count)
 		if ( empty( $prefixes ) ) {
+			\VibeCode\Deploy\Logger::warning( 'Class prefix detection: no prefixes found.', array(
+				'build_root' => $build_root,
+				'html_files_count' => count( $html_files ),
+				'css_files_count' => count( $css_files ),
+				'common_classes' => $common_classes,
+			), '' );
 			return '';
 		}
 
@@ -82,6 +91,14 @@ final class ClassPrefixDetector {
 		if ( $detected_prefix !== '' && ! str_ends_with( $detected_prefix, '-' ) ) {
 			$detected_prefix .= '-';
 		}
+
+		\VibeCode\Deploy\Logger::info( 'Class prefix detection: prefix detected.', array(
+			'build_root' => $build_root,
+			'detected_prefix' => $detected_prefix,
+			'all_prefixes' => $prefixes,
+			'html_files_count' => count( $html_files ),
+			'css_files_count' => count( $css_files ),
+		), '' );
 
 		return $detected_prefix;
 	}

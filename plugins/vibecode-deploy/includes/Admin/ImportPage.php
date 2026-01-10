@@ -133,21 +133,49 @@ final class ImportPage {
 								// Auto-detect class prefix if not set
 								if ( $settings['class_prefix'] === '' ) {
 									$build_root = BuildService::build_root_path( $project_slug_to_use, $selected_fingerprint );
-									Logger::info( 'Attempting class prefix detection.', array( 'project_slug' => $project_slug_to_use, 'fingerprint' => $selected_fingerprint, 'build_root' => $build_root, 'build_root_exists' => is_dir( $build_root ) ), $project_slug_to_use );
+									Logger::info( 'Attempting class prefix detection.', array(
+										'project_slug' => $project_slug_to_use,
+										'fingerprint' => $selected_fingerprint,
+										'build_root' => $build_root,
+										'build_root_exists' => is_dir( $build_root ),
+										'pages_dir' => $build_root . DIRECTORY_SEPARATOR . 'pages',
+										'pages_dir_exists' => is_dir( $build_root . DIRECTORY_SEPARATOR . 'pages' ),
+										'css_dir' => $build_root . DIRECTORY_SEPARATOR . 'css',
+										'css_dir_exists' => is_dir( $build_root . DIRECTORY_SEPARATOR . 'css' ),
+									), $project_slug_to_use );
 									$detected_prefix = ClassPrefixDetector::detect_from_staging( $build_root );
 									
 									if ( $detected_prefix !== '' ) {
 										// Update settings with detected prefix
 										$updated_settings = $settings;
 										$updated_settings['class_prefix'] = $detected_prefix;
-										update_option( Settings::OPTION_NAME, $updated_settings );
+										$update_result = update_option( Settings::OPTION_NAME, $updated_settings );
 										$settings = Settings::get_all(); // Refresh settings
 										
+										// Verify the update worked
+										$verify_settings = Settings::get_all();
+										$verify_prefix = (string) ( $verify_settings['class_prefix'] ?? '' );
+										
 										$notice = ( isset( $notice ) ? $notice . ' ' : '' ) . 'Staging uploaded: ' . esc_html( $selected_fingerprint ) . ' (' . esc_html( (string) $result['files'] ) . ' files). Class prefix auto-detected: <code>' . esc_html( $detected_prefix ) . '</code>';
-										Logger::info( 'Class prefix auto-detected from staging files.', array( 'project_slug' => $project_slug_to_use, 'detected_prefix' => $detected_prefix, 'build_root' => $build_root ), $project_slug_to_use );
+										Logger::info( 'Class prefix auto-detected from staging files.', array(
+											'project_slug' => $project_slug_to_use,
+											'detected_prefix' => $detected_prefix,
+											'build_root' => $build_root,
+											'update_result' => $update_result,
+											'verify_prefix' => $verify_prefix,
+											'prefix_matches' => ( $verify_prefix === $detected_prefix ),
+										), $project_slug_to_use );
 									} else {
 										$notice = ( isset( $notice ) ? $notice . ' ' : '' ) . 'Staging uploaded: ' . esc_html( $selected_fingerprint ) . ' (' . esc_html( (string) $result['files'] ) . ' files). <strong>Warning:</strong> Class prefix could not be auto-detected. Please set it manually in Settings.';
-										Logger::warning( 'Class prefix auto-detection failed.', array( 'project_slug' => $project_slug_to_use, 'build_root' => $build_root, 'build_root_exists' => is_dir( $build_root ) ), $project_slug_to_use );
+										Logger::warning( 'Class prefix auto-detection failed.', array(
+											'project_slug' => $project_slug_to_use,
+											'build_root' => $build_root,
+											'build_root_exists' => is_dir( $build_root ),
+											'pages_dir' => $build_root . DIRECTORY_SEPARATOR . 'pages',
+											'pages_dir_exists' => is_dir( $build_root . DIRECTORY_SEPARATOR . 'pages' ),
+											'css_dir' => $build_root . DIRECTORY_SEPARATOR . 'css',
+											'css_dir_exists' => is_dir( $build_root . DIRECTORY_SEPARATOR . 'css' ),
+										), $project_slug_to_use );
 									}
 								} else {
 									$notice = ( isset( $notice ) ? $notice . ' ' : '' ) . 'Staging uploaded: ' . esc_html( $selected_fingerprint ) . ' (' . esc_html( (string) $result['files'] ) . ' files)';
