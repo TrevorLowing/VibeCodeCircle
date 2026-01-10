@@ -60,10 +60,20 @@ class TestDataService {
 		);
 
 		// Get all registered custom post types (exclude built-in types)
-		$all_cpts = get_post_types( array(
+		$public_cpts = get_post_types( array(
 			'public' => true,
 			'_builtin' => false,
 		), 'names' );
+
+		// Also include non-public CPTs that have show_ui enabled
+		$non_public_cpts = get_post_types( array(
+			'public' => false,
+			'show_ui' => true,
+			'_builtin' => false,
+		), 'names' );
+
+		$all_cpts = array_merge( $public_cpts, $non_public_cpts );
+		$all_cpts = array_unique( $all_cpts );
 
 		// Filter to selected CPTs if provided
 		if ( ! empty( $selected_cpts ) ) {
@@ -130,6 +140,14 @@ class TestDataService {
 			);
 
 			if ( is_wp_error( $post_id ) ) {
+				// Log error but continue with other posts
+				error_log( sprintf( 'TestDataService: Failed to create post for CPT %s: %s', $cpt_slug, $post_id->get_error_message() ) );
+				continue;
+			}
+
+			if ( $post_id === 0 ) {
+				// wp_insert_post returned 0 (shouldn't happen with true flag, but check anyway)
+				error_log( sprintf( 'TestDataService: wp_insert_post returned 0 for CPT %s', $cpt_slug ) );
 				continue;
 			}
 

@@ -74,22 +74,49 @@ class TestDataPage {
 				)
 			);
 
-			// Show success/error messages
+			// Show success/error messages with details
 			if ( ! empty( $results['created'] ) ) {
+				$total_created = 0;
+				foreach ( $results['created'] as $cpt => $post_ids ) {
+					$total_created += count( $post_ids );
+				}
 				echo '<div class="notice notice-success is-dismissible"><p>';
-				echo esc_html__( 'Test data created successfully!', 'vibecode-deploy' );
+				echo esc_html( sprintf( 
+					__( 'Test data created successfully! Created %d posts across %d CPT(s).', 'vibecode-deploy' ),
+					$total_created,
+					count( $results['created'] )
+				) );
 				echo '</p></div>';
 			}
 
 			if ( ! empty( $results['errors'] ) ) {
 				echo '<div class="notice notice-error is-dismissible"><p>';
-				echo esc_html__( 'Some errors occurred while creating test data.', 'vibecode-deploy' );
-				echo '</p></div>';
+				echo esc_html__( 'Some errors occurred while creating test data:', 'vibecode-deploy' );
+				echo '<ul style="margin-left: 20px;">';
+				foreach ( $results['errors'] as $error ) {
+					$cpt = isset( $error['cpt'] ) ? $error['cpt'] : 'unknown';
+					$msg = isset( $error['error'] ) ? $error['error'] : 'Unknown error';
+					echo '<li><strong>' . esc_html( $cpt ) . ':</strong> ' . esc_html( $msg ) . '</li>';
+				}
+				echo '</ul></p></div>';
 			}
 
 			if ( ! empty( $results['skipped'] ) ) {
 				echo '<div class="notice notice-warning is-dismissible"><p>';
-				echo esc_html__( 'Some CPTs were skipped.', 'vibecode-deploy' );
+				echo esc_html__( 'Some CPTs were skipped:', 'vibecode-deploy' );
+				echo '<ul style="margin-left: 20px;">';
+				foreach ( $results['skipped'] as $skip ) {
+					$cpt = isset( $skip['cpt'] ) ? $skip['cpt'] : 'unknown';
+					$reason = isset( $skip['reason'] ) ? $skip['reason'] : 'Unknown reason';
+					echo '<li><strong>' . esc_html( $cpt ) . ':</strong> ' . esc_html( $reason ) . '</li>';
+				}
+				echo '</ul></p></div>';
+			}
+
+			// Show message if nothing was created and no errors
+			if ( empty( $results['created'] ) && empty( $results['errors'] ) && ! empty( $results['skipped'] ) ) {
+				echo '<div class="notice notice-info is-dismissible"><p>';
+				echo esc_html__( 'No test data was created. All selected CPTs were skipped (they may already have published posts or are not registered).', 'vibecode-deploy' );
 				echo '</p></div>';
 			}
 		}
