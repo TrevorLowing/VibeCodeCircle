@@ -229,7 +229,20 @@ final class ImportPage {
 										'css_dir' => $build_root . DIRECTORY_SEPARATOR . 'css',
 										'css_dir_exists' => is_dir( $build_root . DIRECTORY_SEPARATOR . 'css' ),
 									), $project_slug_to_use );
-									$detected_prefix = ClassPrefixDetector::detect_from_staging( $build_root );
+									
+									try {
+										$detected_prefix = ClassPrefixDetector::detect_from_staging( $build_root );
+										Logger::info( 'Class prefix detection completed.', array(
+											'detected_prefix' => $detected_prefix,
+											'prefix_empty' => $detected_prefix === '',
+										), $project_slug_to_use );
+									} catch ( \Exception $e ) {
+										Logger::error( 'Class prefix detection exception.', array(
+											'exception_message' => $e->getMessage(),
+											'exception_trace' => $e->getTraceAsString(),
+										), $project_slug_to_use );
+										$detected_prefix = '';
+									}
 									
 									if ( $detected_prefix !== '' ) {
 										// Update settings with detected prefix
