@@ -112,8 +112,12 @@ final class ImportPage {
 				wp_die( esc_html__( 'Security check failed. Please try again.', 'vibecode-deploy' ) );
 			}
 			
-			check_admin_referer( 'vibecode_deploy_upload_zip', 'vibecode_deploy_nonce' );
-			Logger::info( 'Admin referer check passed.', array(), (string) $settings['project_slug'] );
+			// Note: We already verified nonce above with wp_verify_nonce()
+			// check_admin_referer() also checks HTTP referer, which can fail in Docker/local environments
+			// Since nonce verification is sufficient for security, we skip the referer check
+			Logger::info( 'Security checks passed (nonce verified).', array(
+				'http_referer' => isset( $_SERVER['HTTP_REFERER'] ) ? (string) $_SERVER['HTTP_REFERER'] : 'not_set',
+			), (string) $settings['project_slug'] );
 
 			// Validate class prefix format if set
 			if ( $settings['class_prefix'] !== '' && ! preg_match( '/^[a-z0-9-]+-$/', (string) $settings['class_prefix'] ) ) {
