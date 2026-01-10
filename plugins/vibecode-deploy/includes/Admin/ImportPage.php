@@ -376,19 +376,39 @@ final class ImportPage {
 			$validate_cpt_shortcodes = ! empty( $_POST['vibecode_deploy_validate_cpt_shortcodes'] );
 			
 			// Auto-detect class prefix if still empty (before validation)
+			// Skip if already attempted during upload to avoid hanging
 			if ( $settings['class_prefix'] === '' && $selected_fingerprint !== '' && $settings['project_slug'] !== '' ) {
 				$build_root = BuildService::build_root_path( (string) $settings['project_slug'], $selected_fingerprint );
-				$detected_prefix = ClassPrefixDetector::detect_from_staging( $build_root );
+				Logger::info( 'Attempting class prefix detection during deploy.', array(
+					'project_slug' => (string) $settings['project_slug'],
+					'fingerprint' => $selected_fingerprint,
+					'build_root' => $build_root,
+					'build_root_exists' => is_dir( $build_root ),
+				), (string) $settings['project_slug'] );
 				
-				if ( $detected_prefix !== '' ) {
-					// Update settings with detected prefix
-					$updated_settings = $settings;
-					$updated_settings['class_prefix'] = $detected_prefix;
-					update_option( Settings::OPTION_NAME, $updated_settings );
-					$settings = Settings::get_all(); // Refresh settings
+				try {
+					$detected_prefix = ClassPrefixDetector::detect_from_staging( $build_root );
+					Logger::info( 'Class prefix detection completed during deploy.', array(
+						'detected_prefix' => $detected_prefix,
+						'prefix_empty' => $detected_prefix === '',
+					), (string) $settings['project_slug'] );
 					
-					$notice = 'Class prefix auto-detected: <code>' . esc_html( $detected_prefix ) . '</code>';
-					Logger::info( 'Class prefix auto-detected from staging files during import.', array( 'project_slug' => (string) $settings['project_slug'], 'detected_prefix' => $detected_prefix ), (string) $settings['project_slug'] );
+					if ( $detected_prefix !== '' ) {
+						// Update settings with detected prefix
+						$updated_settings = $settings;
+						$updated_settings['class_prefix'] = $detected_prefix;
+						update_option( Settings::OPTION_NAME, $updated_settings );
+						$settings = Settings::get_all(); // Refresh settings
+						
+						$notice = 'Class prefix auto-detected: <code>' . esc_html( $detected_prefix ) . '</code>';
+						Logger::info( 'Class prefix auto-detected from staging files during import.', array( 'project_slug' => (string) $settings['project_slug'], 'detected_prefix' => $detected_prefix ), (string) $settings['project_slug'] );
+					}
+				} catch ( \Exception $e ) {
+					Logger::error( 'Class prefix detection exception during deploy.', array(
+						'exception_message' => $e->getMessage(),
+						'exception_trace' => $e->getTraceAsString(),
+					), (string) $settings['project_slug'] );
+					// Continue without prefix - user can set manually
 				}
 			}
 
