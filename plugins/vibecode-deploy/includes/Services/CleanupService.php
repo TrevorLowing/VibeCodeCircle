@@ -526,10 +526,14 @@ final class CleanupService {
 	/**
 	 * Delete CSS/JS assets from uploads directory AND plugin assets directory.
 	 *
+	 * Note: This does NOT delete staging directories - those are managed separately.
+	 * Staging directories are only deleted by purge_uploads_root() or purge_uploads().
+	 *
 	 * @param string $project_slug Project slug.
+	 * @param bool   $include_staging If true, also delete staging directories (default: false).
 	 * @return array Results with 'deleted' count and 'errors' array.
 	 */
-	public static function delete_assets( string $project_slug ): array {
+	public static function delete_assets( string $project_slug, bool $include_staging = false ): array {
 		$project_slug = sanitize_key( $project_slug );
 		$results = array(
 			'deleted' => 0,
@@ -540,17 +544,20 @@ final class CleanupService {
 			return $results;
 		}
 
-		// Delete staging directories from uploads
-		$uploads = wp_upload_dir();
-		$base = rtrim( (string) $uploads['basedir'], '/\\' );
-		$vibecode_deploy_dir = $base . DIRECTORY_SEPARATOR . 'vibecode-deploy' . DIRECTORY_SEPARATOR . 'staging' . DIRECTORY_SEPARATOR . $project_slug;
+		// Only delete staging directories if explicitly requested (e.g., from purge_uploads)
+		if ( $include_staging ) {
+			// Delete staging directories from uploads
+			$uploads = wp_upload_dir();
+			$base = rtrim( (string) $uploads['basedir'], '/\\' );
+			$vibecode_deploy_dir = $base . DIRECTORY_SEPARATOR . 'vibecode-deploy' . DIRECTORY_SEPARATOR . 'staging' . DIRECTORY_SEPARATOR . $project_slug;
 
-		if ( is_dir( $vibecode_deploy_dir ) ) {
-			// Delete all staging directories for this project
-			if ( self::delete_dir_recursive( $vibecode_deploy_dir ) ) {
-				$results['deleted']++; // Count as one operation
-			} else {
-				$results['errors'][] = "Failed to delete assets directory: {$vibecode_deploy_dir}";
+			if ( is_dir( $vibecode_deploy_dir ) ) {
+				// Delete all staging directories for this project
+				if ( self::delete_dir_recursive( $vibecode_deploy_dir ) ) {
+					$results['deleted']++; // Count as one operation
+				} else {
+					$results['errors'][] = "Failed to delete assets directory: {$vibecode_deploy_dir}";
+				}
 			}
 		}
 
@@ -660,14 +667,16 @@ final class CleanupService {
 		}
 
 		if ( $scope === 'everything' ) {
-			// Delete everything
+			// Delete everything (content only - NOT staging directories)
+			// Staging directories are managed separately via "Purge uploads" action
 			$results['deleted_pages'] = self::delete_pages_for_project( $project_slug );
 			$results['deleted_templates'] = self::delete_templates_by_slugs( $project_slug ); // Gets all
 			$results['deleted_template_parts'] = self::delete_template_parts_by_slugs( $project_slug ); // Gets all
 			$theme_result = self::delete_theme_files( $project_slug, array( 'functions.php', 'acf-json/*.json' ) );
 			$results['deleted_theme_files'] = $theme_result['deleted'];
 			$results['errors'] = array_merge( $results['errors'], $theme_result['errors'] );
-			$assets_result = self::delete_assets( $project_slug );
+			// Note: delete_assets() with include_staging=false only deletes plugin assets, not staging directories
+			$assets_result = self::delete_assets( $project_slug, false );
 			$results['deleted_assets'] = $assets_result['deleted'];
 			$results['errors'] = array_merge( $results['errors'], $assets_result['errors'] );
 		} elseif ( $scope === 'by_type' ) {
@@ -697,7 +706,8 @@ final class CleanupService {
 				$results['errors'] = array_merge( $results['errors'], $acf_result['errors'] );
 			}
 			if ( in_array( 'assets', $selected_types, true ) ) {
-				$assets_result = self::delete_assets( $project_slug );
+				// When explicitly selected, allow deleting staging directories
+				$assets_result = self::delete_assets( $project_slug, true );
 				$results['deleted_assets'] = $assets_result['deleted'];
 				$results['errors'] = array_merge( $results['errors'], $assets_result['errors'] );
 			}
