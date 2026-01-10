@@ -24,7 +24,8 @@ final class ClassPrefixDetector {
 		}
 
 		$prefixes = array();
-		$common_classes = array( 'main', 'hero', 'header', 'footer', 'container', 'button', 'page-section', 'page-card' );
+		// Common class names to detect (order matters - most common first)
+		$common_classes = array( 'main', 'hero', 'header', 'footer', 'container', 'button', 'btn', 'page-section', 'page-card', 'page-content', 'nav', 'logo' );
 
 		// Scan HTML files
 		$html_files = self::find_files( $build_root, array( 'html' ) );

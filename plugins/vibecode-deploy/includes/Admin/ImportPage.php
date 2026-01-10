@@ -125,6 +125,7 @@ final class ImportPage {
 								// Auto-detect class prefix if not set
 								if ( $settings['class_prefix'] === '' ) {
 									$build_root = BuildService::build_root_path( $project_slug_to_use, $selected_fingerprint );
+									Logger::info( 'Attempting class prefix detection.', array( 'project_slug' => $project_slug_to_use, 'fingerprint' => $selected_fingerprint, 'build_root' => $build_root, 'build_root_exists' => is_dir( $build_root ) ), $project_slug_to_use );
 									$detected_prefix = ClassPrefixDetector::detect_from_staging( $build_root );
 									
 									if ( $detected_prefix !== '' ) {
@@ -135,10 +136,10 @@ final class ImportPage {
 										$settings = Settings::get_all(); // Refresh settings
 										
 										$notice = ( isset( $notice ) ? $notice . ' ' : '' ) . 'Staging uploaded: ' . esc_html( $selected_fingerprint ) . ' (' . esc_html( (string) $result['files'] ) . ' files). Class prefix auto-detected: <code>' . esc_html( $detected_prefix ) . '</code>';
-										Logger::info( 'Class prefix auto-detected from staging files.', array( 'project_slug' => $project_slug_to_use, 'detected_prefix' => $detected_prefix ), $project_slug_to_use );
+										Logger::info( 'Class prefix auto-detected from staging files.', array( 'project_slug' => $project_slug_to_use, 'detected_prefix' => $detected_prefix, 'build_root' => $build_root ), $project_slug_to_use );
 									} else {
 										$notice = ( isset( $notice ) ? $notice . ' ' : '' ) . 'Staging uploaded: ' . esc_html( $selected_fingerprint ) . ' (' . esc_html( (string) $result['files'] ) . ' files). <strong>Warning:</strong> Class prefix could not be auto-detected. Please set it manually in Settings.';
-										Logger::warning( 'Class prefix auto-detection failed.', array( 'project_slug' => $project_slug_to_use ), $project_slug_to_use );
+										Logger::warning( 'Class prefix auto-detection failed.', array( 'project_slug' => $project_slug_to_use, 'build_root' => $build_root, 'build_root_exists' => is_dir( $build_root ) ), $project_slug_to_use );
 									}
 								} else {
 									$notice = ( isset( $notice ) ? $notice . ' ' : '' ) . 'Staging uploaded: ' . esc_html( $selected_fingerprint ) . ' (' . esc_html( (string) $result['files'] ) . ' files)';
@@ -398,12 +399,14 @@ final class ImportPage {
 		$active_fingerprint = $project_slug !== '' ? BuildService::get_active_fingerprint( $project_slug ) : '';
 		
 		// Debug: Log fingerprint listing for troubleshooting
-		if ( $project_slug !== '' && empty( $fingerprints ) ) {
+		if ( $project_slug !== '' ) {
 			$staging_dir = BuildService::get_project_staging_dir( $project_slug );
-			Logger::warning( 'No fingerprints found after upload.', array(
+			Logger::info( 'Fingerprint listing check.', array(
 				'project_slug' => $project_slug,
 				'staging_dir' => $staging_dir,
 				'staging_dir_exists' => is_dir( $staging_dir ),
+				'fingerprints_count' => count( $fingerprints ),
+				'fingerprints' => $fingerprints,
 				'selected_fingerprint' => $selected_fingerprint,
 			), $project_slug );
 		}
