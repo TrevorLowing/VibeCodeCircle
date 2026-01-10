@@ -90,7 +90,24 @@ final class ImportPage {
 				'file_name' => isset( $_FILES['vibecode_deploy_zip']['name'] ) ? (string) $_FILES['vibecode_deploy_zip']['name'] : '',
 				'file_size' => isset( $_FILES['vibecode_deploy_zip']['size'] ) ? (int) $_FILES['vibecode_deploy_zip']['size'] : 0,
 				'file_error' => isset( $_FILES['vibecode_deploy_zip']['error'] ) ? (int) $_FILES['vibecode_deploy_zip']['error'] : 0,
+				'has_nonce' => isset( $_POST['vibecode_deploy_nonce'] ),
+				'nonce_value' => isset( $_POST['vibecode_deploy_nonce'] ) ? substr( (string) $_POST['vibecode_deploy_nonce'], 0, 10 ) . '...' : 'missing',
 			), (string) $settings['project_slug'] );
+			
+			// Verify nonce (this will wp_die() if invalid, so log before)
+			$nonce_valid = wp_verify_nonce( (string) ( $_POST['vibecode_deploy_nonce'] ?? '' ), 'vibecode_deploy_upload_zip' );
+			Logger::info( 'Nonce verification result.', array(
+				'nonce_valid' => $nonce_valid !== false,
+				'nonce_result' => $nonce_valid,
+			), (string) $settings['project_slug'] );
+			
+			if ( $nonce_valid === false ) {
+				Logger::error( 'Upload blocked: invalid nonce.', array(
+					'has_nonce' => isset( $_POST['vibecode_deploy_nonce'] ),
+					'nonce_length' => isset( $_POST['vibecode_deploy_nonce'] ) ? strlen( (string) $_POST['vibecode_deploy_nonce'] ) : 0,
+				), (string) $settings['project_slug'] );
+				wp_die( esc_html__( 'Security check failed. Please try again.', 'vibecode-deploy' ) );
+			}
 			
 			check_admin_referer( 'vibecode_deploy_upload_zip', 'vibecode_deploy_nonce' );
 
