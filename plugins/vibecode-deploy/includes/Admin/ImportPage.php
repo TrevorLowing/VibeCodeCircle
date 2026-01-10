@@ -113,6 +113,7 @@ final class ImportPage {
 			}
 			
 			check_admin_referer( 'vibecode_deploy_upload_zip', 'vibecode_deploy_nonce' );
+			Logger::info( 'Admin referer check passed.', array(), (string) $settings['project_slug'] );
 
 			// Validate class prefix format if set
 			if ( $settings['class_prefix'] !== '' && ! preg_match( '/^[a-z0-9-]+-$/', (string) $settings['class_prefix'] ) ) {
@@ -120,8 +121,16 @@ final class ImportPage {
 				Logger::error( 'Upload blocked: invalid class prefix.', array( 'project_slug' => (string) $settings['project_slug'], 'class_prefix' => (string) $settings['class_prefix'] ), (string) $settings['project_slug'] );
 			} elseif ( empty( $_FILES['vibecode_deploy_zip']['tmp_name'] ) || ! is_uploaded_file( (string) $_FILES['vibecode_deploy_zip']['tmp_name'] ) ) {
 				$error = 'No zip file uploaded.';
-				Logger::error( 'Upload blocked: no zip file uploaded.', array( 'project_slug' => (string) $settings['project_slug'] ), (string) $settings['project_slug'] );
+				Logger::error( 'Upload blocked: no zip file uploaded.', array( 
+					'project_slug' => (string) $settings['project_slug'],
+					'has_tmp_name' => ! empty( $_FILES['vibecode_deploy_zip']['tmp_name'] ),
+					'is_uploaded_file' => ! empty( $_FILES['vibecode_deploy_zip']['tmp_name'] ) ? is_uploaded_file( (string) $_FILES['vibecode_deploy_zip']['tmp_name'] ) : false,
+				), (string) $settings['project_slug'] );
 			} else {
+				Logger::info( 'File validation passed, starting upload handling.', array(
+					'file_name' => isset( $_FILES['vibecode_deploy_zip']['name'] ) ? (string) $_FILES['vibecode_deploy_zip']['name'] : '',
+					'file_size' => isset( $_FILES['vibecode_deploy_zip']['size'] ) ? (int) $_FILES['vibecode_deploy_zip']['size'] : 0,
+				), (string) $settings['project_slug'] );
 				$file = $_FILES['vibecode_deploy_zip'];
 				$size = isset( $file['size'] ) ? (int) $file['size'] : 0;
 				if ( $size <= 0 ) {
