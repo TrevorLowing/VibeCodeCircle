@@ -36,6 +36,17 @@ final class ImportPage {
 			return;
 		}
 
+		// Log all POST requests to this page for debugging
+		if ( ! empty( $_POST ) ) {
+			Logger::info( 'POST data received on Import page.', array(
+				'post_keys' => array_keys( $_POST ),
+				'has_upload_zip' => isset( $_POST['vibecode_deploy_upload_zip'] ),
+				'has_nonce' => isset( $_POST['vibecode_deploy_nonce'] ),
+				'has_files' => isset( $_FILES['vibecode_deploy_zip'] ),
+				'request_method' => isset( $_SERVER['REQUEST_METHOD'] ) ? (string) $_SERVER['REQUEST_METHOD'] : '',
+			), '' );
+		}
+
 		$settings = Settings::get_all();
 		$notice = '';
 		$error = '';
