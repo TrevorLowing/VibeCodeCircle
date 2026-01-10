@@ -83,7 +83,8 @@ final class ImportPage {
 			), (string) $settings['project_slug'] );
 		}
 
-		if ( isset( $_POST['vibecode_deploy_upload_zip'] ) ) {
+		// Check for upload: either submit button clicked OR file uploaded (for auto-submit)
+		if ( isset( $_POST['vibecode_deploy_upload_zip'] ) || ( ! empty( $_FILES['vibecode_deploy_zip'] ) && isset( $_POST['vibecode_deploy_nonce'] ) ) ) {
 			Logger::info( 'Upload POST request received.', array(
 				'project_slug' => (string) $settings['project_slug'],
 				'has_files' => isset( $_FILES['vibecode_deploy_zip'] ),
