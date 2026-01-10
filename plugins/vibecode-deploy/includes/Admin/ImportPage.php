@@ -36,6 +36,19 @@ final class ImportPage {
 			return;
 		}
 
+		// Log ALL requests to this page for debugging (including GET)
+		Logger::info( 'Import page render started.', array(
+			'request_method' => isset( $_SERVER['REQUEST_METHOD'] ) ? (string) $_SERVER['REQUEST_METHOD'] : 'unknown',
+			'has_post' => ! empty( $_POST ),
+			'post_keys' => ! empty( $_POST ) ? array_keys( $_POST ) : array(),
+			'has_files' => ! empty( $_FILES ),
+			'file_keys' => ! empty( $_FILES ) ? array_keys( $_FILES ) : array(),
+			'has_upload_zip_post' => isset( $_POST['vibecode_deploy_upload_zip'] ),
+			'has_nonce' => isset( $_POST['vibecode_deploy_nonce'] ),
+			'has_upload_zip_file' => isset( $_FILES['vibecode_deploy_zip'] ),
+			'query_string' => isset( $_SERVER['QUERY_STRING'] ) ? (string) $_SERVER['QUERY_STRING'] : '',
+		), (string) $settings['project_slug'] );
+		
 		// Log all POST requests to this page for debugging
 		if ( ! empty( $_POST ) ) {
 			Logger::info( 'POST data received on Import page.', array(
@@ -44,7 +57,7 @@ final class ImportPage {
 				'has_nonce' => isset( $_POST['vibecode_deploy_nonce'] ),
 				'has_files' => isset( $_FILES['vibecode_deploy_zip'] ),
 				'request_method' => isset( $_SERVER['REQUEST_METHOD'] ) ? (string) $_SERVER['REQUEST_METHOD'] : '',
-			), '' );
+			), (string) $settings['project_slug'] );
 		}
 
 		$settings = Settings::get_all();
