@@ -190,7 +190,14 @@ final class ImportPage {
 							}
 						}
 						
-						if ( ! isset( $error ) ) {
+						Logger::info( 'Checking if extraction should proceed.', array(
+							'project_slug_to_use' => $project_slug_to_use,
+							'error_set' => isset( $error ),
+							'error_value' => $error ?? 'not_set',
+							'error_empty' => empty( $error ),
+						), $project_slug_to_use );
+						
+						if ( ! isset( $error ) || $error === '' ) {
 							Logger::info( 'Zip uploaded; extracting to staging.', array( 'project_slug' => $project_slug_to_use, 'zip_path' => (string) $upload['file'], 'zip_size' => filesize( (string) $upload['file'] ) ), $project_slug_to_use );
 							$result = Staging::extract_zip_to_staging( (string) $upload['file'], $project_slug_to_use );
 							@unlink( (string) $upload['file'] );
