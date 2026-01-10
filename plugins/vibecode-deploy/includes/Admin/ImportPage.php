@@ -452,7 +452,7 @@ final class ImportPage {
 
 		echo '<div class="card" style="max-width: 1100px;">';
 		echo '<h2 class="title">1) ' . esc_html__( 'Upload Staging Zip', 'vibecode-deploy' ) . '</h2>';
-		echo '<form method="post" enctype="multipart/form-data" id="vibecode-deploy-upload-form">';
+		echo '<form method="post" enctype="multipart/form-data" id="vibecode-deploy-upload-form" action="' . esc_url( admin_url( 'admin.php?page=vibecode-deploy-import' ) ) . '">';
 		wp_nonce_field( 'vibecode_deploy_upload_zip', 'vibecode_deploy_nonce' );
 		echo '<table class="form-table" role="presentation">';
 		echo '<tr><th scope="row">' . esc_html__( 'Zip file', 'vibecode-deploy' ) . '</th><td><input type="file" name="vibecode_deploy_zip" id="vibecode-deploy-zip-input" accept=".zip" required /><p class="description">' . esc_html__( 'Select a staging bundle exported from your local build. It will upload automatically.', 'vibecode-deploy' ) . '</p></td></tr>';
@@ -467,12 +467,27 @@ final class ImportPage {
 			var fileInput = document.getElementById("vibecode-deploy-zip-input");
 			
 			if (form && fileInput) {
-				fileInput.addEventListener("change", function() {
+				fileInput.addEventListener("change", function(e) {
+					console.log("File selected:", fileInput.files);
 					if (fileInput.files && fileInput.files.length > 0) {
+						console.log("Auto-submitting form...");
 						// Auto-submit immediately without showing button
 						form.submit();
+					} else {
+						console.log("No files selected");
 					}
 				});
+				
+				form.addEventListener("submit", function(e) {
+					console.log("Form submitting...");
+					if (!fileInput.files || fileInput.files.length === 0) {
+						console.log("Preventing submit - no file");
+						e.preventDefault();
+						return false;
+					}
+				});
+			} else {
+				console.error("Form or file input not found", {form: form, fileInput: fileInput});
 			}
 		})();
 		</script>';
