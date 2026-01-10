@@ -209,38 +209,59 @@ final class Staging {
 	}
 
 	public static function extract_zip_to_staging( string $zip_path, string $project_slug ): array {
+		Logger::info( 'Extraction started.', array(
+			'zip_path' => $zip_path,
+			'zip_exists' => file_exists( $zip_path ),
+			'project_slug' => $project_slug,
+		), $project_slug );
+		
 		if ( ! file_exists( $zip_path ) ) {
+			Logger::error( 'Extraction failed: zip file not found.', array( 'zip_path' => $zip_path ), $project_slug );
 			return array( 'ok' => false, 'error' => 'Zip file not found.' );
 		}
 
 		$size = (int) filesize( $zip_path );
 		if ( $size <= 0 ) {
+			Logger::error( 'Extraction failed: zip file is empty.', array( 'zip_path' => $zip_path, 'size' => $size ), $project_slug );
 			return array( 'ok' => false, 'error' => 'Zip file is empty.' );
 		}
 
 		if ( $size > self::ZIP_MAX_BYTES ) {
+			Logger::error( 'Extraction failed: zip exceeds max size.', array( 'zip_path' => $zip_path, 'size' => $size, 'max' => self::ZIP_MAX_BYTES ), $project_slug );
 			return array( 'ok' => false, 'error' => 'Zip exceeds max size.' );
 		}
 
 		if ( ! class_exists( '\\ZipArchive' ) ) {
+			Logger::error( 'Extraction failed: ZipArchive not available.', array(), $project_slug );
 			return array( 'ok' => false, 'error' => 'ZipArchive not available.' );
 		}
 
 		$zip = new \ZipArchive();
 		$opened = $zip->open( $zip_path );
 		if ( $opened !== true ) {
+			Logger::error( 'Extraction failed: unable to open zip.', array( 'zip_path' => $zip_path, 'open_result' => $opened ), $project_slug );
 			return array( 'ok' => false, 'error' => 'Unable to open zip.' );
 		}
 
 		$count = $zip->numFiles;
+		Logger::info( 'Zip opened successfully.', array( 'zip_path' => $zip_path, 'file_count' => $count ), $project_slug );
+		
 		if ( $count > self::ZIP_MAX_FILES ) {
 			$zip->close();
+			Logger::error( 'Extraction failed: zip exceeds max file count.', array( 'file_count' => $count, 'max' => self::ZIP_MAX_FILES ), $project_slug );
 			return array( 'ok' => false, 'error' => 'Zip exceeds max file count.' );
 		}
 
 		$fingerprint = gmdate( 'Ymd-His' );
 		$target_root = self::staging_root( $project_slug, $fingerprint );
+		Logger::info( 'Creating target directory.', array( 'target_root' => $target_root, 'fingerprint' => $fingerprint ), $project_slug );
 		self::ensure_dir( $target_root );
+		
+		if ( ! is_dir( $target_root ) ) {
+			$zip->close();
+			Logger::error( 'Extraction failed: unable to create target directory.', array( 'target_root' => $target_root ), $project_slug );
+			return array( 'ok' => false, 'error' => 'Unable to create target directory.' );
+		}
 
 		// First pass: detect package format by scanning entries
 		$detected_format = 'unknown';
@@ -273,8 +294,15 @@ final class Staging {
 		// If format not detected, fail early
 		if ( ! $format_detected ) {
 			$zip->close();
+			Logger::error( 'Extraction failed: zip structure not recognized.', array(
+				'zip_path' => $zip_path,
+				'file_count' => $count,
+				'detected_format' => $detected_format,
+			), $project_slug );
 			return array( 'ok' => false, 'error' => 'Zip structure not recognized. Expected vibecode-deploy-staging/ or {project-name}-deployment/ root directory.' );
 		}
+		
+		Logger::info( 'Package format detected.', array( 'format' => $detected_format, 'file_count' => $count ), $project_slug );
 
 		$unpacked_total = 0;
 		$written_files = 0;
@@ -351,6 +379,14 @@ final class Staging {
 		}
 
 		$zip->close();
+
+		Logger::info( 'Extraction completed successfully.', array(
+			'project_slug' => $project_slug,
+			'fingerprint' => $fingerprint,
+			'target_root' => $target_root,
+			'files_written' => $written_files,
+			'target_root_exists' => is_dir( $target_root ),
+		), $project_slug );
 
 		return array(
 			'ok' => true,

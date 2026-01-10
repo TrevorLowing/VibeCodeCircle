@@ -59,6 +59,14 @@ final class ImportPage {
 		}
 
 		if ( isset( $_POST['vibecode_deploy_upload_zip'] ) ) {
+			Logger::info( 'Upload POST request received.', array(
+				'project_slug' => (string) $settings['project_slug'],
+				'has_files' => isset( $_FILES['vibecode_deploy_zip'] ),
+				'file_name' => isset( $_FILES['vibecode_deploy_zip']['name'] ) ? (string) $_FILES['vibecode_deploy_zip']['name'] : '',
+				'file_size' => isset( $_FILES['vibecode_deploy_zip']['size'] ) ? (int) $_FILES['vibecode_deploy_zip']['size'] : 0,
+				'file_error' => isset( $_FILES['vibecode_deploy_zip']['error'] ) ? (int) $_FILES['vibecode_deploy_zip']['error'] : 0,
+			), (string) $settings['project_slug'] );
+			
 			check_admin_referer( 'vibecode_deploy_upload_zip', 'vibecode_deploy_nonce' );
 
 			// Validate class prefix format if set
