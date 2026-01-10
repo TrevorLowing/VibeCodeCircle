@@ -480,7 +480,7 @@ final class ImportPage {
 		} elseif ( $error !== '' ) {
 			echo '<div class="notice notice-error"><p>' . esc_html( $error ) . '</p></div>';
 		} elseif ( $notice !== '' ) {
-			echo '<div class="notice notice-success"><p>' . esc_html( $notice ) . '</p></div>';
+			echo '<div class="notice notice-success"><p>' . $notice . '</p></div>';
 		}
 
 		// Debug: Show if preflight was attempted but result is null
