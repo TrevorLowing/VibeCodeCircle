@@ -19,6 +19,7 @@ final class SettingsPage {
 		add_action( 'admin_post_vibecode_deploy_purge_both', array( __CLASS__, 'purge_both' ) );
 		add_action( 'admin_post_vibecode_deploy_nuclear_operation', array( __CLASS__, 'nuclear_operation' ) );
 		add_action( 'admin_post_vibecode_deploy_flush_caches', array( __CLASS__, 'flush_caches' ) );
+		add_action( 'admin_post_vibecode_deploy_reset_config', array( __CLASS__, 'reset_config' ) );
 	}
 
 	public static function register_menu(): void {
@@ -164,9 +165,43 @@ final class SettingsPage {
 		echo '<h2 class="title">' . esc_html__( 'Configuration', 'vibecode-deploy' ) . '</h2>';
 		echo '<form method="post" action="options.php">';
 		settings_fields( 'vibecode_deploy' );
-		do_settings_sections( 'vibecode_deploy' );
+		
+		// Important settings at the top
+		echo '<h3>' . esc_html__( 'Required Settings', 'vibecode-deploy' ) . '</h3>';
+		echo '<table class="form-table" role="presentation">';
+		self::field_project_slug();
+		self::field_class_prefix();
+		echo '</table>';
+		
+		// Advanced settings in collapsible details
+		echo '<details style="margin-top: 1.5rem;">';
+		echo '<summary style="cursor: pointer; font-weight: 600; padding: 0.5rem 0;">' . esc_html__( 'Advanced Settings', 'vibecode-deploy' ) . '</summary>';
+		echo '<table class="form-table" role="presentation" style="margin-top: 1rem;">';
+		self::field_staging_dir();
+		self::field_placeholder_prefix();
+		self::field_env_errors_mode();
+		self::field_on_missing_required();
+		self::field_on_missing_recommended();
+		self::field_on_unknown_placeholder();
+		self::field_prefix_validation_mode();
+		self::field_prefix_validation_scope();
+		echo '</table>';
+		echo '</details>';
+		
 		submit_button();
 		echo '</form>';
+		
+		// Reset configuration button
+		echo '<hr style="margin: 1.5rem 0;" />';
+		echo '<h3>' . esc_html__( 'Reset Configuration', 'vibecode-deploy' ) . '</h3>';
+		echo '<p class="description">' . esc_html__( 'Reset all configuration settings to their default values. This will clear Project Slug, Class Prefix, and all advanced settings.', 'vibecode-deploy' ) . '</p>';
+		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
+		echo '<input type="hidden" name="action" value="vibecode_deploy_reset_config" />';
+		wp_nonce_field( 'vibecode_deploy_reset_config', 'vibecode_deploy_reset_config_nonce' );
+		$reset_confirm = esc_js( __( 'Reset all configuration settings to defaults? This cannot be undone.', 'vibecode-deploy' ) );
+		echo '<p><input type="submit" class="button button-secondary" value="' . esc_attr__( 'Reset Configuration', 'vibecode-deploy' ) . '" onclick="return confirm(\'' . $reset_confirm . '\');" /></p>';
+		echo '</form>';
+		
 		echo '</div>';
 
 		$opts = Settings::get_all();
@@ -644,8 +679,11 @@ final class SettingsPage {
 		$name = esc_attr( Settings::OPTION_NAME );
 		$val  = esc_attr( (string) $opts['project_slug'] );
 
-		echo '<input type="text" class="regular-text" name="' . $name . '[project_slug]" value="' . $val . '" />';
-		echo '<p class="description">' . esc_html__( 'Used to identify this project for imports, manifests, and rules packs.', 'vibecode-deploy' ) . '</p>';
+		echo '<tr>';
+		echo '<th scope="row"><label for="' . $name . '_project_slug">' . esc_html__( 'Project Slug', 'vibecode-deploy' ) . '</label></th>';
+		echo '<td><input type="text" class="regular-text" id="' . $name . '_project_slug" name="' . $name . '[project_slug]" value="' . $val . '" />';
+		echo '<p class="description">' . esc_html__( 'Used to identify this project for imports, manifests, and rules packs.', 'vibecode-deploy' ) . '</p></td>';
+		echo '</tr>';
 	}
 
 	public static function field_class_prefix(): void {
@@ -653,8 +691,11 @@ final class SettingsPage {
 		$name = esc_attr( Settings::OPTION_NAME );
 		$val  = esc_attr( (string) $opts['class_prefix'] );
 
-		echo '<input type="text" class="regular-text" name="' . $name . '[class_prefix]" value="' . $val . '" />';
-		echo '<p class="description">' . esc_html__( 'Must match ^[a-z0-9-]+-$ (lowercase, trailing dash required).', 'vibecode-deploy' ) . '</p>';
+		echo '<tr>';
+		echo '<th scope="row"><label for="' . $name . '_class_prefix">' . esc_html__( 'Class Prefix', 'vibecode-deploy' ) . '</label></th>';
+		echo '<td><input type="text" class="regular-text" id="' . $name . '_class_prefix" name="' . $name . '[class_prefix]" value="' . $val . '" />';
+		echo '<p class="description">' . esc_html__( 'Must match ^[a-z0-9-]+-$ (lowercase, trailing dash required).', 'vibecode-deploy' ) . '</p></td>';
+		echo '</tr>';
 	}
 
 	public static function field_staging_dir(): void {
@@ -662,8 +703,11 @@ final class SettingsPage {
 		$name = esc_attr( Settings::OPTION_NAME );
 		$val  = esc_attr( (string) $opts['staging_dir'] );
 
-		echo '<input type="text" class="regular-text" name="' . $name . '[staging_dir]" value="' . $val . '" />';
-		echo '<p class="description">' . esc_html__( 'Local deploy input folder name (default: vibecode-deploy-staging).', 'vibecode-deploy' ) . '</p>';
+		echo '<tr>';
+		echo '<th scope="row"><label for="' . $name . '_staging_dir">' . esc_html__( 'Staging Folder', 'vibecode-deploy' ) . '</label></th>';
+		echo '<td><input type="text" class="regular-text" id="' . $name . '_staging_dir" name="' . $name . '[staging_dir]" value="' . $val . '" />';
+		echo '<p class="description">' . esc_html__( 'Local deploy input folder name (default: vibecode-deploy-staging).', 'vibecode-deploy' ) . '</p></td>';
+		echo '</tr>';
 	}
 
 	private static function render_mode_select( string $field_key, string $description ): void {
@@ -682,34 +726,62 @@ final class SettingsPage {
 
 	public static function field_placeholder_prefix(): void {
 		$settings = Settings::get_all();
+		$name = esc_attr( Settings::OPTION_NAME );
 		$value = isset( $settings['placeholder_prefix'] ) ? esc_attr( (string) $settings['placeholder_prefix'] ) : 'VIBECODE_SHORTCODE';
-		echo '<input type="text" name="' . esc_attr( Settings::OPTION_NAME ) . '[placeholder_prefix]" value="' . $value . '" class="regular-text" pattern="[A-Z0-9_]+" />';
-		echo '<p class="description">' . esc_html__( 'Prefix for shortcode placeholder comments in HTML (e.g., VIBECODE_SHORTCODE). Use uppercase letters, numbers, and underscores only.', 'vibecode-deploy' ) . '</p>';
+		echo '<tr>';
+		echo '<th scope="row"><label for="' . $name . '_placeholder_prefix">' . esc_html__( 'Placeholder Prefix', 'vibecode-deploy' ) . '</label></th>';
+		echo '<td><input type="text" id="' . $name . '_placeholder_prefix" name="' . $name . '[placeholder_prefix]" value="' . $value . '" class="regular-text" pattern="[A-Z0-9_]+" />';
+		echo '<p class="description">' . esc_html__( 'Prefix for shortcode placeholder comments in HTML (e.g., VIBECODE_SHORTCODE). Use uppercase letters, numbers, and underscores only.', 'vibecode-deploy' ) . '</p></td>';
+		echo '</tr>';
 	}
 
 	public static function field_env_errors_mode(): void {
+		$name = esc_attr( Settings::OPTION_NAME );
+		echo '<tr>';
+		echo '<th scope="row"><label for="' . $name . '_env_errors_mode">' . esc_html__( 'Environment Errors Mode', 'vibecode-deploy' ) . '</label></th>';
+		echo '<td>';
 		self::render_mode_select( 'env_errors_mode', __( 'How to handle critical environment errors (missing theme, unsupported WordPress version, etc.) during preflight.', 'vibecode-deploy' ) );
+		echo '</td>';
+		echo '</tr>';
 	}
 
 	public static function field_on_missing_required(): void {
 		$settings = Settings::get_all();
+		$name = esc_attr( Settings::OPTION_NAME );
 		$prefix = isset( $settings['placeholder_prefix'] ) ? (string) $settings['placeholder_prefix'] : 'VIBECODE_SHORTCODE';
+		echo '<tr>';
+		echo '<th scope="row"><label for="' . $name . '_on_missing_required">' . esc_html__( 'Placeholder Strict Mode (Required)', 'vibecode-deploy' ) . '</label></th>';
+		echo '<td>';
 		/* translators: %s: Placeholder prefix */
 		self::render_mode_select( 'on_missing_required', sprintf( __( 'When a page is missing a required %s placeholder (as defined in vibecode-deploy-shortcodes.json).', 'vibecode-deploy' ), $prefix ) );
+		echo '</td>';
+		echo '</tr>';
 	}
 
 	public static function field_on_missing_recommended(): void {
 		$settings = Settings::get_all();
+		$name = esc_attr( Settings::OPTION_NAME );
 		$prefix = isset( $settings['placeholder_prefix'] ) ? (string) $settings['placeholder_prefix'] : 'VIBECODE_SHORTCODE';
+		echo '<tr>';
+		echo '<th scope="row"><label for="' . $name . '_on_missing_recommended">' . esc_html__( 'Placeholder Strict Mode (Recommended)', 'vibecode-deploy' ) . '</label></th>';
+		echo '<td>';
 		/* translators: %s: Placeholder prefix */
 		self::render_mode_select( 'on_missing_recommended', sprintf( __( 'When a page is missing a recommended %s placeholder (as defined in vibecode-deploy-shortcodes.json).', 'vibecode-deploy' ), $prefix ) );
+		echo '</td>';
+		echo '</tr>';
 	}
 
 	public static function field_on_unknown_placeholder(): void {
 		$settings = Settings::get_all();
+		$name = esc_attr( Settings::OPTION_NAME );
 		$prefix = isset( $settings['placeholder_prefix'] ) ? (string) $settings['placeholder_prefix'] : 'VIBECODE_SHORTCODE';
+		echo '<tr>';
+		echo '<th scope="row"><label for="' . $name . '_on_unknown_placeholder">' . esc_html__( 'Placeholder Strict Mode (Unknown)', 'vibecode-deploy' ) . '</label></th>';
+		echo '<td>';
 		/* translators: %s: Placeholder prefix */
 		self::render_mode_select( 'on_unknown_placeholder', sprintf( __( 'When an invalid/unparseable %s placeholder is encountered in HTML.', 'vibecode-deploy' ), $prefix ) );
+		echo '</td>';
+		echo '</tr>';
 	}
 
 	public static function field_prefix_validation_mode(): void {
@@ -722,7 +794,9 @@ final class SettingsPage {
 		$name = esc_attr( Settings::OPTION_NAME );
 		$field = 'prefix_validation_mode';
 
-		echo '<select name="' . $name . '[' . $field . ']">';
+		echo '<tr>';
+		echo '<th scope="row"><label for="' . $name . '_prefix_validation_mode">' . esc_html__( 'Prefix Validation Mode', 'vibecode-deploy' ) . '</label></th>';
+		echo '<td><select id="' . $name . '_prefix_validation_mode" name="' . $name . '[' . $field . ']">';
 		echo '<option value="warn"' . selected( $current, 'warn', false ) . '>' . esc_html__( 'Warn (default)', 'vibecode-deploy' ) . '</option>';
 		echo '<option value="fail"' . selected( $current, 'fail', false ) . '>' . esc_html__( 'Fail deploy', 'vibecode-deploy' ) . '</option>';
 		echo '<option value="off"' . selected( $current, 'off', false ) . '>' . esc_html__( 'Off (disabled)', 'vibecode-deploy' ) . '</option>';
@@ -733,6 +807,8 @@ final class SettingsPage {
 		} else {
 			echo '<p class="description">' . esc_html__( 'How to handle shortcodes and CPTs that do not match the project prefix. Set Project Slug first to enable validation.', 'vibecode-deploy' ) . '</p>';
 		}
+		echo '</td>';
+		echo '</tr>';
 	}
 
 	public static function field_prefix_validation_scope(): void {
@@ -744,11 +820,32 @@ final class SettingsPage {
 		$name = esc_attr( Settings::OPTION_NAME );
 		$field = 'prefix_validation_scope';
 
-		echo '<fieldset>';
+		echo '<tr>';
+		echo '<th scope="row"><label for="' . $name . '_prefix_validation_scope">' . esc_html__( 'Prefix Validation Scope', 'vibecode-deploy' ) . '</label></th>';
+		echo '<td><fieldset>';
 		echo '<label><input type="radio" name="' . $name . '[' . $field . ']" value="all"' . checked( $current, 'all', false ) . ' /> ' . esc_html__( 'All (shortcodes and CPTs)', 'vibecode-deploy' ) . '</label><br />';
 		echo '<label><input type="radio" name="' . $name . '[' . $field . ']" value="shortcodes"' . checked( $current, 'shortcodes', false ) . ' /> ' . esc_html__( 'Shortcodes only', 'vibecode-deploy' ) . '</label><br />';
 		echo '<label><input type="radio" name="' . $name . '[' . $field . ']" value="cpts"' . checked( $current, 'cpts', false ) . ' /> ' . esc_html__( 'CPTs only', 'vibecode-deploy' ) . '</label>';
 		echo '</fieldset>';
 		echo '<p class="description">' . esc_html__( 'Which items to validate for project prefix compliance. "All" validates both shortcodes and custom post types.', 'vibecode-deploy' ) . '</p>';
+		echo '</td>';
+		echo '</tr>';
+	}
+
+	public static function reset_config(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Forbidden.', 'vibecode-deploy' ) );
+		}
+		check_admin_referer( 'vibecode_deploy_reset_config', 'vibecode_deploy_reset_config_nonce' );
+		
+		// Delete the option to reset to defaults
+		delete_option( Settings::OPTION_NAME );
+		
+		Logger::info( 'Configuration reset to defaults.', array(), '' );
+		
+		// Redirect with success message
+		$url = admin_url( 'admin.php?page=vibecode-deploy&vibecode_deploy_action=' . urlencode( __( 'Configuration reset', 'vibecode-deploy' ) ) . '&vibecode_deploy_result=ok' );
+		wp_safe_redirect( $url );
+		exit;
 	}
 }
