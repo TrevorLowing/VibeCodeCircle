@@ -112,13 +112,21 @@ final class ImportPage {
 						}
 						
 						if ( ! isset( $error ) ) {
-							Logger::info( 'Zip uploaded; extracting to staging.', array( 'project_slug' => $project_slug_to_use ), $project_slug_to_use );
+							Logger::info( 'Zip uploaded; extracting to staging.', array( 'project_slug' => $project_slug_to_use, 'zip_path' => (string) $upload['file'], 'zip_size' => filesize( (string) $upload['file'] ) ), $project_slug_to_use );
 							$result = Staging::extract_zip_to_staging( (string) $upload['file'], $project_slug_to_use );
 							@unlink( (string) $upload['file'] );
 
 							if ( ! is_array( $result ) || empty( $result['ok'] ) ) {
 								$error = is_array( $result ) ? (string) ( $result['error'] ?? 'Extraction failed.' ) : 'Extraction failed.';
-								Logger::error( 'Extraction failed.', array( 'project_slug' => $project_slug_to_use, 'error' => $error ), $project_slug_to_use );
+								Logger::error( 'Extraction failed.', array(
+									'project_slug' => $project_slug_to_use,
+									'error' => $error,
+									'result' => $result,
+									'result_type' => gettype( $result ),
+									'staging_dir' => BuildService::get_project_staging_dir( $project_slug_to_use ),
+									'staging_dir_exists' => is_dir( BuildService::get_project_staging_dir( $project_slug_to_use ) ),
+								), $project_slug_to_use );
+								$error = __( 'Extraction failed:', 'vibecode-deploy' ) . ' ' . esc_html( $error ) . ' ' . __( 'Check logs for details.', 'vibecode-deploy' );
 							} else {
 								$selected_fingerprint = (string) $result['fingerprint'];
 								
@@ -145,7 +153,26 @@ final class ImportPage {
 									$notice = ( isset( $notice ) ? $notice . ' ' : '' ) . 'Staging uploaded: ' . esc_html( $selected_fingerprint ) . ' (' . esc_html( (string) $result['files'] ) . ' files)';
 								}
 								
-								Logger::info( 'Staging extracted.', array( 'project_slug' => $project_slug_to_use, 'fingerprint' => $selected_fingerprint, 'files' => (int) ( $result['files'] ?? 0 ) ), $project_slug_to_use );
+								Logger::info( 'Staging extracted.', array(
+									'project_slug' => $project_slug_to_use,
+									'fingerprint' => $selected_fingerprint,
+									'files' => (int) ( $result['files'] ?? 0 ),
+									'target_root' => $result['target_root'] ?? '',
+									'target_root_exists' => isset( $result['target_root'] ) && is_dir( (string) $result['target_root'] ),
+								), $project_slug_to_use );
+								
+								// Verify fingerprint was actually created
+								$verify_fingerprints = BuildService::list_build_fingerprints( $project_slug_to_use );
+								if ( ! in_array( $selected_fingerprint, $verify_fingerprints, true ) ) {
+									Logger::error( 'Fingerprint not found after extraction.', array(
+										'project_slug' => $project_slug_to_use,
+										'expected_fingerprint' => $selected_fingerprint,
+										'found_fingerprints' => $verify_fingerprints,
+										'staging_dir' => BuildService::get_project_staging_dir( $project_slug_to_use ),
+										'staging_dir_exists' => is_dir( BuildService::get_project_staging_dir( $project_slug_to_use ) ),
+									), $project_slug_to_use );
+									$error = __( 'Extraction completed but fingerprint not found. Check logs for details.', 'vibecode-deploy' );
+								}
 							}
 						}
 					}
