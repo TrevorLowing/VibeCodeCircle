@@ -19,6 +19,8 @@ final class ClassPrefixDetector {
 	 * @return string Detected prefix (with trailing dash) or empty string if not detected.
 	 */
 	public static function detect_from_staging( string $build_root ): string {
+		\VibeCode\Deploy\Logger::info( 'Class prefix detection: function called.', array( 'build_root' => $build_root, 'build_root_exists' => is_dir( $build_root ) ), '' );
+		
 		if ( ! is_dir( $build_root ) ) {
 			\VibeCode\Deploy\Logger::warning( 'Class prefix detection: build_root does not exist.', array( 'build_root' => $build_root ), '' );
 			return '';
@@ -27,12 +29,14 @@ final class ClassPrefixDetector {
 		// Set a reasonable timeout for detection (10 seconds max)
 		$original_time_limit = ini_get( 'max_execution_time' );
 		@set_time_limit( 10 );
+		\VibeCode\Deploy\Logger::info( 'Class prefix detection: timeout set.', array( 'original_limit' => $original_time_limit, 'new_limit' => 10 ), '' );
 
 		$prefixes = array();
 		// Common class names to detect (order matters - most common first)
 		$common_classes = array( 'main', 'hero', 'header', 'footer', 'container', 'button', 'btn', 'page-section', 'page-card', 'page-content', 'nav', 'logo' );
 
 		// Scan HTML files
+		\VibeCode\Deploy\Logger::info( 'Class prefix detection: calling find_files for HTML.', array( 'build_root' => $build_root ), '' );
 		$html_files = self::find_files( $build_root, array( 'html' ) );
 		\VibeCode\Deploy\Logger::info( 'Class prefix detection: scanning HTML files.', array( 'build_root' => $build_root, 'html_files_count' => count( $html_files ) ), '' );
 		$html_files_scanned = 0;
@@ -136,6 +140,11 @@ final class ClassPrefixDetector {
 			'html_files_count' => count( $html_files ),
 			'css_files_count' => count( $css_files ),
 		), '' );
+
+		// Restore original time limit
+		if ( isset( $original_time_limit ) && $original_time_limit !== false ) {
+			@set_time_limit( (int) $original_time_limit );
+		}
 
 		return $detected_prefix;
 	}
