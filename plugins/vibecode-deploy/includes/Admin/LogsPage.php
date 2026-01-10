@@ -68,13 +68,55 @@ final class LogsPage {
 		echo '<p>';
 		$clear_confirm = esc_js( __( 'Clear the Vibe Code Deploy log?', 'vibecode-deploy' ) );
 		echo '<a class="button" href="' . esc_url( $download_url ) . '">' . esc_html__( 'Download Log', 'vibecode-deploy' ) . '</a> ';
+		echo '<button type="button" class="button" id="vibecode-deploy-copy-log">' . esc_html__( 'Copy Log', 'vibecode-deploy' ) . '</button> ';
 		echo '<a class="button" href="' . esc_url( $clear_url ) . '" onclick="return confirm(\'' . $clear_confirm . '\');">' . esc_html__( 'Clear Log', 'vibecode-deploy' ) . '</a>';
 		echo '</p>';
 
-		echo '<textarea class="large-text code" readonly rows="22">';
+		echo '<textarea class="large-text code" readonly rows="22" id="vibecode-deploy-log-textarea">';
 		echo esc_textarea( $log !== '' ? $log : '' );
 		echo '</textarea>';
 		echo '</div>';
+		echo '<script>
+		(function() {
+			var copyBtn = document.getElementById("vibecode-deploy-copy-log");
+			var textarea = document.getElementById("vibecode-deploy-log-textarea");
+			
+			if (copyBtn && textarea) {
+				copyBtn.addEventListener("click", function() {
+					textarea.select();
+					textarea.setSelectionRange(0, 99999); // For mobile devices
+					
+					try {
+						var successful = document.execCommand("copy");
+						if (successful) {
+							var originalText = copyBtn.textContent;
+							copyBtn.textContent = "' . esc_js( __( 'Copied!', 'vibecode-deploy' ) ) . '";
+							setTimeout(function() {
+								copyBtn.textContent = originalText;
+							}, 2000);
+						} else {
+							alert("' . esc_js( __( 'Failed to copy log. Please select and copy manually.', 'vibecode-deploy' ) ) . '");
+						}
+					} catch (err) {
+						// Fallback for browsers that don\'t support execCommand
+						try {
+							navigator.clipboard.writeText(textarea.value).then(function() {
+								var originalText = copyBtn.textContent;
+								copyBtn.textContent = "' . esc_js( __( 'Copied!', 'vibecode-deploy' ) ) . '";
+								setTimeout(function() {
+									copyBtn.textContent = originalText;
+								}, 2000);
+							}).catch(function() {
+								alert("' . esc_js( __( 'Failed to copy log. Please select and copy manually.', 'vibecode-deploy' ) ) . '");
+							});
+						} catch (e) {
+							alert("' . esc_js( __( 'Failed to copy log. Please select and copy manually.', 'vibecode-deploy' ) ) . '");
+						}
+					}
+				});
+			}
+		})();
+		</script>';
 
 		echo '</div>';
 	}

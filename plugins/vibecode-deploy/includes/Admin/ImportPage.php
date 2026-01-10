@@ -391,16 +391,12 @@ final class ImportPage {
 		(function() {
 			var form = document.getElementById("vibecode-deploy-upload-form");
 			var fileInput = document.getElementById("vibecode-deploy-zip-input");
-			var submitBtn = document.getElementById("vibecode-deploy-upload-submit");
 			
-			if (form && fileInput && submitBtn) {
+			if (form && fileInput) {
 				fileInput.addEventListener("change", function() {
 					if (fileInput.files && fileInput.files.length > 0) {
-						// Show submit button briefly, then auto-submit
-						submitBtn.style.display = "inline-block";
-						setTimeout(function() {
-							form.submit();
-						}, 100);
+						// Auto-submit immediately without showing button
+						form.submit();
 					}
 				});
 			}
