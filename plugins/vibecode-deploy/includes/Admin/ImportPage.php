@@ -63,7 +63,7 @@ final class ImportPage {
 			), (string) $settings['project_slug'] );
 		}
 		$notice = '';
-		$error = '';
+		$error = null; // Use null so isset() check works correctly
 		$preflight = null;
 		$import_result = null;
 		$selected_fingerprint = '';
