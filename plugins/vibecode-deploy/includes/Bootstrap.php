@@ -24,6 +24,7 @@ final class Bootstrap {
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Staging.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Logger.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/BuildService.php';
+		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/ClassPrefixDetector.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/AssetService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/ShortcodePlaceholderService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/HtmlToEtchConverter.php';
