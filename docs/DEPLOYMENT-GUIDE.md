@@ -1,5 +1,7 @@
 # Vibe Code Deploy - Deployment Guide
 
+> **📋 Structural Rules:** Before deploying, review `biogaspros/docs/STRUCTURAL_RULES.md` for required structural patterns to prevent common deployment issues.
+
 This guide provides step-by-step instructions for deploying static HTML sites to WordPress using Vibe Code Deploy.
 
 ## Prerequisites
@@ -160,6 +162,7 @@ vibecode-deploy-staging/
 │   ├── styles.css
 │   └── icons.css
 ├── js/
+│   ├── route-adapter.js  # Use standard version from plugin starter-pack
 │   └── main.js
 └── resources/
     └── images/
@@ -177,6 +180,22 @@ cp vibecode-deploy-staging.zip /path/to/VibeCodeCircle/dist/
 ```
 
 **Note:** All distribution files (plugin and staging zips) should be placed in `VibeCodeCircle/dist/` directory. See [Build Guide](docs/BUILD.md) for complete build instructions.
+
+### Standard Route Adapter
+
+**Recommended:** Use the standard route adapter from the plugin's starter pack:
+
+1. Copy `VibeCodeCircle/plugins/vibecode-deploy/assets/starter-pack/js/route-adapter.js` to your project's `js/` directory
+2. Update the `productionHosts` array with your production domain(s)
+3. Include in all HTML pages: `<script src="js/route-adapter.js" defer></script>`
+
+**Why use the standard version:**
+- ✅ Consistent behavior across all projects
+- ✅ Tested and proven to work with WordPress permalink format
+- ✅ Handles dynamically added links (Gutenberg blocks)
+- ✅ Updated in one place, benefits all projects
+
+**Location in plugin:** `plugins/vibecode-deploy/assets/starter-pack/js/route-adapter.js`
 
 ## Step 3: Configure Plugin Settings (REQUIRED)
 

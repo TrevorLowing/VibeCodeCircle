@@ -172,6 +172,16 @@ final class ThemeDeployService {
 		if ( $staging_content === false ) {
 			return array( 'success' => false, 'error' => 'Unable to read staging functions.php' );
 		}
+		
+		// Validate staging file syntax before merging
+		$staging_syntax = self::validate_php_syntax( $staging_content );
+		if ( ! $staging_syntax['valid'] ) {
+			Logger::error( 'Staging functions.php has syntax errors. Cannot merge.', array(
+				'error' => $staging_syntax['error'],
+				'staging_file' => $staging_file,
+			), 'cfa' );
+			return array( 'success' => false, 'error' => 'Staging functions.php has syntax errors: ' . $staging_syntax['error'] );
+		}
 
 		$theme_content = '';
 		$created = false;
@@ -180,11 +190,29 @@ final class ThemeDeployService {
 			if ( $theme_content === false ) {
 				return array( 'success' => false, 'error' => 'Unable to read theme functions.php' );
 			}
+			
+			// Validate existing theme file syntax before merging
+			$theme_syntax = self::validate_php_syntax( $theme_content );
+			if ( ! $theme_syntax['valid'] ) {
+				Logger::error( 'Existing theme functions.php has syntax errors. Cannot merge safely.', array(
+					'error' => $theme_syntax['error'],
+					'theme_file' => $theme_file,
+				), 'cfa' );
+				return array( 'success' => false, 'error' => 'Existing theme functions.php has syntax errors: ' . $theme_syntax['error'] . ' Please fix manually before deploying.' );
+			}
 		} else {
 			$created = true;
 			// Start with basic PHP opening tag if file doesn't exist
 			$theme_content = "<?php\n\n";
 		}
+		
+		Logger::info( 'Starting functions.php smart merge.', array(
+			'staging_file' => $staging_file,
+			'theme_file' => $theme_file,
+			'created' => $created,
+			'staging_size' => strlen( $staging_content ),
+			'theme_size' => strlen( $theme_content ),
+		), 'cfa' );
 
 		// Extract CPT registrations from staging
 		$staging_cpts = self::extract_cpt_registrations( $staging_content );
@@ -194,22 +222,79 @@ final class ThemeDeployService {
 
 		// Merge helper functions first (they may be used by shortcodes)
 		$theme_content = self::merge_helper_functions( $theme_content, $staging_helper_functions );
+		
+		// Validate after helper functions merge
+		$syntax_check = self::validate_php_syntax( $theme_content );
+		if ( ! $syntax_check['valid'] ) {
+			Logger::error( 'PHP syntax error after helper functions merge. File NOT written.', array(
+				'error' => $syntax_check['error'],
+				'file' => $theme_file,
+				'step' => 'merge_helper_functions',
+			), 'cfa' );
+			return array( 
+				'success' => false, 
+				'error' => 'PHP syntax error after helper functions merge: ' . $syntax_check['error'] . ' File was NOT written to prevent site breakage.' 
+			);
+		}
 
 		// Merge CPTs
 		$theme_content = self::merge_cpt_registrations( $theme_content, $staging_cpts );
+		
+		// Validate after CPT merge
+		$syntax_check = self::validate_php_syntax( $theme_content );
+		if ( ! $syntax_check['valid'] ) {
+			Logger::error( 'PHP syntax error after CPT merge. File NOT written.', array(
+				'error' => $syntax_check['error'],
+				'file' => $theme_file,
+				'step' => 'merge_cpt_registrations',
+			), 'cfa' );
+			return array( 
+				'success' => false, 
+				'error' => 'PHP syntax error after CPT merge: ' . $syntax_check['error'] . ' File was NOT written to prevent site breakage.' 
+			);
+		}
 
 		// Merge shortcodes
 		$theme_content = self::merge_shortcode_registrations( $theme_content, $staging_shortcodes );
+		
+		// Validate after shortcode merge
+		$syntax_check = self::validate_php_syntax( $theme_content );
+		if ( ! $syntax_check['valid'] ) {
+			Logger::error( 'PHP syntax error after shortcode merge. File NOT written.', array(
+				'error' => $syntax_check['error'],
+				'file' => $theme_file,
+				'step' => 'merge_shortcode_registrations',
+			), 'cfa' );
+			return array( 
+				'success' => false, 
+				'error' => 'PHP syntax error after shortcode merge: ' . $syntax_check['error'] . ' File was NOT written to prevent site breakage.' 
+			);
+		}
 
 		// Ensure ACF JSON filters exist
 		$theme_content = self::ensure_acf_filters( $theme_content, $staging_acf_filters );
+		
+		// Validate after ACF filters
+		$syntax_check = self::validate_php_syntax( $theme_content );
+		if ( ! $syntax_check['valid'] ) {
+			Logger::error( 'PHP syntax error after ACF filters merge. File NOT written.', array(
+				'error' => $syntax_check['error'],
+				'file' => $theme_file,
+				'step' => 'ensure_acf_filters',
+			), 'cfa' );
+			return array( 
+				'success' => false, 
+				'error' => 'PHP syntax error after ACF filters merge: ' . $syntax_check['error'] . ' File was NOT written to prevent site breakage.' 
+			);
+		}
 
-		// CRITICAL: Validate PHP syntax after ALL merges are complete
+		// CRITICAL: Final validation after ALL merges are complete
 		$syntax_check = self::validate_php_syntax( $theme_content );
 		if ( ! $syntax_check['valid'] ) {
 			Logger::error( 'PHP syntax error detected after functions.php merge. File NOT written.', array(
 				'error' => $syntax_check['error'],
 				'file' => $theme_file,
+				'step' => 'final_validation',
 			), 'cfa' );
 			return array( 
 				'success' => false, 

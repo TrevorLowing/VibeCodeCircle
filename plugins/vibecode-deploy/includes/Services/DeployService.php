@@ -940,7 +940,13 @@ final class DeployService {
 			$assets = AssetService::extract_head_assets( $dom, $project_slug );
 
 			$content = self::inner_html( $dom, $main );
-			// Rewrite asset URLs FIRST (resources/ -> plugin URL) before rewrite_urls processes them
+			// CRITICAL: URL rewriting order matters!
+			// 1. Rewrite asset URLs FIRST (css/, js/, resources/ -> plugin URL)
+			//    This ensures resources/ paths are converted before page URL rewriting
+			// 2. Then rewrite page URLs (extensionless links -> WordPress permalinks)
+			//    rewrite_urls() skips already-converted plugin asset URLs
+			// 
+			// @see VibeCodeCircle/plugins/vibecode-deploy/docs/STRUCTURAL_RULES.md#url-rewriting-rules
 			$content = AssetService::rewrite_asset_urls( $content, $project_slug );
 			// Then rewrite page URLs (skip resources already converted to plugin URLs)
 			$content = self::rewrite_urls( $content, $slug_set, $resources_base_url );
@@ -1075,12 +1081,25 @@ final class DeployService {
 					'has_file' => $has_template_file,
 					'content_cleared' => ( $final_content === '' ),
 					'template_file' => $template_file,
+					'template_verified' => true,
 				), $project_slug );
+				
+				// Verify template is actually registered/available
+				if ( $has_registered_template ) {
+					$verify_template = \VibeCode\Deploy\Services\TemplateService::get_template_by_slug( $template_slug );
+					if ( ! $verify_template || ! isset( $verify_template->ID ) ) {
+						Logger::warning( 'Template registered but not immediately queryable. May need cache flush.', array(
+							'page_slug' => $slug,
+							'template_slug' => $template_slug,
+						), $project_slug );
+					}
+				}
 			} else {
 				// No custom template - page will use default page.html template with post_content
 				Logger::info( 'Page will use default template with editor content.', array( 
 					'page_slug' => $slug,
 					'has_content' => ( $final_content !== '' ),
+					'content_length' => strlen( $final_content ),
 				), $project_slug );
 			}
 

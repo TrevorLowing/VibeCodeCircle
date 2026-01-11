@@ -257,7 +257,30 @@ final class Importer {
 								$file_mtime = (string) filemtime( $page_css_path );
 								$version = defined( 'VIBECODE_DEPLOY_PLUGIN_VERSION' ) ? VIBECODE_DEPLOY_PLUGIN_VERSION . '-' . $active_fingerprint . '-' . $file_mtime : $active_fingerprint . '-' . $file_mtime;
 								wp_enqueue_style( $handle, $base_url . ltrim( $page_css, '/' ), array(), $version );
+								Logger::info( 'Enqueued page-specific CSS file.', array(
+									'post_id' => $post_id,
+									'page_slug' => $page_slug,
+									'css_file' => $page_css,
+									'handle' => $handle,
+									'url' => $base_url . ltrim( $page_css, '/' ),
+									'version' => $version,
+									'file_exists' => true,
+								) );
+							} else {
+								Logger::info( 'Page-specific CSS file not found (skipping).', array(
+									'post_id' => $post_id,
+									'page_slug' => $page_slug,
+									'css_file' => $page_css,
+									'expected_path' => $page_css_path,
+									'file_exists' => false,
+								) );
 							}
+						} else {
+							Logger::info( 'Page-specific CSS already enqueued (skipping duplicate).', array(
+								'post_id' => $post_id,
+								'page_slug' => $page_slug,
+								'css_file' => $page_css,
+							) );
 						}
 					}
 				}
@@ -568,9 +591,20 @@ final class Importer {
 			// CRITICAL: This ensures CSS classes are preserved during Gutenberg conversion
 			// We add 'wp-block-group' to the original element (not a wrapper div) to maintain semantic HTML
 			$class_attr = '';
+			$original_classes = '';
 			if ( isset( $attrs['class'] ) && is_string( $attrs['class'] ) && $attrs['class'] !== '' ) {
 				$original_classes = $attrs['class'];
 				$class_attr = ' class="' . esc_attr( $original_classes ) . ' wp-block-group"';
+				
+				// Log class preservation for debugging (only for important classes like hero--compact)
+				if ( strpos( $original_classes, 'hero--compact' ) !== false || strpos( $original_classes, 'secure-drop' ) !== false ) {
+					Logger::info( 'Preserved CSS classes during conversion.', array(
+						'element' => $tag,
+						'original_classes' => $original_classes,
+						'final_classes' => $original_classes . ' wp-block-group',
+						'classes_preserved' => true,
+					) );
+				}
 			} else {
 				$class_attr = ' class="wp-block-group"';
 			}
@@ -885,11 +919,26 @@ final class Importer {
 		if ( $body_class !== '' ) {
 			// Split multiple classes and add each one
 			$custom_classes = array_filter( array_map( 'trim', explode( ' ', $body_class ) ) );
+			$added_classes = array();
 			foreach ( $custom_classes as $class ) {
 				if ( $class !== '' && ! in_array( $class, $classes, true ) ) {
 					$classes[] = sanitize_html_class( $class );
+					$added_classes[] = sanitize_html_class( $class );
 				}
 			}
+			if ( ! empty( $added_classes ) ) {
+				Logger::info( 'Added body class from post meta.', array(
+					'post_id' => $post_id,
+					'project_slug' => $project_slug,
+					'body_class_meta' => $body_class,
+					'added_classes' => $added_classes,
+				) );
+			}
+		} else {
+			Logger::info( 'No body class found in post meta.', array(
+				'post_id' => $post_id,
+				'project_slug' => $project_slug,
+			) );
 		}
 
 		return $classes;

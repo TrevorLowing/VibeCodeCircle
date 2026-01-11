@@ -75,6 +75,46 @@ final class EnvService {
 			$warnings[] = sprintf( __( 'Active theme is not etch-theme or a child theme. Current template: %s. Styling may not work correctly.', 'vibecode-deploy' ), $template );
 		}
 
+		// Check for ACF if ACF JSON files are present in active build
+		$settings = \VibeCode\Deploy\Settings::get_all();
+		$project_slug = isset( $settings['project_slug'] ) && $settings['project_slug'] !== '' ? (string) $settings['project_slug'] : '';
+		if ( $project_slug !== '' ) {
+			$active_fingerprint = \VibeCode\Deploy\Services\BuildService::get_active_fingerprint( $project_slug );
+			if ( $active_fingerprint !== '' ) {
+				$build_root = \VibeCode\Deploy\Services\BuildService::build_root_path( $project_slug, $active_fingerprint );
+				$acf_json_dir = $build_root . '/theme/acf-json';
+				$has_acf_json = is_dir( $acf_json_dir ) && ! empty( glob( $acf_json_dir . '/*.json' ) );
+				
+				if ( $has_acf_json ) {
+					// ACF JSON files found - check if ACF is installed/active
+					$acf_installed = false;
+					$acf_plugin_files = array( 'advanced-custom-fields/acf.php', 'advanced-custom-fields-pro/acf.php' );
+					if ( defined( 'WP_PLUGIN_DIR' ) ) {
+						foreach ( $acf_plugin_files as $acf_file ) {
+							if ( is_file( WP_PLUGIN_DIR . '/' . $acf_file ) ) {
+								$acf_installed = true;
+								break;
+							}
+						}
+					}
+					
+					$acf_active = false;
+					foreach ( $acf_plugin_files as $acf_file ) {
+						if ( self::is_plugin_active_by_file( $acf_file ) ) {
+							$acf_active = true;
+							break;
+						}
+					}
+					
+					if ( ! $acf_installed ) {
+						$warnings[] = __( 'Advanced Custom Fields (ACF) plugin is not installed. ACF JSON files detected in staging - install ACF for custom fields to work.', 'vibecode-deploy' );
+					} elseif ( ! $acf_active ) {
+						$warnings[] = __( 'Advanced Custom Fields (ACF) plugin is installed but not active. Activate ACF for custom fields to work.', 'vibecode-deploy' );
+					}
+				}
+			}
+		}
+
 		return $warnings;
 	}
 	

@@ -394,6 +394,50 @@ final class HealthCheckPage {
 				$missing_includes[] = $include;
 			}
 		}
+		// 9. ACF Plugin check (if ACF JSON files exist)
+		$acf_json_dir = $child_theme_dir . DIRECTORY_SEPARATOR . 'acf-json';
+		$has_acf_json = is_dir( $acf_json_dir ) && ! empty( glob( $acf_json_dir . DIRECTORY_SEPARATOR . '*.json' ) );
+		if ( $has_acf_json ) {
+			$acf_installed = false;
+			$acf_plugin_files = array( 'advanced-custom-fields/acf.php', 'advanced-custom-fields-pro/acf.php' );
+			if ( defined( 'WP_PLUGIN_DIR' ) ) {
+				foreach ( $acf_plugin_files as $acf_file ) {
+					if ( is_file( WP_PLUGIN_DIR . DIRECTORY_SEPARATOR . $acf_file ) ) {
+						$acf_installed = true;
+						break;
+					}
+				}
+			}
+			
+			$acf_active = false;
+			if ( function_exists( 'is_plugin_active' ) ) {
+				foreach ( $acf_plugin_files as $acf_file ) {
+					if ( is_plugin_active( $acf_file ) ) {
+						$acf_active = true;
+						break;
+					}
+				}
+			} else {
+				$active_plugins = get_option( 'active_plugins', array() );
+				foreach ( $acf_plugin_files as $acf_file ) {
+					if ( in_array( $acf_file, $active_plugins, true ) ) {
+						$acf_active = true;
+						break;
+					}
+				}
+			}
+			
+			$checks[] = array(
+				'label' => __( 'Advanced Custom Fields (ACF)', 'vibecode-deploy' ),
+				'status' => $acf_active ? 'ok' : ( $acf_installed ? 'warning' : 'warning' ),
+				'message' => $acf_active
+					? __( 'Installed and active (ACF JSON files detected)', 'vibecode-deploy' )
+					: ( $acf_installed
+						? __( 'Installed but not active - activate ACF for custom fields to work', 'vibecode-deploy' )
+						: __( 'Not installed - ACF JSON files detected, install ACF for custom fields to work', 'vibecode-deploy' ) ),
+			);
+		}
+
 		$checks[] = array(
 			'label' => __( 'Required Plugin Files', 'vibecode-deploy' ),
 			'status' => empty( $missing_includes ) ? 'ok' : 'error',

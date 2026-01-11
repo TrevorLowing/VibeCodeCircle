@@ -19,12 +19,29 @@ final class AssetService {
 		return $path;
 	}
 
+	/**
+	 * Extract CSS and JavaScript assets from HTML document.
+	 * 
+	 * **IMPORTANT:** Despite the function name suggesting head-only extraction,
+	 * this function actually queries the ENTIRE document for scripts (//script[@src]).
+	 * CSS links are extracted from <head> only, but scripts are extracted from anywhere.
+	 * 
+	 * **Best Practice:** Place all scripts in <head> with defer attribute for
+	 * better performance and reliability, even though body scripts will work.
+	 * 
+	 * @param \DOMDocument $dom Parsed HTML document.
+	 * @param string $project_slug Project slug for logging.
+	 * @return array Array with 'css', 'js', and 'fonts' keys.
+	 * 
+	 * @see VibeCodeCircle/plugins/vibecode-deploy/docs/STRUCTURAL_RULES.md#javascript-asset-placement
+	 */
 	public static function extract_head_assets( \DOMDocument $dom, string $project_slug = '' ): array {
 		$css = array();
 		$js = array();
 		$fonts = array(); // Google Fonts and other external font links
 
 		$xpath = new \DOMXPath( $dom );
+		// CSS: Extract from <head> only
 		$links = $xpath->query( '//head//link[@rel="stylesheet"]' );
 		if ( $links ) {
 			foreach ( $links as $node ) {
@@ -64,6 +81,8 @@ final class AssetService {
 			), $log_project_slug );
 		}
 
+		// JavaScript: Extract from ENTIRE document (not just <head>)
+		// Note: Function name suggests head-only, but query searches entire document
 		$scripts = $xpath->query( '//script[@src]' );
 		if ( $scripts ) {
 			foreach ( $scripts as $node ) {
@@ -148,8 +167,32 @@ final class AssetService {
 		}
 	}
 
+	/**
+	 * Rewrite asset URLs (css/, js/, resources/) to plugin asset URLs.
+	 * 
+	 * **IMPORTANT:** This function ONLY rewrites paths starting with:
+	 * - `css/` → Plugin CSS URL
+	 * - `js/` → Plugin JS URL
+	 * - `resources/` → Plugin resources URL
+	 * 
+	 * **NOT Rewritten:**
+	 * - `images/` paths are NOT rewritten (causes 404 errors)
+	 * - Use `resources/images/` instead of `images/` for all images
+	 * 
+	 * **URL Rewriting Order:**
+	 * This function should be called FIRST, before page URL rewriting.
+	 * DeployService calls this before rewrite_urls() to ensure correct order.
+	 * 
+	 * @param string $html HTML content to rewrite.
+	 * @param string $project_slug Project slug (unused, kept for compatibility).
+	 * @return string HTML with rewritten asset URLs.
+	 * 
+	 * @see VibeCodeCircle/plugins/vibecode-deploy/docs/STRUCTURAL_RULES.md#image-path-conventions
+	 * @see VibeCodeCircle/plugins/vibecode-deploy/docs/STRUCTURAL_RULES.md#url-rewriting-rules
+	 */
 	public static function rewrite_asset_urls( string $html, string $project_slug ): string {
 		$plugin_url = plugins_url( 'assets', VIBECODE_DEPLOY_PLUGIN_FILE );
+		// Pattern matches: css/, js/, resources/ - but NOT images/
 		$pattern = '/(href|src)="(css|js|resources)\/([^"]+)"/';
 		$replacement = '$1="' . $plugin_url . '/$2/$3"';
 		return preg_replace( $pattern, $replacement, $html );

@@ -5,6 +5,9 @@
 
 This document explains the internal architecture, components, and processes of the Vibe Code Deploy plugin. It is intended for developers who need to understand how the plugin works, extend it, or troubleshoot issues.
 
+**Related Documentation:**
+- **[Structural Rules](STRUCTURAL_RULES.md)** - Source of truth for all structural standards and requirements that projects must follow
+
 ---
 
 ## Table of Contents
