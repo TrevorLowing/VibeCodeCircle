@@ -10,6 +10,43 @@
 
 ---
 
+## Source Files vs Staging Files
+
+### ✅ REQUIRED: Source Files Are Primary
+
+**Critical Principle:** All structural rules apply to **source files** (root HTML files in project directory) as the primary location for compliance. Staging files are built from source and should mirror source compliance.
+
+**Why Source Files Must Be Compliant:**
+- Source files are what developers work with during development
+- Staging is built from source (via build scripts or manual copying)
+- Fixing only staging creates technical debt
+- Source files should reflect the deployed state
+- Compliance during development prevents issues from the start
+- Rebuilding staging from non-compliant source reintroduces violations
+
+**Workflow:**
+1. ✅ Develop source files with compliance from the start
+2. ✅ Build staging from compliant source files
+3. ✅ Deploy staging to WordPress
+4. ✅ Source files remain the source of truth
+
+**Rules Apply To:**
+- ✅ Source files (primary) - HTML files in project root
+- ✅ Staging files (derived) - Built from source, should match source
+- ✅ Deployed files (derived) - Deployed from staging
+
+**Common Mistake:**
+- ❌ Fixing only staging files, leaving source non-compliant
+- ❌ Rebuilding staging from non-compliant source reintroduces violations
+- ❌ Source and staging become out of sync
+
+**Best Practice:**
+- ✅ Always fix source files first
+- ✅ Ensure source files are compliant before building staging
+- ✅ Verify staging matches source after build
+
+---
+
 ## Table of Contents
 
 1. [Staging Directory Structure](#staging-directory-structure)
@@ -21,7 +58,9 @@
 7. [Config File Structure](#config-file-structure)
 8. [CPT and Shortcode Standards](#cpt-and-shortcode-standards)
 9. [ACF Integration Standards](#acf-integration-standards)
-10. [Theme File Structure](#theme-file-structure)
+10. [External CDN Dependencies](#external-cdn-dependencies)
+11. [Code Documentation Standards](#code-documentation-standards)
+12. [Theme File Structure](#theme-file-structure)
 
 ---
 
@@ -336,6 +375,123 @@ Scripts in `<body>` will be extracted, but:
 
 ---
 
+## External CDN Dependencies
+
+### ✅ REQUIRED: Enqueue External CDN Scripts in Theme Functions
+
+**Problem:** The plugin's `AssetService::extract_head_assets()` skips external URLs (CDN scripts like Leaflet.js, Google Maps, etc.). These scripts are not automatically enqueued, causing JavaScript errors when dependent code tries to use them.
+
+**Solution:** Manually enqueue external CDN scripts in the theme's `functions.php` using WordPress `wp_enqueue_script()` and `wp_enqueue_style()`.
+
+### Plugin Behavior
+
+**What Gets Extracted:**
+- ✅ Scripts starting with `js/` (local files)
+- ✅ CSS files starting with `css/` (local files)
+
+**What Gets Skipped:**
+- ❌ External URLs (`http://`, `https://`)
+- ❌ CDN scripts (e.g., `https://unpkg.com/leaflet@1.9.4/dist/leaflet.js`)
+- ❌ External CSS (e.g., `https://unpkg.com/leaflet@1.9.4/dist/leaflet.css`)
+
+**Code Reference:**
+```php
+// In AssetService::extract_head_assets()
+if ( strpos( $src, 'http://' ) === 0 || strpos( $src, 'https://' ) === 0 ) {
+    continue; // Skips external URLs
+}
+```
+
+### Solution: Enqueue in Theme Functions
+
+**Add to `theme/functions.php`:**
+```php
+/**
+ * Enqueue external CDN dependencies.
+ * 
+ * External CDN scripts (Leaflet.js, Google Maps, etc.) must be enqueued
+ * manually because the plugin doesn't extract external URLs.
+ */
+function project_enqueue_external_dependencies() {
+    // Only enqueue on pages that need them
+    if ( ! is_page( 'page-slug' ) ) {
+        return;
+    }
+    
+    // Enqueue external CSS
+    wp_enqueue_style(
+        'leaflet-css',
+        'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+        array(),
+        '1.9.4'
+    );
+    
+    // Enqueue external JS (must load before dependent scripts)
+    wp_enqueue_script(
+        'leaflet-js',
+        'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+        array(),
+        '1.9.4',
+        true // Load in footer
+    );
+}
+add_action( 'wp_enqueue_scripts', 'project_enqueue_external_dependencies' );
+```
+
+### Common External Dependencies
+
+**Leaflet.js (Interactive Maps):**
+- CSS: `https://unpkg.com/leaflet@1.9.4/dist/leaflet.css`
+- JS: `https://unpkg.com/leaflet@1.9.4/dist/leaflet.js`
+- MarkerCluster: `https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js`
+
+**Google Maps:**
+- JS: `https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY`
+
+**Other Libraries:**
+- Chart.js, D3.js, etc. - follow the same pattern
+
+### Load Order Considerations
+
+**Critical:** External dependencies must load **before** dependent scripts.
+
+**Example:**
+- `map.js` depends on Leaflet.js
+- Leaflet.js must load first (no `defer`)
+- `map.js` can use `defer` (enqueued by plugin)
+
+**Solution:**
+```php
+// Enqueue Leaflet without defer (loads synchronously)
+wp_enqueue_script( 'leaflet-js', 'https://...', array(), '1.9.4', true );
+
+// map.js is enqueued by plugin with defer
+// WordPress dependency system ensures correct order
+```
+
+### Rules
+
+- ✅ **Always enqueue external CDN scripts in `theme/functions.php`**
+- ✅ **Use `wp_enqueue_script()` and `wp_enqueue_style()` for proper WordPress integration**
+- ✅ **Conditionally enqueue only on pages that need them** (`is_page()`, `is_singular()`, etc.)
+- ✅ **Set dependencies correctly** (e.g., MarkerCluster depends on Leaflet)
+- ✅ **Load external scripts in footer** (`$in_footer = true`) for better performance
+- ❌ **Do NOT rely on plugin to extract external URLs** (they are skipped)
+- ❌ **Do NOT use inline `<script>` tags for external dependencies** (use WordPress enqueue system)
+
+### Why This Matters
+
+- Plugin intentionally skips external URLs to avoid security and performance issues
+- WordPress enqueue system provides proper dependency management
+- Conditional loading improves page performance
+- Consistent pattern across all projects
+
+**Plugin Code Reference:**
+- `VibeCodeCircle/plugins/vibecode-deploy/includes/Services/AssetService.php::extract_head_assets()`
+- Lines 97-98: External URL skip logic
+
+---
+
 ## Image Path Conventions
 
 ### ✅ REQUIRED: Use `resources/images/` for All Images
@@ -522,6 +678,7 @@ $content = self::rewrite_urls($content, $slug_set, $resources_base_url); // SECO
 ```json
 {
   "version": 1,
+  "project_slug": "project-name",
   "defaults": {
     "on_missing_required": "warn",
     "on_missing_recommended": "warn",
@@ -552,9 +709,14 @@ $content = self::rewrite_urls($content, $slug_set, $resources_base_url); // SECO
 ### Required Sections
 
 1. **`version`** (required): Must be `1`
-2. **`defaults`** (required): Validation mode settings
-3. **`pages`** (required): Page-specific shortcode requirements - **CRITICAL: Plugin expects this section**
-4. **`post_types`** (optional): CPT-specific shortcode requirements
+2. **`project_slug`** (required): Project identifier for auto-detection (e.g., `"bgp"`, `"cfa"`)
+   - Used by plugin to auto-detect project slug during upload
+   - Must match the project's shortcode prefix (e.g., `bgp_products` → `project_slug: "bgp"`)
+   - If missing, upload will fail with "Project Slug is required. Could not auto-detect from staging zip."
+   - Plugin code: `ImportPage::detect_project_slug_from_zip()` reads this field from JSON
+3. **`defaults`** (required): Validation mode settings
+4. **`pages`** (required): Page-specific shortcode requirements - **CRITICAL: Plugin expects this section**
+5. **`post_types`** (optional): CPT-specific shortcode requirements
 
 ### Why `pages` Section is Critical
 
@@ -568,11 +730,13 @@ if ( ! isset( $config['pages'] ) ) {
 ```
 
 **Rules:**
+- ✅ `project_slug` field MUST exist for auto-detection during upload
 - ✅ `pages` section MUST exist (even if empty: `"pages": {}`)
 - ✅ Each page slug must match actual HTML filename (minus `.html`)
 - ✅ Shortcode names must match registered shortcode tags
 - ✅ Attributes must match shortcode handler expectations
 - ❌ Do NOT use `shortcodes` section (old format, not recognized)
+- ❌ Do NOT omit `project_slug` field (causes upload failure with auto-detection error)
 
 **Why This Matters:**
 - Plugin's validation logic expects `pages` section
@@ -771,6 +935,186 @@ function bgp_faqs_shortcode( $atts ) {
 - WYSIWYG fields contain HTML that must be preserved
 - Fallback values prevent empty output
 - Proper escaping prevents XSS while preserving formatting
+
+---
+
+## Code Documentation Standards
+
+### ✅ REQUIRED: Comprehensive Code Comments Explaining Reasoning
+
+**Problem:** Code without clear documentation makes it difficult to understand why decisions were made, what problems are being solved, and how to maintain or modify the code.
+
+**Solution:** All functions, filters, and critical code sections must include comprehensive comments that explain:
+1. **What** the code does
+2. **Why** it exists (the problem it solves)
+3. **How** it solves the problem
+4. **Critical settings** and their rationale
+5. **References** to structural rules or documentation
+
+### Required Documentation Elements
+
+**Function-Level Documentation:**
+```php
+/**
+ * Function Name
+ * 
+ * **Why This Function Exists:**
+ * Clear explanation of the problem this function solves and why it's needed.
+ * 
+ * **The Problem:**
+ * Specific issue or error that occurs without this function (if applicable).
+ * 
+ * **The Solution:**
+ * How this function solves the problem and what approach it uses.
+ * 
+ * **Key Settings Explained:**
+ * - Setting 1: Why this value is used
+ * - Setting 2: Why this value is used
+ * 
+ * **Reference:**
+ * - Plugin Structural Rules: [link to relevant section]
+ * - Plugin Code: [file path and line numbers]
+ * 
+ * @param type $param Description
+ * @return type Description
+ */
+```
+
+**Inline Comments for Critical Code:**
+```php
+// CRITICAL: Explanation of why this setting is critical
+// Example: 'field' => 'slug' (more reliable than name/ID for taxonomy queries)
+
+// Why this approach is used
+// Example: Conditional loading improves performance by avoiding unnecessary assets
+
+// What this prevents
+// Example: Prevents fatal errors if ACF is not installed
+```
+
+### Documentation Requirements by Code Type
+
+**1. CPT Registration:**
+- Why CPTs are used (structured content management)
+- Naming convention rationale (prefix, conflicts)
+- Key settings explained (`public`, `has_archive`, `rewrite`, `show_in_rest`, `publicly_queryable`)
+- Reference to structural rules section
+
+**2. Taxonomy Registration:**
+- Why taxonomies are used (categorization, filtering)
+- Key settings explained (`hierarchical`, `show_in_rest`, `field => 'slug'`)
+- How shortcodes use them for filtering
+- Reference to structural rules section
+
+**3. ACF Filters:**
+- Why filters are required (version control, auto-sync)
+- What they do (save/load behavior)
+- Benefits (version control, deployment)
+- Reference to structural rules section
+
+**4. ACF Helper Functions:**
+- Why wrapper functions exist (prevent fatal errors, graceful degradation)
+- Benefits (consistent error handling, safe operation)
+- Usage patterns and examples
+
+**5. Shortcode Registration:**
+- Why shortcodes are used (dynamic content insertion)
+- Naming convention rationale (prefix, conflicts)
+- Usage examples
+- Reference to structural rules section
+
+**6. External CDN Dependencies:**
+- Why function exists (plugin skips external URLs)
+- The problem (specific error message)
+- The solution (manual enqueuing approach)
+- Load order considerations
+- Reference to structural rules section
+
+**7. Shortcode Execution Filters:**
+- Why filters are needed (Gutenberg block rendering issues)
+- Priority explanation (why specific priority is used)
+- What they prevent (literal shortcode text rendering)
+- Reference to structural rules section
+
+**8. Taxonomy Queries:**
+- Why `'field' => 'slug'` is critical (more reliable than name/ID)
+- Shortcode usage examples
+- Sanitization notes
+
+### Rules
+
+- ✅ **Always document WHY code exists, not just WHAT it does**
+- ✅ **Explain critical settings and their rationale**
+- ✅ **Reference structural rules sections where applicable**
+- ✅ **Include usage examples for complex functions**
+- ✅ **Document load order considerations for scripts/styles**
+- ✅ **Explain error prevention (fatal errors, graceful degradation)**
+- ✅ **Use clear section headers in docblocks (Why, Problem, Solution, Reference)**
+- ❌ **Do NOT write comments that just repeat the code**
+- ❌ **Do NOT omit reasoning for critical settings**
+- ❌ **Do NOT skip documentation for "obvious" code**
+
+### Why This Matters
+
+- **Maintainability:** Future developers understand why decisions were made
+- **Debugging:** Clear documentation helps identify issues quickly
+- **Onboarding:** New team members can understand code faster
+- **Consistency:** Standardized documentation across all projects
+- **Knowledge Transfer:** Documentation preserves institutional knowledge
+
+**Example of Well-Documented Code:**
+```php
+/**
+ * Enqueue Leaflet.js and dependencies for coverage page.
+ * 
+ * **Why This Function Exists:**
+ * The Vibe Code Deploy plugin's AssetService::extract_head_assets() intentionally
+ * skips external URLs (CDN scripts) for security and performance reasons.
+ * 
+ * **The Problem:**
+ * - coverage.html includes: <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
+ * - Plugin skips this during asset extraction (see AssetService.php lines 97-98)
+ * - map.js depends on Leaflet.js and fails with: "Leaflet.js is required"
+ * 
+ * **The Solution:**
+ * Manually enqueue external CDN dependencies in theme functions.php using WordPress
+ * wp_enqueue_script() and wp_enqueue_style() functions.
+ * 
+ * **Load Order Critical:**
+ * - Leaflet.js must load BEFORE map.js (which is enqueued by plugin with defer)
+ * - WordPress dependency system ensures correct order
+ * 
+ * **Reference:**
+ * - Plugin Structural Rules: VibeCodeCircle/plugins/vibecode-deploy/docs/STRUCTURAL_RULES.md
+ * - Section: "External CDN Dependencies"
+ */
+function project_enqueue_leaflet_scripts() {
+    // Only enqueue on coverage page to avoid loading unnecessary assets
+    // This improves performance by conditionally loading heavy map libraries
+    if ( ! is_page( 'coverage' ) ) {
+        return;
+    }
+    
+    // Enqueue Leaflet base CSS (required for map styling)
+    // No dependencies - this is the base stylesheet
+    wp_enqueue_style(
+        'leaflet-css',
+        'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+        array(), // No dependencies
+        '1.9.4' // Version for cache busting
+    );
+    
+    // Enqueue Leaflet JS (must load before map.js)
+    // CRITICAL: This loads WITHOUT defer so it's available when map.js executes
+    wp_enqueue_script(
+        'leaflet-js',
+        'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+        array(), // No dependencies
+        '1.9.4',
+        true // Load in footer (better performance than head)
+    );
+}
+```
 
 ---
 

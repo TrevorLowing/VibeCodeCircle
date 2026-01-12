@@ -39,22 +39,23 @@ html {
    ========================================================================== */
 
 /* Reset wp-block-group spacing to prevent extra margins/padding from WordPress defaults */
-/* Only reset generic wp-block-group, preserve spacing for components with custom classes */
-/* Projects can override by adding their own class prefixes in their project CSS */
-.wp-block-group:not([class*="wp-block"]):not([class*="is-layout"]):not([class*="cfa-"]) {
+/* This resets ALL wp-block-group elements generically - projects should override in their own CSS */
+/* Projects preserve spacing for their components by adding more specific selectors in project CSS */
+.wp-block-group:not([class*="wp-block"]):not([class*="is-layout"]) {
     margin: 0 !important;
     padding: 0 !important;
 }
 
-/* Note: Projects should add their own class prefix exclusions in their project CSS if needed */
-/* Example: If your project uses "my-site-" prefix, add :not([class*="my-site-"]) to the selector above */
+/* Note: Projects should add their own CSS rules to preserve spacing for their components */
+/* Example: .my-project-hero.wp-block-group { margin: 2rem 0; padding: 1rem; } */
 
 /* ==========================================================================
    4. WordPress Block Columns Reset
    ========================================================================== */
 
 /* WordPress adds default margins to block columns */
-.wp-block-columns:not([class*="cfa-"]) {
+/* Projects should override in their own CSS if they need column spacing */
+.wp-block-columns {
     margin-top: 0 !important;
     margin-bottom: 0 !important;
 }
@@ -64,7 +65,8 @@ html {
    ========================================================================== */
 
 /* Reset WordPress default margins on paragraphs */
-.wp-block-paragraph:not([class*="cfa-"]) {
+/* Projects should override in their own CSS if they need paragraph spacing */
+.wp-block-paragraph {
     margin: 0 !important;
     padding: 0 !important;
 }
@@ -119,18 +121,18 @@ html {
    8. Font-family Resets (Generalized - Let Project CSS Define Fonts)
    ========================================================================== */
 
-/* Reset font-family ONLY on WordPress-injected elements, not on project elements */
-/* This prevents WordPress from injecting default fonts while preserving project fonts */
-/* Keep 'inherit' for font-family so elements inherit from body, which project CSS defines */
-.wp-block-group:not([class*="cfa-"]):not([class*="wp-block"]):not([class*="is-layout"]),
-.wp-block-paragraph:not([class*="cfa-"]),
-.wp-block-heading:not([class*="cfa-"]),
-.wp-block-column:not([class*="cfa-"]),
-.wp-block-columns:not([class*="cfa-"]),
-.wp-block-list:not([class*="cfa-"]),
-.wp-block-quote:not([class*="cfa-"]),
-[class*="wp-block-"]:not([class*="cfa-"]):not([class*="wp-block-group"]):not([class*="wp-block-paragraph"]):not([class*="wp-block-heading"]):not([class*="wp-block-column"]):not([class*="wp-block-columns"]):not([class*="wp-block-list"]):not([class*="wp-block-quote"]),
-.entry-content > *:not([class*="cfa-"]) {
+/* Reset font-family on WordPress-injected elements */
+/* This prevents WordPress from injecting default fonts - projects define fonts in their CSS */
+/* Elements inherit from body, which project CSS should define */
+.wp-block-group:not([class*="wp-block"]):not([class*="is-layout"]),
+.wp-block-paragraph,
+.wp-block-heading,
+.wp-block-column,
+.wp-block-columns,
+.wp-block-list,
+.wp-block-quote,
+[class*="wp-block-"]:not([class*="wp-block-group"]):not([class*="wp-block-paragraph"]):not([class*="wp-block-heading"]):not([class*="wp-block-column"]):not([class*="wp-block-columns"]):not([class*="wp-block-list"]):not([class*="wp-block-quote"]),
+.entry-content > * {
     font-family: inherit !important;
 }
 
@@ -138,23 +140,23 @@ html {
    9. Font-size Resets (Generalized - Let Project CSS Define Sizes)
    ========================================================================== */
 
-/* Reset font-size ONLY on WordPress-injected elements, not on project elements */
-/* Using 'unset' instead of 'inherit' to completely remove the property, allowing project CSS to define it */
-.wp-block-group:not([class*="cfa-"]):not([class*="wp-block"]):not([class*="is-layout"]),
-.wp-block-paragraph:not([class*="cfa-"]),
-.wp-block-heading:not([class*="cfa-"]),
-h1.wp-block-heading:not([class*="cfa-"]),
-h2.wp-block-heading:not([class*="cfa-"]),
-h3.wp-block-heading:not([class*="cfa-"]),
-h4.wp-block-heading:not([class*="cfa-"]),
-h5.wp-block-heading:not([class*="cfa-"]),
-h6.wp-block-heading:not([class*="cfa-"]),
-.wp-block-column:not([class*="cfa-"]),
-.wp-block-columns:not([class*="cfa-"]),
-.wp-block-list:not([class*="cfa-"]),
-.wp-block-quote:not([class*="cfa-"]),
-[class*="wp-block-"]:not([class*="cfa-"]):not([class*="wp-block-group"]):not([class*="wp-block-paragraph"]):not([class*="wp-block-heading"]):not([class*="wp-block-column"]):not([class*="wp-block-columns"]):not([class*="wp-block-list"]):not([class*="wp-block-quote"]),
-.entry-content > *:not([class*="cfa-"]) {
+/* Reset font-size on WordPress-injected elements */
+/* Using 'unset' to completely remove the property, allowing project CSS to define it */
+.wp-block-group:not([class*="wp-block"]):not([class*="is-layout"]),
+.wp-block-paragraph,
+.wp-block-heading,
+h1.wp-block-heading,
+h2.wp-block-heading,
+h3.wp-block-heading,
+h4.wp-block-heading,
+h5.wp-block-heading,
+h6.wp-block-heading,
+.wp-block-column,
+.wp-block-columns,
+.wp-block-list,
+.wp-block-quote,
+[class*="wp-block-"]:not([class*="wp-block-group"]):not([class*="wp-block-paragraph"]):not([class*="wp-block-heading"]):not([class*="wp-block-column"]):not([class*="wp-block-columns"]):not([class*="wp-block-list"]):not([class*="wp-block-quote"]),
+.entry-content > * {
     font-size: unset !important;
 }
 
@@ -162,23 +164,23 @@ h6.wp-block-heading:not([class*="cfa-"]),
    10. Line-height Resets (Generalized - Let Project CSS Define Line-height)
    ========================================================================== */
 
-/* Reset line-height ONLY on WordPress-injected elements, not on project elements */
-/* Using 'unset' instead of 'inherit' to completely remove the property, allowing project CSS to define it */
-.wp-block-group:not([class*="cfa-"]):not([class*="wp-block"]):not([class*="is-layout"]),
-.wp-block-paragraph:not([class*="cfa-"]),
-.wp-block-heading:not([class*="cfa-"]),
-h1.wp-block-heading:not([class*="cfa-"]),
-h2.wp-block-heading:not([class*="cfa-"]),
-h3.wp-block-heading:not([class*="cfa-"]),
-h4.wp-block-heading:not([class*="cfa-"]),
-h5.wp-block-heading:not([class*="cfa-"]),
-h6.wp-block-heading:not([class*="cfa-"]),
-.wp-block-column:not([class*="cfa-"]),
-.wp-block-columns:not([class*="cfa-"]),
-.wp-block-list:not([class*="cfa-"]),
-.wp-block-quote:not([class*="cfa-"]),
-[class*="wp-block-"]:not([class*="cfa-"]):not([class*="wp-block-group"]):not([class*="wp-block-paragraph"]):not([class*="wp-block-heading"]):not([class*="wp-block-column"]):not([class*="wp-block-columns"]):not([class*="wp-block-list"]):not([class*="wp-block-quote"]),
-.entry-content > *:not([class*="cfa-"]) {
+/* Reset line-height on WordPress-injected elements */
+/* Using 'unset' to completely remove the property, allowing project CSS to define it */
+.wp-block-group:not([class*="wp-block"]):not([class*="is-layout"]),
+.wp-block-paragraph,
+.wp-block-heading,
+h1.wp-block-heading,
+h2.wp-block-heading,
+h3.wp-block-heading,
+h4.wp-block-heading,
+h5.wp-block-heading,
+h6.wp-block-heading,
+.wp-block-column,
+.wp-block-columns,
+.wp-block-list,
+.wp-block-quote,
+[class*="wp-block-"]:not([class*="wp-block-group"]):not([class*="wp-block-paragraph"]):not([class*="wp-block-heading"]):not([class*="wp-block-column"]):not([class*="wp-block-columns"]):not([class*="wp-block-list"]):not([class*="wp-block-quote"]),
+.entry-content > * {
     line-height: unset !important;
 }
 
@@ -186,22 +188,22 @@ h6.wp-block-heading:not([class*="cfa-"]),
    11. Font-weight Resets (Generalized - Let Project CSS Define Weights)
    ========================================================================== */
 
-/* Reset font-weight ONLY on WordPress-injected elements, not on project elements */
-/* Using 'unset' instead of 'inherit' to completely remove the property, allowing project CSS to define it */
-.wp-block-group:not([class*="cfa-"]):not([class*="wp-block"]):not([class*="is-layout"]),
-.wp-block-paragraph:not([class*="cfa-"]),
-.wp-block-heading:not([class*="cfa-"]),
-h1.wp-block-heading:not([class*="cfa-"]),
-h2.wp-block-heading:not([class*="cfa-"]),
-h3.wp-block-heading:not([class*="cfa-"]),
-h4.wp-block-heading:not([class*="cfa-"]),
-h5.wp-block-heading:not([class*="cfa-"]),
-h6.wp-block-heading:not([class*="cfa-"]),
-.wp-block-column:not([class*="cfa-"]),
-.wp-block-columns:not([class*="cfa-"]),
-.wp-block-list:not([class*="cfa-"]),
-.wp-block-quote:not([class*="cfa-"]),
-[class*="wp-block-"]:not([class*="cfa-"]):not([class*="wp-block-group"]):not([class*="wp-block-paragraph"]):not([class*="wp-block-heading"]):not([class*="wp-block-column"]):not([class*="wp-block-columns"]):not([class*="wp-block-list"]):not([class*="wp-block-quote"]),
-.entry-content > *:not([class*="cfa-"]) {
+/* Reset font-weight on WordPress-injected elements */
+/* Using 'unset' to completely remove the property, allowing project CSS to define it */
+.wp-block-group:not([class*="wp-block"]):not([class*="is-layout"]),
+.wp-block-paragraph,
+.wp-block-heading,
+h1.wp-block-heading,
+h2.wp-block-heading,
+h3.wp-block-heading,
+h4.wp-block-heading,
+h5.wp-block-heading,
+h6.wp-block-heading,
+.wp-block-column,
+.wp-block-columns,
+.wp-block-list,
+.wp-block-quote,
+[class*="wp-block-"]:not([class*="wp-block-group"]):not([class*="wp-block-paragraph"]):not([class*="wp-block-heading"]):not([class*="wp-block-column"]):not([class*="wp-block-columns"]):not([class*="wp-block-list"]):not([class*="wp-block-quote"]),
+.entry-content > * {
     font-weight: unset !important;
 }

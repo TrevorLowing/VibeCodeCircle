@@ -182,6 +182,10 @@ final class Importer {
 
 		// 2) Global active-build assets (archives, non-owned pages like Secure Drop, etc.).
 		// Always enqueue global assets to ensure styling works even if per-page assets are missing.
+		// CRITICAL: Global CSS (styles.css, icons.css) MUST use the active fingerprint from
+		// BuildService::get_active_fingerprint(), NOT the page's fingerprint from post meta.
+		// This ensures CSS updates are immediately visible after deployment without needing
+		// to re-import every page to update their fingerprint post meta.
 		$settings = Settings::get_all();
 		$default_project_slug = isset( $settings['project_slug'] ) && is_string( $settings['project_slug'] ) ? (string) $settings['project_slug'] : '';
 		$default_project_slug = sanitize_key( $default_project_slug );
@@ -189,25 +193,12 @@ final class Importer {
 			$default_project_slug = 'default';
 		}
 
-		// Determine which fingerprint to use for global assets
-		$active_fingerprint = '';
-		if ( is_singular( 'page' ) ) {
-			$post_id = (int) get_queried_object_id();
-			if ( $post_id > 0 ) {
-				$page_project_slug = (string) get_post_meta( $post_id, self::META_PROJECT_SLUG, true );
-				$page_fingerprint = (string) get_post_meta( $post_id, self::META_FINGERPRINT, true );
-				// Use page's fingerprint if it matches the default project slug
-				if ( $page_project_slug === $default_project_slug && $page_fingerprint !== '' ) {
-					$active_fingerprint = $page_fingerprint;
-				}
-			}
-		}
-
-		// Fall back to active fingerprint if page doesn't have one
+		// ALWAYS use the active fingerprint for global CSS assets
+		// This is the key fix: global CSS should load from the ACTIVE deployment,
+		// not from stale fingerprints stored in page post meta.
+		$active_fingerprint = BuildService::get_active_fingerprint( $default_project_slug );
 		if ( $active_fingerprint === '' ) {
-			$active_fingerprint = BuildService::get_active_fingerprint( $default_project_slug );
-		}
-		if ( $active_fingerprint === '' ) {
+			// Fallback to most recent build if no active fingerprint set
 			$fingerprints = BuildService::list_build_fingerprints( $default_project_slug );
 			if ( ! empty( $fingerprints ) && is_string( $fingerprints[0] ?? null ) ) {
 				$active_fingerprint = (string) $fingerprints[0];

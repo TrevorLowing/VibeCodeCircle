@@ -6,6 +6,92 @@ It focuses on the rules that most directly impact **Vibe-coded HTML/CSS/JS packa
 
 ---
 
+## 🚨 CRITICAL: Plugin Must Be Project-Agnostic
+
+**NEVER hardcode project-specific values in plugin code.**
+
+**What NOT to do:**
+- ❌ Hardcode class prefixes (e.g., `:not([class*="cfa-"])`, `:not([class*="bgp-"])`)
+- ❌ Hardcode project slugs or identifiers
+- ❌ Hardcode project-specific CSS selectors
+- ❌ Hardcode project-specific file paths
+- ❌ Add project-specific logic or conditionals
+
+**What TO do:**
+- ✅ Use generic selectors that work for all projects
+- ✅ Let projects handle their own component styling in project CSS
+- ✅ Use configuration/settings for project-specific values when needed
+- ✅ Keep plugin code generic and reusable
+
+**Why this matters:**
+- Plugin is used by multiple projects (CFA, BGP, future projects)
+- Hardcoding breaks the plugin for other projects
+- Violates separation of concerns (plugin = generic, projects = specific)
+- Creates maintenance burden (must update plugin for each new project)
+
+**Examples:**
+```css
+/* ❌ WRONG - Hardcoded project prefix */
+.wp-block-group:not([class*="cfa-"]):not([class*="bgp-"]) {
+    margin: 0;
+}
+
+/* ✅ CORRECT - Generic, project-agnostic */
+.wp-block-group:not([class*="wp-block"]):not([class*="is-layout"]) {
+    margin: 0;
+}
+/* Projects override in their own CSS: .my-project-hero.wp-block-group { margin: 2rem 0; } */
+```
+
+**When reviewing plugin code changes:**
+- Ask: "Does this work for any project, or only specific ones?"
+- If project-specific, move it to project CSS or make it configurable
+- Never assume only current projects will use the plugin
+
+---
+
+## 🚨 CRITICAL: Always Deploy and Verify Changes Locally
+
+**NEVER claim fixes work without deploying and verifying them.**
+
+**Required Workflow:**
+1. ✅ Make code changes
+2. ✅ Build staging zip (if needed)
+3. ✅ **Deploy to local Docker WordPress** (automated via script)
+4. ✅ **Run comprehensive visual audit** (automated)
+5. ✅ **Fix any issues found** (repeat until audit passes)
+6. ✅ **Only then** report that fixes are complete
+
+**What NOT to do:**
+- ❌ Claim fixes work without deploying
+- ❌ Skip verification step
+- ❌ Assume changes will work
+- ❌ Report completion without running audit
+
+**What TO do:**
+- ✅ Always run `./scripts/auto-deploy-verify.sh` after making changes
+- ✅ Fix all issues found in audit before reporting completion
+- ✅ Verify pages are actually deployed (not just CSS loading)
+- ✅ Check that content renders, not just that files exist
+
+**Automation:**
+- Projects should have `scripts/auto-deploy-verify.sh` that:
+  - Deploys staging zip to local Docker WordPress
+  - Verifies pages are deployed and accessible
+  - Runs comprehensive visual audit
+  - Reports all issues found
+- Run this script automatically after any changes
+
+**Why this matters:**
+- Prevents wasting time on fixes that don't actually work
+- Catches deployment issues early
+- Ensures changes are verified before reporting completion
+- Eliminates manual back-and-forth
+
+---
+
+---
+
 ## Files + organization (required)
 
 ### External files only (no inline code)
