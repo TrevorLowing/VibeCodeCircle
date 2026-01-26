@@ -752,6 +752,34 @@ vibecode-deploy-staging/
 - ✅ EtchWP IDE can properly display and edit images
 - ✅ Frontend rendering works correctly
 
+### WordPress Best Practices and Media Library Integration
+
+**Current Approach: Plugin Asset URLs**
+- Images stored in plugin assets directory
+- URLs: `/wp-content/plugins/vibecode-deploy/assets/resources/images/...`
+- **Status:** Works correctly with EtchWP and Gutenberg
+- **Limitations:** Missing srcset, lazy loading, Media Library management
+
+**WordPress Best Practice: Media Library**
+- WordPress recommends Media Library for images
+- **Benefits:** Srcset support, lazy loading, optimization, centralized management
+- **Trade-off:** More complex deployment, slower process
+
+**EtchWP Compatibility:**
+- ✅ EtchWP works with both plugin asset URLs and Media Library URLs
+- ✅ No EtchWP-specific requirement for Media Library
+- ✅ `etchData` metadata enables editability (not URL source)
+
+**Future Enhancement:**
+- Media Library integration may be added as optional feature
+- Users can choose: plugin assets (simple) or Media Library (optimal)
+- See `reports/development/wordpress-media-library-evaluation-2026-01-26.md` for detailed analysis
+
+**Reference:**
+- `reports/development/etchwp-image-handling-analysis-2026-01-26.md` - EtchWP compatibility analysis
+- `reports/development/wordpress-media-library-evaluation-2026-01-26.md` - Media Library evaluation
+- `docs/COMPLIANCE_REVIEW_PROCESS.md` - Periodic review process
+
 ---
 
 ## URL Rewriting Rules

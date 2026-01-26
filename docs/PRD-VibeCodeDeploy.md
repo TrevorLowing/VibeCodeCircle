@@ -45,6 +45,7 @@ Vibe Code Deploy is a WordPress plugin that converts static HTML websites into G
 - Exclude external URLs and CDN resources
 - **WordPress CSS Reset System**: Automatically enqueues comprehensive WordPress reset styles to neutralize WordPress default styles and ensure visual parity with local HTML
 - **Image URL Conversion (v0.1.63+)**: Automatic conversion of relative image paths to full plugin URLs during block conversion, ensuring image blocks have absolute URLs for proper EtchWP IDE compatibility
+- **WordPress Media Library Integration (Future Enhancement)**: Optional feature to upload images to WordPress Media Library during deployment for better WordPress integration, srcset support, and optimization (see evaluation report for trade-offs)
 
 #### 2.1.4 Template Part Extraction
 - Automatically extract header from home.html
