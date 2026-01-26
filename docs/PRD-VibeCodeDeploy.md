@@ -31,7 +31,9 @@ Vibe Code Deploy is a WordPress plugin that converts static HTML websites into G
 - **Automatic class prefix detection**: If class prefix is not configured in Settings, plugin automatically detects it from staging files (HTML/CSS) during upload and saves it to settings
 
 #### 2.1.2 HTML to Block Conversion
-- Convert HTML pages to Gutenberg blocks
+- Convert HTML pages to semantic Gutenberg blocks (paragraphs, lists, images, etc.)
+- Automatic conversion of semantic HTML elements to editable blocks
+- Minimal use of wp:html blocks (only for truly custom HTML)
 - Preserve semantic HTML structure
 - Handle custom CSS classes and styling
 - Support for WordPress block patterns
@@ -42,7 +44,7 @@ Vibe Code Deploy is a WordPress plugin that converts static HTML websites into G
 - Support for local assets only (css/, js/, resources/)
 - Exclude external URLs and CDN resources
 - **WordPress CSS Reset System**: Automatically enqueues comprehensive WordPress reset styles to neutralize WordPress default styles and ensure visual parity with local HTML
-- **WordPress CSS Reset System**: Automatically enqueues comprehensive WordPress reset styles to neutralize WordPress default styles and ensure visual parity with local HTML
+- **Image URL Conversion (v0.1.63+)**: Automatic conversion of relative image paths to full plugin URLs during block conversion, ensuring image blocks have absolute URLs for proper EtchWP IDE compatibility
 
 #### 2.1.4 Template Part Extraction
 - Automatically extract header from home.html

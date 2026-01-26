@@ -10,6 +10,8 @@
 namespace VibeCode\Deploy\Admin;
 
 use VibeCode\Deploy\Services\TestDataService;
+use VibeCode\Deploy\Services\HtmlTestPageService;
+use VibeCode\Deploy\Services\HtmlTestPageAuditService;
 use VibeCode\Deploy\Logger;
 
 /**
@@ -58,6 +60,39 @@ class TestDataPage {
 			echo '<div class="notice notice-success is-dismissible"><p>';
 			echo esc_html__( 'Rewrite rules flushed successfully!', 'vibecode-deploy' );
 			echo '</p></div>';
+		}
+
+		// Handle HTML test page generation/download
+		if ( isset( $_POST['generate_html_test_page'] ) && check_admin_referer( 'vibecode_deploy_generate_html_test_page', 'vibecode_deploy_generate_html_test_page_nonce' ) ) {
+			$action = isset( $_POST['test_page_action'] ) ? sanitize_text_field( (string) $_POST['test_page_action'] ) : 'download';
+			
+			if ( $action === 'download' ) {
+				// Generate and download HTML file
+				$html_content = HtmlTestPageService::generate_test_page_html();
+				
+				header( 'Content-Type: text/html; charset=utf-8' );
+				header( 'Content-Disposition: attachment; filename="html-test-page.html"' );
+				header( 'Content-Length: ' . strlen( $html_content ) );
+				
+				echo $html_content;
+				exit;
+			} elseif ( $action === 'deploy' ) {
+				// Deploy to WordPress
+				$page_id = HtmlTestPageService::deploy_test_page_to_wordpress();
+				
+				if ( $page_id && is_numeric( $page_id ) ) {
+					$page_url = get_permalink( $page_id );
+					echo '<div class="notice notice-success is-dismissible"><p>';
+					echo esc_html__( 'HTML test page deployed successfully!', 'vibecode-deploy' );
+					echo ' <a href="' . esc_url( $page_url ) . '" target="_blank">' . esc_html__( 'View Page', 'vibecode-deploy' ) . '</a>';
+					echo ' | <a href="' . esc_url( admin_url( 'post.php?post=' . $page_id . '&action=edit' ) ) . '">' . esc_html__( 'Edit Page', 'vibecode-deploy' ) . '</a>';
+					echo '</p></div>';
+				} else {
+					echo '<div class="notice notice-error is-dismissible"><p>';
+					echo esc_html__( 'Failed to deploy HTML test page. Please check logs for details.', 'vibecode-deploy' );
+					echo '</p></div>';
+				}
+			}
 		}
 
 		// Handle form submission
@@ -118,6 +153,70 @@ class TestDataPage {
 				echo '<div class="notice notice-info is-dismissible"><p>';
 				echo esc_html__( 'No test data was created. All selected CPTs were skipped (they may already have published posts or are not registered).', 'vibecode-deploy' );
 				echo '</p></div>';
+			}
+		}
+
+		// Handle audit report generation
+		if ( isset( $_POST['generate_audit_report'] ) && check_admin_referer( 'vibecode_deploy_generate_audit_report', 'vibecode_deploy_generate_audit_report_nonce' ) ) {
+			$audit_source = isset( $_POST['audit_source'] ) ? sanitize_text_field( (string) $_POST['audit_source'] ) : 'wordpress';
+			
+			if ( $audit_source === 'wordpress' ) {
+				// Analyze deployed WordPress page
+				$page_slug = 'html-test-page';
+				$page = get_page_by_path( $page_slug );
+				
+				if ( ! $page ) {
+					echo '<div class="notice notice-error is-dismissible"><p>';
+					echo esc_html__( 'HTML test page not found. Please deploy the test page first.', 'vibecode-deploy' );
+					echo '</p></div>';
+				} else {
+					$audit_results = HtmlTestPageAuditService::analyze_wordpress_page( $page->ID );
+					
+					if ( isset( $audit_results['error'] ) ) {
+						echo '<div class="notice notice-error is-dismissible"><p>';
+						echo esc_html( $audit_results['error'] );
+						echo '</p></div>';
+					} else {
+						// Generate markdown report
+						$report = HtmlTestPageAuditService::generate_markdown_report( $audit_results );
+						
+						// Download as file
+						$filename = 'html-test-page-audit-report-' . date( 'Y-m-d-His' ) . '.md';
+						header( 'Content-Type: text/markdown; charset=utf-8' );
+						header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+						header( 'Content-Length: ' . strlen( $report ) );
+						
+						echo $report;
+						exit;
+					}
+				}
+			} elseif ( $audit_source === 'html_file' ) {
+				// Analyze from uploaded HTML file
+				if ( isset( $_FILES['html_file'] ) && $_FILES['html_file']['error'] === UPLOAD_ERR_OK ) {
+					$html_content = file_get_contents( $_FILES['html_file']['tmp_name'] );
+					
+					if ( $html_content ) {
+						$audit_results = HtmlTestPageAuditService::analyze_test_page( $html_content, 'html_file' );
+						$report = HtmlTestPageAuditService::generate_markdown_report( $audit_results );
+						
+						// Download as file
+						$filename = 'html-test-page-audit-report-' . date( 'Y-m-d-His' ) . '.md';
+						header( 'Content-Type: text/markdown; charset=utf-8' );
+						header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+						header( 'Content-Length: ' . strlen( $report ) );
+						
+						echo $report;
+						exit;
+					} else {
+						echo '<div class="notice notice-error is-dismissible"><p>';
+						echo esc_html__( 'Failed to read uploaded HTML file.', 'vibecode-deploy' );
+						echo '</p></div>';
+					}
+				} else {
+					echo '<div class="notice notice-error is-dismissible"><p>';
+					echo esc_html__( 'Please select an HTML file to analyze.', 'vibecode-deploy' );
+					echo '</p></div>';
+				}
 			}
 		}
 
@@ -260,6 +359,134 @@ class TestDataPage {
 				<p style="margin-top: 10px; color: #666;">
 					<strong><?php echo esc_html__( 'Note:', 'vibecode-deploy' ); ?></strong> <?php echo esc_html__( 'Rewrite rules are automatically flushed after theme deployment. Use this button if you need to manually refresh them.', 'vibecode-deploy' ); ?>
 				</p>
+			</div>
+
+			<div class="card" style="max-width: 800px; margin-top: 20px;">
+				<h2><?php echo esc_html__( 'HTML Test Page', 'vibecode-deploy' ); ?></h2>
+				<p><?php echo esc_html__( 'Generate a comprehensive HTML test page covering all HTML4 and HTML5 elements for testing block conversion accuracy and EtchWP IDE editability.', 'vibecode-deploy' ); ?></p>
+				
+				<form method="post" action="">
+					<?php wp_nonce_field( 'vibecode_deploy_generate_html_test_page', 'vibecode_deploy_generate_html_test_page_nonce' ); ?>
+					
+					<table class="form-table">
+						<tbody>
+							<tr>
+								<th scope="row">
+									<label>
+										<input type="radio" name="test_page_action" value="download" checked />
+										<?php echo esc_html__( 'Generate HTML File (Download)', 'vibecode-deploy' ); ?>
+									</label>
+								</th>
+								<td>
+									<?php echo esc_html__( 'Download a standalone HTML file for local testing.', 'vibecode-deploy' ); ?>
+								</td>
+							</tr>
+							<tr>
+								<th scope="row">
+									<label>
+										<input type="radio" name="test_page_action" value="deploy" />
+										<?php echo esc_html__( 'Deploy to WordPress (Create Page)', 'vibecode-deploy' ); ?>
+									</label>
+								</th>
+								<td>
+									<?php echo esc_html__( 'Create a WordPress page with the test content. The page will be converted to Gutenberg blocks automatically.', 'vibecode-deploy' ); ?>
+								</td>
+							</tr>
+						</tbody>
+					</table>
+					
+					<p class="submit">
+						<input type="submit" name="generate_html_test_page" class="button button-primary" value="<?php echo esc_attr__( 'Generate Test Page', 'vibecode-deploy' ); ?>" />
+					</p>
+				</form>
+				
+				<div style="margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 4px;">
+					<h3><?php echo esc_html__( 'What\'s Included:', 'vibecode-deploy' ); ?></h3>
+					<ul style="list-style: disc; margin-left: 20px;">
+						<li><?php echo esc_html__( 'All HTML4 elements (headings, lists, tables, forms, etc.)', 'vibecode-deploy' ); ?></li>
+						<li><?php echo esc_html__( 'All HTML5 elements (semantic, media, interactive)', 'vibecode-deploy' ); ?></li>
+						<li><?php echo esc_html__( 'Various attributes and use cases', 'vibecode-deploy' ); ?></li>
+						<li><?php echo esc_html__( 'Edge cases (nested structures, empty elements, etc.)', 'vibecode-deploy' ); ?></li>
+						<li><?php echo esc_html__( 'Organized sections for easy navigation', 'vibecode-deploy' ); ?></li>
+					</ul>
+					<p style="margin-top: 10px;"><strong><?php echo esc_html__( 'Use Cases:', 'vibecode-deploy' ); ?></strong></p>
+					<ul style="list-style: disc; margin-left: 20px;">
+						<li><?php echo esc_html__( 'Test block conversion accuracy', 'vibecode-deploy' ); ?></li>
+						<li><?php echo esc_html__( 'Verify etchData on all block types', 'vibecode-deploy' ); ?></li>
+						<li><?php echo esc_html__( 'Test EtchWP IDE editability', 'vibecode-deploy' ); ?></li>
+						<li><?php echo esc_html__( 'Regression testing', 'vibecode-deploy' ); ?></li>
+					</ul>
+				</div>
+			</div>
+
+			<div class="card" style="max-width: 800px; margin-top: 20px;">
+				<h2><?php echo esc_html__( 'Generate Audit Report', 'vibecode-deploy' ); ?></h2>
+				<p><?php echo esc_html__( 'Analyze the test page and generate a compliance audit report showing block conversion accuracy, etchData compliance, and EtchWP IDE editability.', 'vibecode-deploy' ); ?></p>
+				
+				<form method="post" action="" enctype="multipart/form-data">
+					<?php wp_nonce_field( 'vibecode_deploy_generate_audit_report', 'vibecode_deploy_generate_audit_report_nonce' ); ?>
+					
+					<table class="form-table">
+						<tbody>
+							<tr>
+								<th scope="row">
+									<label>
+										<input type="radio" name="audit_source" value="wordpress" checked />
+										<?php echo esc_html__( 'Analyze Deployed WordPress Page', 'vibecode-deploy' ); ?>
+									</label>
+								</th>
+								<td>
+									<?php
+									$page_slug = 'html-test-page';
+									$page = get_page_by_path( $page_slug );
+									if ( $page ) {
+										echo '<span style="color: green;">✓ Test page found (ID: ' . $page->ID . ')</span><br />';
+										echo '<a href="' . esc_url( get_permalink( $page->ID ) ) . '" target="_blank">' . esc_html__( 'View Page', 'vibecode-deploy' ) . '</a>';
+									} else {
+										echo '<span style="color: orange;">⚠ Test page not found. Deploy the test page first.</span>';
+									}
+									?>
+								</td>
+							</tr>
+							<tr>
+								<th scope="row">
+									<label>
+										<input type="radio" name="audit_source" value="html_file" />
+										<?php echo esc_html__( 'Analyze from HTML File (Upload)', 'vibecode-deploy' ); ?>
+									</label>
+								</th>
+								<td>
+									<input type="file" name="html_file" accept=".html,.htm" />
+									<p class="description"><?php echo esc_html__( 'Upload an HTML file to analyze (e.g., downloaded test page).', 'vibecode-deploy' ); ?></p>
+								</td>
+							</tr>
+						</tbody>
+					</table>
+					
+					<p class="submit">
+						<input type="submit" name="generate_audit_report" class="button button-primary" value="<?php echo esc_attr__( 'Generate Audit Report', 'vibecode-deploy' ); ?>" />
+					</p>
+				</form>
+				
+				<div style="margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 4px;">
+					<h3><?php echo esc_html__( 'Report Includes:', 'vibecode-deploy' ); ?></h3>
+					<ul style="list-style: disc; margin-left: 20px;">
+						<li><?php echo esc_html__( 'Executive summary with compliance scores', 'vibecode-deploy' ); ?></li>
+						<li><?php echo esc_html__( 'Element-by-element analysis (expected vs actual)', 'vibecode-deploy' ); ?></li>
+						<li><?php echo esc_html__( 'Block type coverage statistics', 'vibecode-deploy' ); ?></li>
+						<li><?php echo esc_html__( 'Issues and warnings (categorized by severity)', 'vibecode-deploy' ); ?></li>
+						<li><?php echo esc_html__( 'Compliance metrics (etchData coverage, block type accuracy, editability)', 'vibecode-deploy' ); ?></li>
+						<li><?php echo esc_html__( 'Actionable recommendations', 'vibecode-deploy' ); ?></li>
+					</ul>
+					<p style="margin-top: 10px;"><strong><?php echo esc_html__( 'Use Cases:', 'vibecode-deploy' ); ?></strong></p>
+					<ul style="list-style: disc; margin-left: 20px;">
+						<li><?php echo esc_html__( 'Support: Quickly identify conversion issues', 'vibecode-deploy' ); ?></li>
+						<li><?php echo esc_html__( 'Compliance: Verify structural rules adherence', 'vibecode-deploy' ); ?></li>
+						<li><?php echo esc_html__( 'Documentation: Show conversion accuracy to stakeholders', 'vibecode-deploy' ); ?></li>
+						<li><?php echo esc_html__( 'Debugging: Element-by-element analysis', 'vibecode-deploy' ); ?></li>
+						<li><?php echo esc_html__( 'Regression testing: Track quality over time', 'vibecode-deploy' ); ?></li>
+					</ul>
+				</div>
 			</div>
 
 			<div class="card" style="max-width: 800px; margin-top: 20px;">

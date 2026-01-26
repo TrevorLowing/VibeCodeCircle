@@ -3,8 +3,8 @@
 **Purpose:** This document serves as the **source of truth** for all structural rules and standards that projects must follow when using the Vibe Code Deploy plugin.
 
 **Status:** Active Standard  
-**Last Updated:** 2026-01-11  
-**Plugin Version:** 0.1.47+
+**Last Updated:** 2026-01-26  
+**Plugin Version:** 0.1.63+
 
 **Note:** All projects (BGP, CFA, and future projects) should reference this document and align their structural rules accordingly.
 
@@ -52,15 +52,16 @@
 1. [Staging Directory Structure](#staging-directory-structure)
 2. [Asset Path Conventions](#asset-path-conventions)
 3. [HTML Structure Requirements](#html-structure-requirements)
-4. [JavaScript Asset Placement](#javascript-asset-placement)
-5. [Image Path Conventions](#image-path-conventions)
-6. [URL Rewriting Rules](#url-rewriting-rules)
-7. [Config File Structure](#config-file-structure)
-8. [CPT and Shortcode Standards](#cpt-and-shortcode-standards)
-9. [ACF Integration Standards](#acf-integration-standards)
-10. [External CDN Dependencies](#external-cdn-dependencies)
-11. [Code Documentation Standards](#code-documentation-standards)
-12. [Theme File Structure](#theme-file-structure)
+4. [Semantic Block Conversion](#semantic-block-conversion)
+5. [JavaScript Asset Placement](#javascript-asset-placement)
+6. [Image Path Conventions](#image-path-conventions)
+7. [URL Rewriting Rules](#url-rewriting-rules)
+8. [Config File Structure](#config-file-structure)
+9. [CPT and Shortcode Standards](#cpt-and-shortcode-standards)
+10. [ACF Integration Standards](#acf-integration-standards)
+11. [External CDN Dependencies](#external-cdn-dependencies)
+12. [Code Documentation Standards](#code-documentation-standards)
+13. [Theme File Structure](#theme-file-structure)
 
 ---
 
@@ -306,6 +307,165 @@ zip -r vibecode-deploy-staging.zip vibecode-deploy-staging -x "*.DS_Store" "__MA
 **Plugin Code Reference:**
 - `VibeCodeCircle/plugins/vibecode-deploy/includes/Services/DeployService.php`
 - Extracts `<main>` content via DOMDocument parsing
+
+---
+
+## Semantic Block Conversion
+
+### ✅ REQUIRED: Use Semantic HTML Elements for Editable Content
+
+**Problem:** Content wrapped in `wp:html` (CORE/HTML) blocks is not editable in EtchWP IDE or Gutenberg editor.
+
+**Solution:** Use semantic HTML elements that the plugin automatically converts to editable Gutenberg blocks.
+
+### Automatic Block Conversion (v0.1.57+)
+
+**The plugin automatically converts semantic HTML elements to their corresponding Gutenberg blocks:**
+
+| HTML Element | Gutenberg Block | Editable in EtchWP | Example |
+|--------------|----------------|-------------------|---------|
+| `<p>` | `wp:paragraph` | ✅ Yes | `<p class="intro">Text</p>` |
+| `<ul>`, `<ol>` | `wp:list` | ✅ Yes | `<ul class="features"><li>Item</li></ul>` |
+| `<img>` | `wp:image` | ✅ Yes | `<img src="logo.png" alt="Logo" />` |
+| `<blockquote>` | `wp:quote` | ✅ Yes | `<blockquote>Quote text</blockquote>` |
+| `<pre>` | `wp:preformatted` | ✅ Yes | `<pre class="code">Code</pre>` |
+| `<code>` (block-level) | `wp:code` | ✅ Yes | `<code style="display:block">Code</code>` |
+| `<table>` | `wp:table` | ✅ Yes | `<table><tr><td>Cell</td></tr></table>` |
+| `<h1>`-`<h6>` | `wp:heading` | ✅ Yes | `<h2 class="title">Heading</h2>` |
+
+### Best Practices
+
+**✅ DO: Use Semantic Elements**
+```html
+<!-- Good: Paragraphs are converted to editable wp:paragraph blocks -->
+<div class="content">
+  <p class="intro">Introduction text</p>
+  <p>Body text</p>
+</div>
+
+<!-- Good: Lists are converted to editable wp:list blocks -->
+<ul class="feature-list">
+  <li>Feature 1</li>
+  <li>Feature 2</li>
+</ul>
+
+<!-- Good: Images are converted to editable wp:image blocks -->
+<img src="resources/logo.png" alt="Logo" class="site-logo" width="200" height="100" />
+```
+
+**❌ DON'T: Wrap Semantic Content in Custom Divs**
+```html
+<!-- Bad: Paragraphs wrapped in custom divs become wp:html blocks -->
+<div class="content">
+  <div class="paragraph-wrapper">
+    <p>Text</p>
+  </div>
+</div>
+```
+
+### Class and Attribute Preservation
+
+**Classes:**
+- Semantic blocks: Preserved via `className` attribute
+- Example: `<p class="intro-text">` → `wp:paragraph` block with `className: "intro-text"`
+- CSS classes remain functional after conversion
+
+**Other Attributes:**
+- IDs, data-* attributes, and other HTML attributes are preserved
+- Example: `<p id="intro" data-section="hero">` → Both `id` and `data-section` preserved
+
+### Structural Containers
+
+**Structural elements (div, section, etc.) are converted to `wp:group` blocks:**
+- These preserve HTML structure and classes
+- Semantic content inside is extracted as separate blocks
+- Example: `<div class="content"><p>Text</p></div>` → `wp:group` containing `wp:paragraph`
+
+### Custom HTML Blocks
+
+**`wp:html` blocks are only used when:**
+- Truly custom HTML that doesn't map to semantic blocks
+- Complex widgets or iframes
+- Custom scripts or embedded content
+- Elements that must preserve exact HTML structure
+
+**Example:**
+```html
+<!-- Custom widget that needs exact HTML preservation -->
+<div class="custom-widget" data-widget-id="123">
+  <iframe src="..."></iframe>
+  <script>...</script>
+</div>
+```
+
+### Conversion Examples
+
+**Paragraphs Inside Divs:**
+```html
+<!-- Source HTML -->
+<div class="content">
+  <p class="intro">First paragraph</p>
+  <p>Second paragraph</p>
+</div>
+
+<!-- Converted to Gutenberg Blocks -->
+<!-- wp:group {"className":"content"} -->
+<div class="content wp-block-group">
+  <!-- wp:paragraph {"className":"intro"} -->
+  <p class="intro">First paragraph</p>
+  <!-- /wp:paragraph -->
+  <!-- wp:paragraph -->
+  <p>Second paragraph</p>
+  <!-- /wp:paragraph -->
+</div>
+<!-- /wp:group -->
+```
+
+**Mixed Content:**
+```html
+<!-- Source HTML -->
+<section class="features">
+  <h2>Features</h2>
+  <ul class="feature-list">
+    <li>Feature 1</li>
+    <li>Feature 2</li>
+  </ul>
+  <p class="note">Additional information</p>
+</section>
+
+<!-- Converted to Gutenberg Blocks -->
+<!-- wp:group {"className":"features"} -->
+<section class="features wp-block-group">
+  <!-- wp:heading {"level":2} -->
+  <h2>Features</h2>
+  <!-- /wp:heading -->
+  <!-- wp:list {"className":"feature-list"} -->
+  <ul class="feature-list">
+    <li>Feature 1</li>
+    <li>Feature 2</li>
+  </ul>
+  <!-- /wp:list -->
+  <!-- wp:paragraph {"className":"note"} -->
+  <p class="note">Additional information</p>
+  <!-- /wp:paragraph -->
+</section>
+<!-- /wp:group -->
+```
+
+### Benefits
+
+1. **Fully Editable Content:** All semantic elements are editable in EtchWP IDE
+2. **Reduced CORE/HTML Blocks:** Minimal use of `wp:html` blocks
+3. **Preserved Structure:** CSS classes, IDs, and attributes are preserved
+4. **Better UX:** Content creators can edit directly in visual editor
+5. **Semantic HTML:** Maintains semantic structure while enabling Gutenberg editing
+
+### Plugin Code Reference
+
+- **Conversion Logic:** `VibeCodeCircle/plugins/vibecode-deploy/includes/Importer.php`
+- **Method:** `convert_element()` - Handles semantic block conversion
+- **Method:** `html_to_etch_blocks()` - Main conversion entry point
+- **Version:** Requires plugin version 0.1.57 or later
 
 ---
 
@@ -572,6 +732,25 @@ vibecode-deploy-staging/
 **Plugin Code Reference:**
 - `VibeCodeCircle/plugins/vibecode-deploy/includes/Services/AssetService.php::rewrite_asset_urls()`
 - Pattern: `/(href|src)="(css|js|resources)\/([^"]+)"/`
+
+### Image Block URL Conversion (v0.1.63+)
+
+**Enhanced Image Handling:** The plugin now ensures image URLs are properly converted during block conversion, even if URL rewriting didn't catch them.
+
+**How It Works:**
+1. **URL Rewriting (First):** `rewrite_asset_urls()` converts `resources/` paths to plugin URLs in HTML
+2. **Block Conversion (Second):** Image handler converts relative paths to full plugin URLs during block creation
+3. **Result:** Image blocks always have absolute URLs in both the `url` attribute and HTML `<img>` tag
+
+**Code Reference:**
+- `VibeCodeCircle/plugins/vibecode-deploy/includes/Services/AssetService.php::convert_asset_path_to_url()` - Helper method for URL conversion
+- `VibeCodeCircle/plugins/vibecode-deploy/includes/Importer.php` - Image block conversion (line ~697-736)
+
+**Benefits:**
+- ✅ Images work even if URL rewriting missed them
+- ✅ Image blocks have consistent absolute URLs
+- ✅ EtchWP IDE can properly display and edit images
+- ✅ Frontend rendering works correctly
 
 ---
 
@@ -1341,5 +1520,5 @@ Before deploying a project, verify:
 ---
 
 **Last Updated:** 2026-01-26  
-**Plugin Version:** 0.1.55+  
+**Plugin Version:** 0.1.57+  
 **Status:** Active Standard - Source of Truth

@@ -40,6 +40,8 @@ final class Bootstrap {
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/ThemeSetupService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/ThemeDeployService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/TestDataService.php';
+		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/HtmlTestPageService.php';
+		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/HtmlTestPageAuditService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Importer.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Cli.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Admin/SettingsPage.php';

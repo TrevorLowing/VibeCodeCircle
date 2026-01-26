@@ -168,6 +168,46 @@ final class AssetService {
 	}
 
 	/**
+	 * Convert relative asset path to full plugin asset URL.
+	 * 
+	 * Converts paths like:
+	 * - `resources/image.jpg` → `[plugin_url]/assets/resources/image.jpg`
+	 * - `css/styles.css` → `[plugin_url]/assets/css/styles.css`
+	 * - `js/main.js` → `[plugin_url]/assets/js/main.js`
+	 * 
+	 * **Returns original URL if:**
+	 * - Already absolute (starts with http:// or https://)
+	 * - Not a recognized asset path (css/, js/, resources/)
+	 * 
+	 * @param string $path Relative asset path (e.g., `resources/image.jpg`).
+	 * @return string Full plugin asset URL or original path if not convertible.
+	 */
+	public static function convert_asset_path_to_url( string $path ): string {
+		$path = trim( $path );
+		if ( $path === '' ) {
+			return $path;
+		}
+		
+		// If already absolute URL, return as-is
+		if ( strpos( $path, 'http://' ) === 0 || strpos( $path, 'https://' ) === 0 ) {
+			return $path;
+		}
+		
+		// Normalize path (remove leading ./ or /)
+		$path = (string) preg_replace( '/^\.\//', '', $path );
+		$path = ltrim( $path, '/' );
+		
+		// Check if it's a recognized asset path
+		if ( strpos( $path, 'css/' ) === 0 || strpos( $path, 'js/' ) === 0 || strpos( $path, 'resources/' ) === 0 ) {
+			$plugin_url = plugins_url( 'assets', VIBECODE_DEPLOY_PLUGIN_FILE );
+			return rtrim( $plugin_url, '/' ) . '/' . $path;
+		}
+		
+		// Not a recognized asset path, return as-is
+		return $path;
+	}
+
+	/**
 	 * Rewrite asset URLs (css/, js/, resources/) to plugin asset URLs.
 	 * 
 	 * **IMPORTANT:** This function ONLY rewrites paths starting with:

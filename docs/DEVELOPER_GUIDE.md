@@ -15,7 +15,7 @@ The plugin uses a service-oriented architecture with static service classes:
 - **CleanupService**: Handles cleanup operations (uploads, templates, pages)
 - **DeployService**: Core deployment logic (preflight, page creation, templates)
 - **EnvService**: Environment validation (WordPress version, theme support, etc.)
-- **HtmlToEtchConverter**: Converts HTML to Gutenberg blocks (optional Etch mode)
+- **Importer**: Converts HTML to Gutenberg blocks with semantic block conversion (paragraphs, lists, images, etc.)
 - **ManifestService**: Manages deployment manifests for rollback
 - **RollbackService**: Handles rollback operations
 - **RulesPackService**: Generates rules pack for distribution
@@ -38,7 +38,7 @@ Admin pages are in `includes/Admin/`:
 ### Core Classes
 
 - **Bootstrap**: Plugin initialization and service loading
-- **Importer**: HTML to block conversion and asset enqueueing
+- **Importer**: HTML to semantic Gutenberg block conversion and asset enqueueing (v0.1.57+ converts paragraphs, lists, images, etc. to editable blocks)
 - **Logger**: Logging functionality
 - **Settings**: Settings management
 - **Staging**: Staging ZIP handling

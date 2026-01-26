@@ -12,6 +12,10 @@ All notable changes to Vibe Code Deploy will be documented in this file.
 - Environment errors mode setting (warn/fail)
 - PHPDoc comments to service classes
 - Architecture documentation
+- **Semantic Block Conversion (v0.1.57+)**: Automatic conversion of semantic HTML elements (paragraphs, lists, images, blockquotes, code, tables) to editable Gutenberg blocks, reducing CORE/HTML blocks and making content fully editable in EtchWP IDE
+- **Image URL Conversion (v0.1.63+)**: Enhanced image handling with automatic URL conversion during block conversion, ensuring image blocks always have absolute plugin URLs for proper EtchWP IDE compatibility
+- **Comprehensive HTML Test Page (v0.1.60+)**: Generate test pages with full HTML4/HTML5 element coverage for testing block conversion accuracy
+- **Audit Report Generation (v0.1.61+)**: Generate compliance audit reports analyzing block conversion accuracy, etchData coverage, and EtchWP editability
 
 ### Fixed
 - Asset 404 errors by checking both root and /assets subfolder
@@ -21,6 +25,8 @@ All notable changes to Vibe Code Deploy will be documented in this file.
 - CFA-specific constant replaced with configurable prefix
 - TODO in DeployService resolved (env errors mode now configurable)
 - Architecture.md renamed to EXTERNAL_TOOLS.md, new Architecture.md created
+- **Image URL conversion (v0.1.63)**: Fixed images not working by ensuring relative asset paths are converted to full plugin URLs during block conversion, ensuring proper EtchWP IDE compatibility
+- **List block conversion (v0.1.62)**: Fixed lists showing as code passthrough by keeping list items as raw HTML inside list blocks instead of separate nested blocks
 
 ### Changed
 - Preflight shows warnings instead of blocking when theme requirements not met (configurable)

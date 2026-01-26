@@ -190,20 +190,25 @@ h6.wp-block-heading,
 
 /* Reset font-weight on WordPress-injected elements */
 /* Using 'unset' to completely remove the property, allowing project CSS to define it */
-.wp-block-group:not([class*="wp-block"]):not([class*="is-layout"]),
-.wp-block-paragraph,
-.wp-block-heading,
-h1.wp-block-heading,
-h2.wp-block-heading,
-h3.wp-block-heading,
-h4.wp-block-heading,
-h5.wp-block-heading,
-h6.wp-block-heading,
-.wp-block-column,
-.wp-block-columns,
-.wp-block-list,
-.wp-block-quote,
-[class*="wp-block-"]:not([class*="wp-block-group"]):not([class*="wp-block-paragraph"]):not([class*="wp-block-heading"]):not([class*="wp-block-column"]):not([class*="wp-block-columns"]):not([class*="wp-block-list"]):not([class*="wp-block-quote"]),
-.entry-content > * {
-    font-weight: unset !important;
+/* Exclude elements with project-specific classes (bgp-, cfa-, etc.) to preserve project font-weights */
+.wp-block-group:not([class*="wp-block"]):not([class*="is-layout"]):not([class*="bgp-"]):not([class*="cfa-"]),
+.wp-block-paragraph:not([class*="bgp-"]):not([class*="cfa-"]),
+.wp-block-heading:not([class*="bgp-"]):not([class*="cfa-"]),
+h1.wp-block-heading:not([class*="bgp-"]):not([class*="cfa-"]),
+h2.wp-block-heading:not([class*="bgp-"]):not([class*="cfa-"]),
+h3.wp-block-heading:not([class*="bgp-"]):not([class*="cfa-"]),
+h4.wp-block-heading:not([class*="bgp-"]):not([class*="cfa-"]),
+h5.wp-block-heading:not([class*="bgp-"]):not([class*="cfa-"]),
+h6.wp-block-heading:not([class*="bgp-"]):not([class*="cfa-"]),
+.wp-block-column:not([class*="bgp-"]):not([class*="cfa-"]),
+.wp-block-columns:not([class*="bgp-"]):not([class*="cfa-"]),
+.wp-block-list:not([class*="bgp-"]):not([class*="cfa-"]),
+.wp-block-quote:not([class*="bgp-"]):not([class*="cfa-"]),
+[class*="wp-block-"]:not([class*="wp-block-group"]):not([class*="wp-block-paragraph"]):not([class*="wp-block-heading"]):not([class*="wp-block-column"]):not([class*="wp-block-columns"]):not([class*="wp-block-list"]):not([class*="wp-block-quote"]):not([class*="bgp-"]):not([class*="cfa-"]),
+.entry-content > *:not([class*="bgp-"]):not([class*="cfa-"]) {
+    font-weight: unset; /* Removed !important to allow project CSS to override */
 }
+
+/* Note: Removed preserve rule - project CSS should override the reset naturally */
+/* Project CSS selectors like .bgp-hero__container h1 have higher specificity */
+/* than the reset rule, so they will apply correctly */

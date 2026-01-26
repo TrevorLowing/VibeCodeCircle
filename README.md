@@ -4,7 +4,7 @@ A WordPress plugin that converts static HTML websites into Gutenberg-based WordP
 
 ## Features
 
-- **HTML to Gutenberg Conversion**: Convert static HTML pages to WordPress blocks
+- **HTML to Gutenberg Conversion**: Convert static HTML pages to semantic Gutenberg blocks (paragraphs, lists, images, etc.) - fully editable in EtchWP IDE
 - **Asset Management**: Automatically copy and rewrite CSS, JS, and resource files
 - **Template Extraction**: Extract header/footer from home.html into block template parts
 - **Preflight Validation**: Check for issues before deployment

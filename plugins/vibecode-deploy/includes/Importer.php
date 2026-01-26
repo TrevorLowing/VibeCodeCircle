@@ -465,14 +465,44 @@ final class Importer {
 		return $blocks;
 	}
 
+	/**
+	 * Build etchData structure for a block.
+	 *
+	 * @param string $tag HTML tag name (e.g., 'p', 'ul', 'img').
+	 * @param array  $attrs HTML attributes.
+	 * @param string $block_type Block type ('html' for most, 'text' for text-only blocks).
+	 * @return array etchData array.
+	 */
+	private static function build_etch_data( string $tag, array $attrs, string $block_type = 'html' ): array {
+		$attrs_for_json = empty( $attrs ) ? new \stdClass() : $attrs;
+		
+		return array(
+			'origin' => 'etch',
+			'attributes' => $attrs_for_json,
+			'block' => array(
+				'type' => $block_type,
+				'tag' => $tag,
+			),
+		);
+	}
+
 	private static function convert_element( \DOMElement $el ): string {
 		$tag = strtolower( $el->tagName );
 		$attrs = self::pick_attributes( $el );
 		$attrs_for_json = empty( $attrs ) ? new \stdClass() : $attrs;
+		
+		// Check if this element is inside a list (ul/ol)
+		// If so, list items should remain as raw HTML, not blocks
+		$parent = $el->parentNode;
+		$is_inside_list = false;
+		if ( $parent instanceof \DOMElement ) {
+			$parent_tag = strtolower( $parent->tagName );
+			$is_inside_list = ( $parent_tag === 'ul' || $parent_tag === 'ol' );
+		}
 
-		// Special handling for void elements (img, br, hr, input, etc.)
-		// These should be preserved as-is, not wrapped in divs
-		$void_elements = array( 'img', 'br', 'hr', 'input', 'meta', 'link', 'area', 'base', 'col', 'embed', 'source', 'track', 'wbr' );
+		// Special handling for void elements (br, hr, input, etc.)
+		// Note: 'img' is handled separately as a semantic block (wp:image)
+		$void_elements = array( 'br', 'hr', 'input', 'meta', 'link', 'area', 'base', 'col', 'embed', 'source', 'track', 'wbr' );
 		
 		// Elements that should be preserved as-is (non-void elements with special requirements)
 		$preserve_as_is_elements = array( 'iframe', 'svg', 'script', 'style' );
@@ -500,12 +530,23 @@ final class Importer {
 				$element_html .= '</' . $tag . '>';
 			}
 			
-			// Wrap in wp:html block to preserve the element
-			return "<!-- wp:html -->\n" . $element_html . "\n<!-- /wp:html -->\n";
+			// Add etchData to make wp:html blocks editable in EtchWP IDE
+			$html_attrs = array(
+				'metadata' => array(
+					'name' => strtoupper( $tag ),
+					'etchData' => self::build_etch_data( $tag, $attrs ),
+				),
+			);
+			
+			return self::block_open( 'html', $html_attrs ) . "\n" .
+				$element_html . "\n" .
+				self::block_close( 'html' ) . "\n";
 		}
 
 		// Define block-level elements that should be converted to wp:group blocks
-		$block_elements = array( 'div', 'section', 'article', 'main', 'header', 'footer', 'aside', 'nav', 'form', 'ul', 'ol', 'li', 'dl', 'dt', 'dd', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th', 'figure', 'figcaption', 'blockquote', 'pre', 'address' );
+		// Note: Semantic content elements (p, ul, ol, blockquote, pre, table, img) are handled separately
+		// Keep only structural containers: div, section, article, main, header, footer, aside, nav, form, dl, dt, dd, figure, figcaption, address
+		$block_elements = array( 'div', 'section', 'article', 'main', 'header', 'footer', 'aside', 'nav', 'form', 'dl', 'dt', 'dd', 'figure', 'figcaption', 'address' );
 		
 		// Define inline elements that should be preserved as-is (not converted to groups)
 		$inline_elements = array( 'span', 'a', 'strong', 'em', 'b', 'i', 'u', 'small', 'sub', 'sup', 'code', 'kbd', 'samp', 'var', 'mark', 'time', 'abbr', 'cite', 'q', 'dfn', 'button', 'label', 'select', 'textarea', 'option', 'optgroup' );
@@ -521,6 +562,12 @@ final class Importer {
 			if ( isset( $attrs['class'] ) && is_string( $attrs['class'] ) && $attrs['class'] !== '' ) {
 				$heading_attrs['className'] = $attrs['class'];
 			}
+			
+			// Add etchData for EtchWP IDE editability
+			$heading_attrs['metadata'] = array(
+				'name' => 'Heading',
+				'etchData' => self::build_etch_data( $tag, $attrs ),
+			);
 			
 			// Add other attributes (id, data-*, etc.)
 			$element_attrs = '';
@@ -538,7 +585,278 @@ final class Importer {
 				self::block_close( 'heading' ) . "\n";
 		}
 		
-		// Handle inline elements - preserve as-is in wp:html blocks
+		// Handle paragraphs - convert to paragraph blocks WITH etchData
+		if ( $tag === 'p' ) {
+			$inner = self::convert_dom_children( $el );
+			
+			$paragraph_attrs = array();
+			if ( isset( $attrs['class'] ) && is_string( $attrs['class'] ) && $attrs['class'] !== '' ) {
+				$paragraph_attrs['className'] = $attrs['class'];
+			}
+			
+			// Add etchData for EtchWP IDE editability
+			$paragraph_attrs['metadata'] = array(
+				'name' => 'Paragraph',
+				'etchData' => self::build_etch_data( 'p', $attrs ),
+			);
+			
+			// Build HTML attributes (id, data-*, etc.)
+			$element_attrs = '';
+			foreach ( $attrs as $key => $value ) {
+				if ( $key === 'class' ) {
+					continue; // Already handled in className
+				}
+				if ( is_string( $value ) && $value !== '' ) {
+					$element_attrs .= ' ' . esc_attr( $key ) . '="' . esc_attr( $value ) . '"';
+				}
+			}
+			
+			return self::block_open( 'paragraph', $paragraph_attrs ) . "\n" .
+				'<p' . $element_attrs . '>' . $inner . '</p>' . "\n" .
+				self::block_close( 'paragraph' ) . "\n";
+		}
+		
+		// Handle list items
+		// IMPORTANT: List items inside <ul>/<ol> should remain as raw HTML (not blocks)
+		// Only standalone <li> elements (rare edge case) should be converted to blocks
+		if ( $tag === 'li' ) {
+			$inner = self::convert_dom_children( $el );
+			
+			// Build HTML attributes
+			$element_attrs = '';
+			foreach ( $attrs as $key => $value ) {
+				if ( is_string( $value ) && $value !== '' ) {
+					$element_attrs .= ' ' . esc_attr( $key ) . '="' . esc_attr( $value ) . '"';
+				}
+			}
+			
+			// If inside a list, return as raw HTML (will be wrapped by the list block)
+			if ( $is_inside_list ) {
+				return '<li' . $element_attrs . '>' . $inner . '</li>';
+			}
+			
+			// Standalone <li> (edge case) - convert to list-item block with etchData
+			$list_item_attrs = array();
+			if ( isset( $attrs['class'] ) && is_string( $attrs['class'] ) && $attrs['class'] !== '' ) {
+				$list_item_attrs['className'] = $attrs['class'];
+			}
+			
+			// Add etchData for EtchWP IDE editability
+			$list_item_attrs['metadata'] = array(
+				'name' => 'List Item',
+				'etchData' => self::build_etch_data( 'li', $attrs ),
+			);
+			
+			return self::block_open( 'list-item', $list_item_attrs ) . "\n" .
+				'<li' . $element_attrs . '>' . $inner . '</li>' . "\n" .
+				self::block_close( 'list-item' ) . "\n";
+		}
+		
+		// Handle lists - convert to list blocks WITH etchData
+		if ( $tag === 'ul' || $tag === 'ol' ) {
+			$inner = self::convert_dom_children( $el );
+			
+			$list_attrs = array();
+			if ( $tag === 'ol' ) {
+				$list_attrs['ordered'] = true;
+				// Extract type attribute (1, a, A, i, I)
+				if ( isset( $attrs['type'] ) && is_string( $attrs['type'] ) ) {
+					$list_attrs['type'] = $attrs['type'];
+				}
+				// Extract start attribute
+				if ( isset( $attrs['start'] ) && is_numeric( $attrs['start'] ) ) {
+					$list_attrs['start'] = (int) $attrs['start'];
+				}
+			}
+			if ( isset( $attrs['class'] ) && is_string( $attrs['class'] ) && $attrs['class'] !== '' ) {
+				$list_attrs['className'] = $attrs['class'];
+			}
+			
+			// Add etchData for EtchWP IDE editability
+			$list_attrs['metadata'] = array(
+				'name' => 'List',
+				'etchData' => self::build_etch_data( $tag, $attrs ),
+			);
+			
+			// Build HTML attributes (id, data-*, etc.)
+			$element_attrs = '';
+			foreach ( $attrs as $key => $value ) {
+				if ( in_array( $key, array( 'class', 'type', 'start' ), true ) ) {
+					continue; // Already handled
+				}
+				if ( is_string( $value ) && $value !== '' ) {
+					$element_attrs .= ' ' . esc_attr( $key ) . '="' . esc_attr( $value ) . '"';
+				}
+			}
+			
+			return self::block_open( 'list', $list_attrs ) . "\n" .
+				'<' . $tag . $element_attrs . '>' . $inner . '</' . $tag . '>' . "\n" .
+				self::block_close( 'list' ) . "\n";
+		}
+		
+		// Handle images - convert to image blocks WITH etchData
+		if ( $tag === 'img' ) {
+			$image_attrs = array();
+			$image_url = '';
+			if ( isset( $attrs['src'] ) && is_string( $attrs['src'] ) ) {
+				// Convert relative asset paths to full plugin URLs
+				// This ensures image blocks have absolute URLs even if URL rewriting didn't catch them
+				$image_url = \VibeCode\Deploy\Services\AssetService::convert_asset_path_to_url( $attrs['src'] );
+				$image_attrs['url'] = $image_url;
+			}
+			if ( isset( $attrs['alt'] ) && is_string( $attrs['alt'] ) ) {
+				$image_attrs['alt'] = $attrs['alt'];
+			}
+			if ( isset( $attrs['width'] ) && is_numeric( $attrs['width'] ) ) {
+				$image_attrs['width'] = (int) $attrs['width'];
+			}
+			if ( isset( $attrs['height'] ) && is_numeric( $attrs['height'] ) ) {
+				$image_attrs['height'] = (int) $attrs['height'];
+			}
+			if ( isset( $attrs['class'] ) && is_string( $attrs['class'] ) && $attrs['class'] !== '' ) {
+				$image_attrs['className'] = $attrs['class'];
+			}
+			
+			// Add etchData for EtchWP IDE editability
+			$image_attrs['metadata'] = array(
+				'name' => 'Image',
+				'etchData' => self::build_etch_data( 'img', $attrs ),
+			);
+			
+			// Build HTML attributes (id, data-*, etc.)
+			// Use converted URL for src attribute in HTML
+			$element_attrs = '';
+			if ( $image_url !== '' ) {
+				$element_attrs .= ' src="' . esc_attr( $image_url ) . '"';
+			}
+			foreach ( $attrs as $key => $value ) {
+				if ( in_array( $key, array( 'class', 'src', 'alt', 'width', 'height' ), true ) ) {
+					continue; // Already handled
+				}
+				if ( is_string( $value ) && $value !== '' ) {
+					$element_attrs .= ' ' . esc_attr( $key ) . '="' . esc_attr( $value ) . '"';
+				}
+			}
+			
+			return self::block_open( 'image', $image_attrs ) . "\n" .
+				'<img' . $element_attrs . ' />' . "\n" .
+				self::block_close( 'image' ) . "\n";
+		}
+		
+		// Handle blockquotes - convert to quote blocks WITH etchData
+		if ( $tag === 'blockquote' ) {
+			$inner = self::convert_dom_children( $el );
+			
+			$quote_attrs = array();
+			if ( isset( $attrs['class'] ) && is_string( $attrs['class'] ) && $attrs['class'] !== '' ) {
+				$quote_attrs['className'] = $attrs['class'];
+			}
+			
+			// Check for citation (cite attribute or <cite> element)
+			$dom = $el->ownerDocument;
+			$citation = '';
+			if ( $dom instanceof \DOMDocument ) {
+				$xpath = new \DOMXPath( $dom );
+				$cite_elements = $xpath->query( './/cite', $el );
+				if ( $cite_elements && $cite_elements->length > 0 ) {
+					$citation = trim( $cite_elements->item( 0 )->textContent ?? '' );
+				}
+				if ( $citation === '' && isset( $attrs['cite'] ) && is_string( $attrs['cite'] ) ) {
+					$citation = $attrs['cite'];
+				}
+			}
+			if ( $citation !== '' ) {
+				$quote_attrs['citation'] = $citation;
+			}
+			
+			// Add etchData for EtchWP IDE editability
+			$quote_attrs['metadata'] = array(
+				'name' => 'Quote',
+				'etchData' => self::build_etch_data( 'blockquote', $attrs ),
+			);
+			
+			// Build HTML attributes (id, data-*, etc.)
+			$element_attrs = '';
+			foreach ( $attrs as $key => $value ) {
+				if ( in_array( $key, array( 'class', 'cite' ), true ) ) {
+					continue; // Already handled
+				}
+				if ( is_string( $value ) && $value !== '' ) {
+					$element_attrs .= ' ' . esc_attr( $key ) . '="' . esc_attr( $value ) . '"';
+				}
+			}
+			
+			return self::block_open( 'quote', $quote_attrs ) . "\n" .
+				'<blockquote' . $element_attrs . '>' . $inner . '</blockquote>' . "\n" .
+				self::block_close( 'quote' ) . "\n";
+		}
+		
+		// Handle preformatted text - convert to preformatted blocks WITH etchData
+		if ( $tag === 'pre' ) {
+			$dom = $el->ownerDocument;
+			if ( $dom instanceof \DOMDocument ) {
+				$inner_html = self::inner_html( $dom, $el );
+				
+				$pre_attrs = array();
+				if ( isset( $attrs['class'] ) && is_string( $attrs['class'] ) && $attrs['class'] !== '' ) {
+					$pre_attrs['className'] = $attrs['class'];
+				}
+				
+				// Add etchData for EtchWP IDE editability
+				$pre_attrs['metadata'] = array(
+					'name' => 'Preformatted',
+					'etchData' => self::build_etch_data( 'pre', $attrs ),
+				);
+				
+				// Build HTML attributes (id, data-*, etc.)
+				$element_attrs = '';
+				foreach ( $attrs as $key => $value ) {
+					if ( $key === 'class' ) {
+						continue; // Already handled
+					}
+					if ( is_string( $value ) && $value !== '' ) {
+						$element_attrs .= ' ' . esc_attr( $key ) . '="' . esc_attr( $value ) . '"';
+					}
+				}
+				
+				return self::block_open( 'preformatted', $pre_attrs ) . "\n" .
+					'<pre' . $element_attrs . '>' . $inner_html . '</pre>' . "\n" .
+					self::block_close( 'preformatted' ) . "\n";
+			}
+		}
+		
+		// Handle tables - convert to table blocks WITH etchData
+		if ( $tag === 'table' ) {
+			$inner = self::convert_dom_children( $el );
+			
+			$table_attrs = array();
+			if ( isset( $attrs['class'] ) && is_string( $attrs['class'] ) && $attrs['class'] !== '' ) {
+				$table_attrs['className'] = $attrs['class'];
+			}
+			
+			// Add etchData for EtchWP IDE editability
+			$table_attrs['metadata'] = array(
+				'name' => 'Table',
+				'etchData' => self::build_etch_data( 'table', $attrs ),
+			);
+			
+			// Build HTML attributes (id, data-*, etc.)
+			$element_attrs = '';
+			foreach ( $attrs as $key => $value ) {
+				if ( $key === 'class' ) {
+					continue; // Already handled
+				}
+				if ( is_string( $value ) && $value !== '' ) {
+					$element_attrs .= ' ' . esc_attr( $key ) . '="' . esc_attr( $value ) . '"';
+				}
+			}
+			
+			return self::block_open( 'table', $table_attrs ) . "\n" .
+				'<table' . $element_attrs . '>' . $inner . '</table>' . "\n" .
+				self::block_close( 'table' ) . "\n";
+		}
+		
+		// Handle inline elements - keep as raw HTML (not blocks) so they stay inline in parent blocks
 		if ( in_array( $tag, $inline_elements, true ) ) {
 			$dom = $el->ownerDocument;
 			if ( $dom instanceof \DOMDocument ) {
@@ -551,8 +869,8 @@ final class Importer {
 				}
 				$element_html .= '>' . $inner_html . '</' . $tag . '>';
 				
-				// Wrap in wp:html block to preserve the element
-				return "<!-- wp:html -->\n" . $element_html . "\n<!-- /wp:html -->\n";
+				// Return as raw HTML string (not a block) - will be included in parent block
+				return $element_html;
 			}
 		}
 		
@@ -641,8 +959,17 @@ final class Importer {
 			}
 			$element_html .= '>' . $inner_html . '</' . $tag . '>';
 			
-			// Wrap in wp:html block to preserve the element
-			return "<!-- wp:html -->\n" . $element_html . "\n<!-- /wp:html -->\n";
+			// Add etchData to make wp:html blocks editable in EtchWP IDE
+			$html_attrs = array(
+				'metadata' => array(
+					'name' => strtoupper( $tag ),
+					'etchData' => self::build_etch_data( $tag, $attrs ),
+				),
+			);
+			
+			return self::block_open( 'html', $html_attrs ) . "\n" .
+				$element_html . "\n" .
+				self::block_close( 'html' ) . "\n";
 		}
 		
 		// Fallback: return empty if DOMDocument not available

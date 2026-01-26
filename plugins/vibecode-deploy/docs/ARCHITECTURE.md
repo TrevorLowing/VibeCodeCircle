@@ -1,7 +1,7 @@
 # Vibe Code Deploy - Plugin Architecture & Processes
 
-**Version:** 0.1.1  
-**Last Updated:** January 9, 2025
+**Version:** 0.1.57  
+**Last Updated:** January 26, 2026
 
 This document explains the internal architecture, components, and processes of the Vibe Code Deploy plugin. It is intended for developers who need to understand how the plugin works, extend it, or troubleshoot issues.
 
@@ -62,7 +62,7 @@ vibecode-deploy/
 │       ├── DeployService.php     # Main deployment orchestrator
 │       ├── AssetService.php      # Asset copying & URL rewriting
 │       ├── TemplateService.php   # Template creation/management
-│       ├── HtmlToEtchConverter.php  # HTML → Block conversion
+│       ├── Importer.php  # HTML → Semantic Gutenberg block conversion
 │       └── ...
 └── assets/                       # Plugin assets (CSS, JS, resources)
 ```
@@ -72,7 +72,7 @@ vibecode-deploy/
 1. **Admin Layer** (`includes/Admin/`): WordPress admin UI pages
 2. **Service Layer** (`includes/Services/`): Core business logic (stateless services)
 3. **Infrastructure Layer** (`includes/`): Settings, logging, staging handling
-4. **Conversion Layer** (`HtmlToEtchConverter.php`): HTML to Gutenberg block conversion
+4. **Conversion Layer** (`Importer.php`): HTML to semantic Gutenberg block conversion (paragraphs, lists, images, etc.)
 
 ---
 
@@ -110,7 +110,8 @@ vibecode-deploy/
 **Key Methods:**
 - `copy_assets_to_plugin_folder()`: Copies assets from staging to plugin directory
 - `extract_head_assets()`: Extracts CSS/JS references from HTML `<head>`
-- `rewrite_asset_urls()`: Converts asset paths to plugin URLs
+- `rewrite_asset_urls()`: Converts asset paths to plugin URLs in HTML content
+- `convert_asset_path_to_url()`: Converts relative asset paths to full plugin URLs (v0.1.63+)
 
 **Asset Locations:**
 - **Source:** `vibecode-deploy-staging/{css,js,resources}/`
@@ -140,25 +141,39 @@ vibecode-deploy/
 - **CPT Templates:** `single-{post_type}.html` (auto-generated)
 - **Archive Templates:** `archive.html`, `home.html` (blog index)
 
-### HtmlToEtchConverter
+### Importer (HTML to Block Conversion)
 
-**Purpose:** Converts HTML elements to Gutenberg block markup
+**Purpose:** Converts HTML elements to semantic Gutenberg block markup with automatic semantic block conversion
 
 **Key Methods:**
-- `convert()`: Main conversion entry point
-- `convert_element()`: Converts individual DOM elements
+- `html_to_etch_blocks()`: Main conversion entry point (static method)
+- `convert_element()`: Converts individual DOM elements to Gutenberg blocks
 - `convert_dom_children()`: Recursively converts child elements
 
 **Conversion Rules:**
-- **Sections/Divs:** Converted to `wp:group` blocks
-- **Custom HTML:** Wrapped in `wp:html` blocks (preserves classes)
+- **Headings (h1-h6):** Converted to `wp:heading` blocks (editable)
+- **Paragraphs (`<p>`):** Converted to `wp:paragraph` blocks (editable)
+- **Lists (`<ul>`, `<ol>`):** Converted to `wp:list` blocks (editable)
+- **Images (`<img>`):** Converted to `wp:image` blocks (editable)
+- **Blockquotes (`<blockquote>`):** Converted to `wp:quote` blocks (editable)
+- **Preformatted (`<pre>`):** Converted to `wp:preformatted` blocks (editable)
+- **Code (`<code>` block-level):** Converted to `wp:code` blocks (editable)
+- **Tables (`<table>`):** Converted to `wp:table` blocks (editable)
+- **Sections/Divs:** Converted to `wp:group` blocks (structural containers)
+- **Custom HTML:** Wrapped in `wp:html` blocks only when necessary (preserves classes)
 - **Shortcodes:** Converted to `wp:shortcode` blocks
-- **Classes:** Preserved in wrapper divs (critical for CSS)
-- **Hero Sections:** Preserved as `wp:html` blocks to maintain custom classes
+- **Classes:** Preserved via `className` attribute or in HTML (critical for CSS)
+- **Hero Sections:** Preserved as `wp:group` blocks with original classes intact
+
+**Semantic Block Conversion (v0.1.57+):**
+- Semantic HTML elements are automatically converted to their corresponding Gutenberg blocks
+- This makes content fully editable in EtchWP IDE and other Gutenberg editors
+- Minimal use of `wp:html` blocks (only for truly custom HTML that doesn't map to semantic blocks)
 
 **Class Preservation:**
-- Original CSS classes are preserved in wrapper divs
-- Example: `<section class="cfa-hero cfa-hero--compact">` → `wp:html` block with original classes intact
+- Original CSS classes are preserved via `className` attribute (for semantic blocks) or in HTML (for custom blocks)
+- Example: `<p class="intro-text">` → `wp:paragraph` block with `className: "intro-text"`
+- Example: `<section class="cfa-hero cfa-hero--compact">` → `wp:group` block with original classes intact
 
 ### ShortcodePlaceholderService
 
@@ -312,7 +327,7 @@ AssetService::copy_assets_to_plugin_folder($build_root);
 foreach ($pages as $path) {
     // Extract content from <main> tag
     // Rewrite URLs (page links, resources)
-    // Convert HTML to block markup
+    // Convert HTML to semantic Gutenberg blocks
     // Create/update WordPress page
     // Store CSS/JS assets in post meta
 }
@@ -325,7 +340,7 @@ foreach ($pages as $path) {
 4. Rewrite URLs:
    - `rewrite_asset_urls()` FIRST (resources → plugin URL)
    - `rewrite_urls()` SECOND (page links, skip already-converted resources)
-5. Convert HTML to block markup (via `HtmlToEtchConverter`)
+5. Convert HTML to semantic Gutenberg blocks (via `Importer::html_to_etch_blocks()`)
 6. Check if custom template exists for page
 7. If template exists, clear `post_content` (WordPress will use template)
 8. Create/update WordPress page
@@ -592,16 +607,87 @@ $content = self::rewrite_urls($content, $slug_set, $resources_base_url); // SECO
 
 ### Conversion Process
 
-**File:** `includes/Services/HtmlToEtchConverter.php`
+**File:** `includes/Importer.php` (method: `html_to_etch_blocks()`)
 
 **Process:**
 1. Parse HTML with DOMDocument
-2. Iterate through DOM elements
-3. Convert each element to block markup
-4. Preserve CSS classes and attributes
-5. Wrap custom HTML in `wp:html` blocks
+2. Iterate through DOM elements recursively
+3. Convert semantic elements to their corresponding Gutenberg blocks
+4. Convert structural containers to `wp:group` blocks
+5. Preserve CSS classes and attributes
+6. Wrap truly custom HTML in `wp:html` blocks (minimal use)
 
-### Conversion Rules
+### Semantic Block Conversion (v0.1.57+)
+
+**The plugin automatically converts semantic HTML elements to editable Gutenberg blocks:**
+
+| HTML Element | Gutenberg Block | Editable in EtchWP |
+|--------------|----------------|-------------------|
+| `<p>` | `wp:paragraph` | ✅ Yes |
+| `<ul>`, `<ol>` | `wp:list` | ✅ Yes |
+| `<img>` | `wp:image` | ✅ Yes |
+| `<blockquote>` | `wp:quote` | ✅ Yes |
+| `<pre>` | `wp:preformatted` | ✅ Yes |
+| `<code>` (block-level) | `wp:code` | ✅ Yes |
+| `<table>` | `wp:table` | ✅ Yes |
+| `<h1>`-`<h6>` | `wp:heading` | ✅ Yes |
+
+**Benefits:**
+- Content is fully editable in EtchWP IDE and Gutenberg editor
+- Minimal use of `wp:html` blocks (only for truly custom HTML)
+- Preserves all CSS classes, IDs, and data attributes
+- Maintains semantic HTML structure
+
+### Conversion Examples
+
+**Paragraphs:**
+```html
+<!-- Source -->
+<div class="content">
+  <p class="intro">First paragraph</p>
+  <p>Second paragraph</p>
+</div>
+
+<!-- Converted -->
+<!-- wp:group {"className":"content"} -->
+<div class="content wp-block-group">
+  <!-- wp:paragraph {"className":"intro"} -->
+  <p class="intro">First paragraph</p>
+  <!-- /wp:paragraph -->
+  <!-- wp:paragraph -->
+  <p>Second paragraph</p>
+  <!-- /wp:paragraph -->
+</div>
+<!-- /wp:group -->
+```
+
+**Lists:**
+```html
+<!-- Source -->
+<ul class="feature-list">
+  <li>Item 1</li>
+  <li>Item 2</li>
+</ul>
+
+<!-- Converted -->
+<!-- wp:list {"className":"feature-list"} -->
+<ul class="feature-list">
+  <li>Item 1</li>
+  <li>Item 2</li>
+</ul>
+<!-- /wp:list -->
+```
+
+**Images:**
+```html
+<!-- Source -->
+<img src="resources/logo.png" alt="Logo" class="site-logo" width="200" height="100" />
+
+<!-- Converted -->
+<!-- wp:image {"url":"resources/logo.png","alt":"Logo","width":200,"height":100,"className":"site-logo"} -->
+<img class="site-logo" width="200" height="100" />
+<!-- /wp:image -->
+```
 
 **Generic Elements (div, section, etc.):**
 ```html
@@ -611,9 +697,9 @@ $content = self::rewrite_urls($content, $slug_set, $resources_base_url); // SECO
 </section>
 
 <!-- Converted -->
-<!-- wp:group {"className":"cfa-hero cfa-hero--compact"} -->
+<!-- wp:group {"metadata":{"name":"SECTION","etchData":{"origin":"etch","attributes":{},"block":{"type":"html","tag":"section"}}}} -->
 <section class="cfa-hero cfa-hero--compact wp-block-group">
-  <!-- wp:group {"className":"cfa-hero__container"} -->
+  <!-- wp:group {"metadata":{"name":"DIV","etchData":{"origin":"etch","attributes":{},"block":{"type":"html","tag":"div"}}}} -->
   <div class="cfa-hero__container wp-block-group">...</div>
   <!-- /wp:group -->
 </section>
@@ -631,31 +717,37 @@ $content = self::rewrite_urls($content, $slug_set, $resources_base_url); // SECO
 <!-- /wp:shortcode -->
 ```
 
-**Custom HTML (Hero Sections):**
+**Custom HTML (when semantic blocks don't apply):**
 ```html
 <!-- Source -->
-<section class="cfa-hero">
-  <img src="resources/cfa-logo.webp" />
-</section>
+<div class="custom-widget" data-widget-id="123">
+  <iframe src="..."></iframe>
+</div>
 
 <!-- Converted -->
 <!-- wp:html -->
-<section class="cfa-hero">
-  <img src="/wp-content/plugins/vibecode-deploy/assets/resources/cfa-logo.webp" />
-</section>
+<div class="custom-widget" data-widget-id="123">
+  <iframe src="..."></iframe>
+</div>
 <!-- /wp:html -->
 ```
 
 ### Class Preservation
 
 **Critical for CSS:**
-- Original CSS classes are preserved in wrapper divs
+- Semantic blocks: Classes preserved via `className` attribute
+- Structural blocks: Classes preserved in HTML element
+- Example: `<p class="intro-text">` → `wp:paragraph` block with `className: "intro-text"`
 - Example: `cfa-hero--compact` must remain for styling to work
-- Classes added to both wrapper and original element
+- Classes added to both block attributes and HTML element where appropriate
 
 **Implementation:**
 ```php
-// In HtmlToEtchConverter::convert_element()
+// In Importer::convert_element()
+// For semantic blocks (paragraphs, lists, etc.):
+$paragraph_attrs['className'] = $attrs['class'];
+
+// For structural blocks (groups):
 $class_attr = ' class="' . esc_attr($original_classes) . ' wp-block-group"';
 ```
 
