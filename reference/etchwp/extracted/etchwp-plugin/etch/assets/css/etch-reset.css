@@ -1,0 +1,114 @@
+@layer etch-reset {
+	/* Box sizing rules */
+	*,
+	*::before,
+	*::after {
+		box-sizing: border-box;
+	}
+
+	/* Remove default margins */
+	* {
+		margin: 0;
+	}
+
+	/* Prevent font size inflation */
+	html {
+		-moz-text-size-adjust: none;
+		-webkit-text-size-adjust: none;
+		text-size-adjust: none;
+	}
+
+	/* Remove list styles on ul, ol elements with a list role, which suggests default styling will be removed */
+	ul[role='list'],
+	ol[role='list'] {
+		list-style: none;
+	}
+
+	ul[class]:not(
+			[data-etch-has-custom-classes='false'], /* data-etch-has-custom-classes is builder only (not output on frontend) */
+			.wp-block-list,
+			.list,
+			[class*='marker']
+		),
+	ol[class]:not(
+			[data-etch-has-custom-classes='false'], /* data-etch-has-custom-classes is builder only (not output on frontend) */
+			.wp-block-list,
+			.list,
+			[class*='marker']
+		) {
+		padding: 0;
+		list-style: none;
+	}
+
+	/* Set body min height */
+	body {
+		min-height: 100vh;
+	}
+
+	/* A elements that don't have a class get default styles */
+	a:not([class]) {
+		text-decoration-skip-ink: auto;
+	}
+
+	/* Make media easier to work with */
+	img,
+	picture,
+	video,
+	canvas,
+	svg,
+	a:not(
+		p > a,
+		span > a,
+		h1 > a,
+		h2 > a,
+		h3 > a,
+		h4 > a,
+		h5 > a,
+		h6 > a,
+		li > a,
+		em > a,
+		label > a,
+		strong > a,
+		figcaption > a,
+		.editor-styles-wrapper a
+	) {
+		max-width: 100%;
+		height: auto;
+		display: block;
+	}
+
+	/* Inherit fonts for inputs and buttons */
+	input,
+	button,
+	textarea,
+	select {
+		font: inherit;
+		font-size: inherit;
+	}
+
+	button {
+		cursor: pointer;
+		background-color: transparent;
+		border: none;
+	}
+
+	/* Make sure textareas without a rows attribute are not tiny */
+	textarea:not([rows]) {
+		min-height: 10em;
+	}
+
+	/* Avoid text overflows */
+	p,
+	h1,
+	h2,
+	h3,
+	h4,
+	h5,
+	h6 {
+		overflow-wrap: break-word;
+	}
+
+	figure > img {
+		inline-size: 100%;
+	}
+}

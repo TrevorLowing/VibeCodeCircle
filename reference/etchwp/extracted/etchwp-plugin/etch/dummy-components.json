@@ -1,0 +1,197 @@
+{
+	"jkasdghfjhgad": {
+		"name": "Card",
+		"key": "Card",
+		"description": "A blog card component",
+		"blocks": [
+			{
+				"blockName": "core/group",
+				"attrs": {
+					"metadata": {
+						"name": "Blog Card (Source)",
+						"etchData": {
+							"styles": ["azdu72t"],
+							"attributes": { "class": "blog-card" },
+							"block": { "type": "html", "tag": "article" },
+							"origin": "etch"
+						}
+					}
+				},
+				"innerBlocks": [
+					{
+						"blockName": "core/group",
+						"attrs": {
+							"metadata": {
+								"name": "Media Wrapper",
+								"etchData": {
+									"component": "flex-div",
+									"styles": [
+										"9zobiqm",
+										"etch-flex-div-style"
+									],
+									"attributes": {
+										"data-etch-element": "flex-div",
+										"class": "blog-card__media-wrapper"
+									},
+									"block": { "type": "html", "tag": "div" },
+									"origin": "etch"
+								}
+							}
+						},
+						"innerBlocks": [
+							{
+								"blockName": "core/image",
+								"attrs": {
+									"metadata": {
+										"name": "",
+										"etchData": {
+											"component": "image",
+											"styles": ["0hbavik"],
+											"attributes": {
+												"src": "{props.featured-image}",
+												"alt": "undefined",
+												"class": "blog-card__media"
+											},
+											"block": {
+												"type": "html",
+												"tag": "img"
+											},
+											"origin": "etch"
+										}
+									}
+								},
+								"innerBlocks": [],
+								"innerHTML": "<figure class=\"wp-block-image size-full\"><img src=\"{props.featured-image}\" alt=\"undefined\" /></figure>",
+								"innerContent": [
+									"<figure class=\"wp-block-image size-full\"><img src=\"{props.featured-image}\" alt=\"undefined\" /></figure>"
+								]
+							}
+						],
+						"innerHTML": "<div class=\"wp-block-group\"></div>",
+						"innerContent": [
+							"<div class=\"wp-block-group\">",
+							null,
+							"</div>"
+						]
+					},
+					{
+						"blockName": "core/group",
+						"attrs": {
+							"metadata": {
+								"name": "Content Wrapper",
+								"etchData": {
+									"component": "flex-div",
+									"styles": [
+										"9ctv8zd",
+										"etch-flex-div-style"
+									],
+									"attributes": {
+										"data-etch-element": "flex-div",
+										"class": "blog-card__content-wrapper"
+									},
+									"block": { "type": "html", "tag": "div" },
+									"origin": "etch"
+								}
+							}
+						},
+						"innerBlocks": [
+							{
+								"blockName": "core/heading",
+								"attrs": {
+									"metadata": {
+										"name": "Heading",
+										"etchData": {
+											"styles": ["2hj1qfm"],
+											"attributes": {
+												"class": "blog-card__heading"
+											},
+											"block": {
+												"type": "html",
+												"tag": "h1"
+											},
+											"origin": "etch"
+										}
+									},
+									"level": 1
+								},
+								"innerBlocks": [],
+								"innerHTML": "<h1 class=\"wp-block-heading\">{props.heading}</h1>",
+								"innerContent": [
+									"<h1 class=\"wp-block-heading\">{props.heading}</h1>"
+								]
+							},
+							{
+								"blockName": "core/paragraph",
+								"attrs": {
+									"metadata": {
+										"name": "Excerpt",
+										"etchData": {
+											"styles": ["6jr9i97"],
+											"attributes": {
+												"class": "blog-card__excerpt"
+											},
+											"block": {
+												"type": "html",
+												"tag": "p"
+											},
+											"origin": "etch"
+										}
+									}
+								},
+								"innerBlocks": [],
+								"innerHTML": "<p>{props.excerpt}</p>",
+								"innerContent": ["<p>{props.excerpt}</p>"]
+							}
+						],
+						"innerHTML": "<div class=\"wp-block-group\"></div>",
+						"innerContent": [
+							"<div class=\"wp-block-group\">",
+							null,
+							null,
+							"</div>"
+						]
+					}
+				],
+				"innerHTML": "<div class=\"wp-block-group\"></div>",
+				"innerContent": [
+					"<div class=\"wp-block-group\">",
+					null,
+					null,
+					"</div>"
+				]
+			}
+		],
+		"properties": [
+			{
+				"key": "heading",
+				"type": "text",
+				"default": "Default Heading",
+				"name": "Heading"
+			},
+			{
+				"key": "excerpt",
+				"type": "text",
+				"default": "Default Excerpt",
+				"name": "Excerpt"
+			},
+			{
+				"key": "featured-image",
+				"type": "text",
+				"default": "https://placehold.co/600x400",
+				"name": "Featured Image"
+			},
+			{
+				"key": "cta-link",
+				"type": "text",
+				"default": "Default CTA Link",
+				"name": "CTA Link"
+			},
+			{
+				"key": "cta-text",
+				"type": "text",
+				"default": "Default CTA Text",
+				"name": "CTA Text"
+			}
+		]
+	}
+}

@@ -1233,6 +1233,60 @@ add_filter( 'render_block', 'bgp_ensure_shortcode_execution', 5, 2 );
 
 ---
 
+## EtchWP Compatibility
+
+### ✅ REQUIRED: EtchWP Content Storage
+
+**Critical Principle:** When using **EtchWP plugin**, `post_content` must **always be populated** even when custom block templates exist.
+
+**Why This Matters:**
+- EtchWP templates use the core WordPress `<!-- wp:post-content -->` block
+- The `wp:post-content` block reads from the `post_content` database field
+- Empty `post_content` = empty editor and empty frontend rendering
+- Templates provide structure, `post_content` provides content
+
+**How It Works:**
+1. **Standard Block Themes:**
+   - Template file contains the page content
+   - `post_content` is cleared when template exists
+   - WordPress uses template file for rendering
+
+2. **EtchWP:**
+   - Template file contains structure with `<!-- wp:post-content -->` block
+   - `post_content` must contain the page content (Gutenberg blocks)
+   - `wp:post-content` block reads from `post_content` and renders it
+
+**Example EtchWP Template:**
+```html
+<!-- wp:etch/element {"tag":"main"} -->
+<!-- wp:post-content {"align":"full","layout":{"type":"default"}} /-->
+<!-- /wp:etch/element -->
+```
+
+**Plugin Behavior:**
+- vibecode-deploy automatically detects EtchWP via `defined('ETCH_PLUGIN_FILE')`
+- When EtchWP is active, `post_content` is **preserved** even when templates exist
+- Content is stored in `post_content` as Gutenberg blocks
+- Templates are created with `wp:post-content` block structure
+
+**Rules:**
+- ✅ EtchWP sites: `post_content` always contains page content
+- ✅ Templates use `wp:post-content` block to display content
+- ✅ Editor shows content because `post_content` is populated
+- ✅ Frontend renders correctly via `wp:post-content` block
+- ❌ Do NOT manually clear `post_content` for EtchWP sites
+
+**Detection:**
+- Plugin automatically detects EtchWP when `ETCH_PLUGIN_FILE` constant is defined
+- No manual configuration needed
+- Works automatically when EtchWP plugin is active
+
+**Reference:**
+- **Compatibility Report:** `VibeCodeCircle/reference/etchwp/COMPATIBILITY_REPORT.md`
+- **Plugin Code:** `VibeCodeCircle/plugins/vibecode-deploy/includes/Services/DeployService.php` (lines 972-994, 1289-1332)
+
+---
+
 ## Summary Checklist
 
 Before deploying a project, verify:
@@ -1286,6 +1340,6 @@ Before deploying a project, verify:
 
 ---
 
-**Last Updated:** 2026-01-11  
-**Plugin Version:** 0.1.47+  
+**Last Updated:** 2026-01-26  
+**Plugin Version:** 0.1.55+  
 **Status:** Active Standard - Source of Truth

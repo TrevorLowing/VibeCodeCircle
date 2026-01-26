@@ -1,0 +1,23 @@
+{
+	"name": "Etch Theme",
+	"slug": "etch-theme",
+	"author": "Digital Gravy",
+	"author_profile": "https://digitalgravy.co",
+	"version": "0.0.7",
+	"requires": "5.9",
+	"tested": "6.9.0",
+	"requires_php": "8.0",
+	"sections": {
+		"description": "Your unified development environment for WordPress.",
+		"changelog": "See <a href='https://etchwp.com/changelog/'>https://etchwp.com/changelog/</a>",
+		"frequently asked questions": ""
+	},
+	"icons": {
+		"1x": "https://etchwp.com/wp-content/uploads/2025/08/cropped-favico.png",
+		"2x": "https://etchwp.com/wp-content/uploads/2025/08/cropped-favico.png"
+	},
+	"banners": {
+		"low": "https://etchwp.com/wp-content/uploads/2025/06/etch-logo.svg",
+		"high": "https://etchwp.com/wp-content/uploads/2025/06/etch-logo.svg"
+	}
+}

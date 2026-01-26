@@ -969,11 +969,24 @@ final class DeployService {
 			
 			$has_custom_template = $has_registered_template || $has_template_file;
 
+			// Detect if EtchWP plugin is active
+			// EtchWP templates use wp:post-content block which requires post_content to be populated
+			$is_etchwp = defined( 'ETCH_PLUGIN_FILE' );
+
 			// If custom template exists, clear post_content so WordPress uses the template instead
+			// EXCEPTION: EtchWP templates use wp:post-content block which requires post_content
 			$final_content = $content;
-			if ( $has_custom_template ) {
+			if ( $has_custom_template && ! $is_etchwp ) {
 				$final_content = '';
 				Logger::info( 'Cleared page content for custom template.', array( 
+					'page_slug' => $slug, 
+					'template_slug' => $template_slug,
+					'registered' => $has_registered_template,
+					'file_exists' => $has_template_file,
+					'template_file' => $template_file
+				), $project_slug );
+			} elseif ( $has_custom_template && $is_etchwp ) {
+				Logger::info( 'Keeping page content for EtchWP template (uses wp:post-content block).', array( 
 					'page_slug' => $slug, 
 					'template_slug' => $template_slug,
 					'registered' => $has_registered_template,
@@ -1073,13 +1086,15 @@ final class DeployService {
 			// Log template usage and verification
 			if ( $has_custom_template ) {
 				// Block templates are automatically used by WordPress template hierarchy
-				// WordPress will use page-{slug}.html template when post_content is empty
+				// Standard themes: WordPress uses page-{slug}.html template when post_content is empty
+				// EtchWP: Templates use wp:post-content block which requires post_content to be populated
 				Logger::info( 'Page configured to use block template.', array( 
 					'page_slug' => $slug, 
 					'template_slug' => $template_slug,
 					'has_registered' => $has_registered_template,
 					'has_file' => $has_template_file,
 					'content_cleared' => ( $final_content === '' ),
+					'is_etchwp' => $is_etchwp,
 					'template_file' => $template_file,
 					'template_verified' => true,
 				), $project_slug );
@@ -1208,6 +1223,7 @@ final class DeployService {
 		
 		// After templates are deployed, clear page content for pages that have custom templates
 		// This ensures WordPress uses the block templates instead of page content
+		// EXCEPTION: EtchWP templates use wp:post-content block which requires post_content to be populated
 		$theme_dir = get_stylesheet_directory();
 		$pages_to_clear = array();
 		$pages_verified = array();
@@ -1271,8 +1287,13 @@ final class DeployService {
 			}
 		}
 		
+		// Detect if EtchWP plugin is active
+		// EtchWP templates use wp:post-content block which requires post_content to be populated
+		$is_etchwp = defined( 'ETCH_PLUGIN_FILE' );
+
 		// Clear content for pages with custom templates
-		if ( ! empty( $pages_to_clear ) ) {
+		// EXCEPTION: EtchWP templates use wp:post-content block which requires post_content
+		if ( ! empty( $pages_to_clear ) && ! $is_etchwp ) {
 			Logger::info( 'Clearing page content for pages with custom templates.', array(
 				'count' => count( $pages_to_clear ),
 				'pages' => array_map( function( $p ) {
@@ -1304,6 +1325,13 @@ final class DeployService {
 					), $project_slug );
 				}
 			}
+		} elseif ( ! empty( $pages_to_clear ) && $is_etchwp ) {
+			Logger::info( 'Keeping page content for EtchWP templates (uses wp:post-content block).', array(
+				'count' => count( $pages_to_clear ),
+				'pages' => array_map( function( $p ) {
+					return $p['slug'];
+				}, $pages_to_clear ),
+			), $project_slug );
 		}
 		
 		// Log verification of pages that already have empty content

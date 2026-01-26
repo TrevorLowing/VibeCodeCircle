@@ -1,0 +1,31 @@
+Copyright 2025 © Digital Gravy. All rights reserved.
+
+This software is provided "as is," without warranty of any kind, express or implied. In no event shall the author or contributors be held liable for any damages arising in any way from the use of this software.
+
+The contents of this software are DUAL-LICENSED and usage of this software must comply with the terms of the licenses as outlined below:
+
+License 1: Proprietary Commercial License
+
+The Proprietary License applies to aspects of the software provided by Digital Gravy that do not directly leverage the WordPress platform, as part of the dual-licensing terms outlined in the original copyright notice.
+
+Usage: Permission is granted to use this software solely for personal or internal business purposes, as specified by Digital Gravy. The software may not be used for any purpose not explicitly authorized by Digital Gravy.
+
+Modification: You may not modify, adapt, translate, reverse engineer, decompile, disassemble, or create derivative works based on this software without prior written consent from Digital Gravy, except for those portions of the software that directly reference and hook into WordPress, which are licensed under the GNU General Public License (GPL) version 2 or later.
+
+Redistribution: Redistribution of this software, in whole or in part, is prohibited without prior written consent from Digital Gravy, except for those portions of the software that directly reference and hook into WordPress, which may be redistributed under the terms of the GNU GPL version 2 or later.
+
+Ownership: The software remains the exclusive property of Digital Gravy. This license does not grant any ownership rights to the software or any intellectual property contained therein.
+
+Termination: This license is effective until terminated. Digital Gravy reserves the right to terminate this license at any time if you fail to comply with its terms and conditions. Upon termination, you must cease all use of the software and destroy all copies in your possession.
+
+No Warranty: The software is provided without any warranty, including but not limited to implied warranties of merchantability or fitness for a particular purpose. Digital Gravy shall not be liable for any direct, indirect, incidental, special, or consequential damages resulting from the use or inability to use the software.
+
+Governing Law: This license shall be governed by and construed in accordance with the laws of the jurisdiction specified by Digital Gravy, without regard to its conflict of law principles.
+
+License 2: GNU GPL v2 or later
+
+The aspects of this application that directly hook into WordPress and that are explicitly marked as "@gplv2" in the source code are free to redistribute and/or modify under the terms of the GNU General Public License as published by the Free Software Foundation; either version 2 of the License, or (at your option) any later version.
+
+The software is provided without any warranty, including but not limited to implied warranties of merchantability or fitness for a particular purpose. Digital Gravy shall not be liable for any direct, indirect, incidental, special, or consequential damages resulting from the use or inability to use the software.
+
+You should have received a copy of the GNU General Public License along with this software application. If not, write to the Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.

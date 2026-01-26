@@ -1,0 +1,80 @@
+{
+	"settings": {
+		"layout": {
+			"contentSize": "745px",
+			"wideSize": "1340px"
+		},
+		"spacing": {
+			"defaultSpacingSizes": false,
+			"units": ["%", "px", "em", "rem", "vh", "vw"],
+			"padding": false
+		},
+		"useRootPaddingAwareAlignments": false
+	},
+	"styles": {
+		"spacing": {
+			"blockGap": "0",
+			"padding": {
+				"top": "inherit",
+				"right": "inherit",
+				"bottom": "inherit",
+				"left": "inherit"
+			}
+		},
+		"blocks": {
+			"core/image": {
+				"spacing": {
+					"margin": {
+						"top": "0",
+						"bottom": "0",
+						"left": "0",
+						"right": "0"
+					}
+				}
+			},
+			"core/gallery": {
+				"spacing": {
+					"margin": {
+						"top": "0",
+						"bottom": "0",
+						"left": "0",
+						"right": "0"
+					}
+				}
+			},
+			"core/audio": {
+				"spacing": {
+					"margin": {
+						"top": "0",
+						"bottom": "0",
+						"left": "0",
+						"right": "0"
+					}
+				}
+			},
+			"core/video": {
+				"spacing": {
+					"margin": {
+						"top": "0",
+						"bottom": "0",
+						"left": "0",
+						"right": "0"
+					}
+				}
+			},
+			"core/embed": {
+				"spacing": {
+					"margin": {
+						"top": "0",
+						"bottom": "0",
+						"left": "0",
+						"right": "0"
+					}
+				}
+			}
+		}
+
+	},
+	"version": 3,
+	"$schema": "https://schemas.wp.org/wp/6.7/theme.json"
+}

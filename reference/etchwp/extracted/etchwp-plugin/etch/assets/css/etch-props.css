@@ -1,0 +1,16 @@
+/* :root {
+    --content-width: 1280px;
+    --content-gap: 1em;
+}
+
+@property --content-width {
+    syntax: "<length>";
+    inherits: false;
+    initial-value: 1280px;
+}
+
+@property --content-gap {
+    syntax: "<length>";
+    inherits: false;
+    initial-value: 1em;
+} */
