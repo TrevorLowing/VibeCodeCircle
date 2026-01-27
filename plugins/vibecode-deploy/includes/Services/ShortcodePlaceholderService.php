@@ -254,7 +254,25 @@ final class ShortcodePlaceholderService {
 			return null;
 		}
 
-		return '<!-- wp:shortcode -->' . $shortcode . '<!-- /wp:shortcode -->';
+		// Add etchData metadata for EtchWP IDE editability
+		// Without etchData, blocks appear as passthrough (CORE/SHORTCODE) instead of editable
+		$shortcode_attrs = array(
+			'metadata' => array(
+				'name' => 'Shortcode',
+				'etchData' => array(
+					'origin' => 'etch',
+					'block' => array(
+						'type' => 'shortcode',
+						'tag' => 'shortcode',
+					),
+				),
+			),
+		);
+		
+		// Use wp_json_encode to match block_open() format
+		return '<!-- wp:shortcode ' . wp_json_encode( $shortcode_attrs ) . ' -->' . "\n" .
+			$shortcode . "\n" .
+			'<!-- /wp:shortcode -->' . "\n";
 	}
 
 	public static function extract_placeholders_from_main( \DOMDocument $dom, \DOMNode $main ): array {

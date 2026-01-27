@@ -390,6 +390,20 @@ final class ThemeDeployService {
 		// Merge helper functions first (they may be used by shortcodes)
 		$theme_content = self::merge_helper_functions( $theme_content, $staging_helper_functions );
 		
+		// Log extracted helper functions for debugging (especially shortcode rendering filters)
+		if ( ! empty( $staging_helper_functions ) ) {
+			$helper_function_names = array_keys( $staging_helper_functions );
+			$shortcode_filter_functions = array_filter( $helper_function_names, function( $name ) {
+				return strpos( $name, 'ensure_shortcode' ) !== false;
+			} );
+			if ( ! empty( $shortcode_filter_functions ) ) {
+				Logger::info( 'Extracted shortcode rendering filter functions', array(
+					'functions' => $shortcode_filter_functions,
+					'total_helpers' => count( $staging_helper_functions ),
+				), $project_slug ?: 'vibecode-deploy' );
+			}
+		}
+		
 		// Validate after helper functions merge
 		$syntax_check = self::validate_php_syntax( $theme_content );
 		if ( ! $syntax_check['valid'] ) {
@@ -1636,10 +1650,20 @@ final class ThemeDeployService {
 	 * @return string Merged content.
 	 */
 	private static function merge_helper_functions( string $theme_content, array $staging_functions ): string {
+		// Get project_slug for logging
+		$project_slug = Settings::get_all()['project_slug'] ?? '';
+		
 		foreach ( $staging_functions as $func_name => $func_code ) {
 			// Check if function already exists
 			$pattern = '/function\s+' . preg_quote( $func_name, '/' ) . '\s*\(/';
 			if ( preg_match( $pattern, $theme_content, $match, PREG_OFFSET_CAPTURE ) ) {
+				// Log when replacing existing function (especially shortcode filters)
+				if ( strpos( $func_name, 'ensure_shortcode' ) !== false ) {
+					Logger::info( 'Replacing existing shortcode rendering function', array(
+						'function_name' => $func_name,
+						'has_add_filter' => strpos( $func_code, 'add_filter' ) !== false,
+					), $project_slug ?: 'vibecode-deploy' );
+				}
 				// Function exists - find its start and end
 				$func_start = $match[0][1];
 				$brace_start = strpos( $theme_content, '{', $func_start );
@@ -1699,7 +1723,7 @@ final class ThemeDeployService {
 						);
 					}
 				}
-			} else {
+				} else {
 				// Add new function before first CPT registration or shortcode
 				$insert_pos = strpos( $theme_content, 'register_post_type' );
 				if ( $insert_pos === false ) {
@@ -1711,6 +1735,15 @@ final class ThemeDeployService {
 				} else {
 					// Add before first CPT/shortcode
 					$theme_content = substr( $theme_content, 0, $insert_pos ) . $func_code . "\n\n" . substr( $theme_content, $insert_pos );
+				}
+				
+				// Log when adding new function (especially shortcode filters)
+				if ( strpos( $func_name, 'ensure_shortcode' ) !== false ) {
+					Logger::info( 'Added new shortcode rendering function', array(
+						'function_name' => $func_name,
+						'has_add_filter' => strpos( $func_code, 'add_filter' ) !== false,
+						'code_length' => strlen( $func_code ),
+					), $project_slug ?: 'vibecode-deploy' );
 				}
 			}
 		}
@@ -1955,41 +1988,56 @@ Version: 1.0.0
 		$parent_menu_function .= "}\n";
 		$parent_menu_function .= "add_action( 'admin_menu', '{$menu_function_name}_parent', 5 ); // Priority 5 to run early\n\n";
 		
-		// Function 2: Modify CPTs to nest under parent menu (runs on init, BEFORE CPT registration)
-		// CRITICAL: Filter must be registered BEFORE CPTs are registered, so use priority 5 (before default 10)
+		// Function 2: Modify CPTs to nest under parent menu (runs on admin_menu, AFTER parent menu exists)
+		// CRITICAL: Must run on admin_menu hook AFTER parent menu is created (priority 10 > 5)
+		// The init hook runs BEFORE admin_menu, so filter approach doesn't work
 		$menu_function_code .= $parent_menu_function;
 		$menu_function_code .= "function {$menu_function_name}() {\n";
 		$menu_function_code .= "\t\$project_slug = '" . esc_attr( $project_slug ) . "';\n";
 		$menu_function_code .= "\t\$parent_menu_slug = '" . esc_attr( $parent_menu_slug ) . "';\n\n";
-		$menu_function_code .= "\t// Modify CPT registrations to nest under parent menu\n";
-		$menu_function_code .= "\t// Use register_post_type_args filter to modify during registration\n";
-		$menu_function_code .= "\t// CRITICAL: This filter must run BEFORE CPTs are registered (priority 5 < 10)\n";
+		$menu_function_code .= "\t// Modify CPTs to nest under parent menu\n";
+		$menu_function_code .= "\t// CRITICAL: This runs on admin_menu hook (priority 10) AFTER parent menu is created (priority 5)\n";
+		$menu_function_code .= "\t// Directly modify \$wp_post_types global array to set show_in_menu\n";
+		$menu_function_code .= "\tglobal \$wp_post_types;\n";
+		$menu_function_code .= "\tif ( ! isset( \$wp_post_types ) ) {\n";
+		$menu_function_code .= "\t\treturn;\n";
+		$menu_function_code .= "\t}\n\n";
 		$menu_function_code .= "\t\$cpt_slugs = array(";
 		foreach ( $cpt_slugs as $cpt_slug ) {
 			$menu_function_code .= "\n\t\t'" . esc_attr( $cpt_slug ) . "',";
 		}
 		$menu_function_code .= "\n\t);\n\n";
-		$menu_function_code .= "\tadd_filter( 'register_post_type_args', function( \$args, \$post_type ) use ( \$cpt_slugs, \$parent_menu_slug ) {\n";
-		$menu_function_code .= "\t\tif ( in_array( \$post_type, \$cpt_slugs, true ) ) {\n";
+		$menu_function_code .= "\tforeach ( \$cpt_slugs as \$cpt_slug ) {\n";
+		$menu_function_code .= "\t\tif ( isset( \$wp_post_types[ \$cpt_slug ] ) ) {\n";
 		$menu_function_code .= "\t\t\t// Nest CPT under parent menu\n";
-		$menu_function_code .= "\t\t\t\$args['show_in_menu'] = \$parent_menu_slug;\n";
+		$menu_function_code .= "\t\t\t\$wp_post_types[ \$cpt_slug ]->show_in_menu = \$parent_menu_slug;\n";
 		$menu_function_code .= "\t\t\t// Ensure show_ui is true for menu visibility and ACF compatibility\n";
-		$menu_function_code .= "\t\t\t\$args['show_ui'] = true;\n";
-		$menu_function_code .= "\t\t\t// Ensure publicly_queryable is true for ACF to detect CPT\n";
-		$menu_function_code .= "\t\t\tif ( ! isset( \$args['publicly_queryable'] ) ) {\n";
-		$menu_function_code .= "\t\t\t\t\$args['publicly_queryable'] = true;\n";
-		$menu_function_code .= "\t\t\t}\n";
-		$menu_function_code .= "\t\t\t// Ensure show_in_rest is true for ACF compatibility\n";
-		$menu_function_code .= "\t\t\tif ( ! isset( \$args['show_in_rest'] ) ) {\n";
-		$menu_function_code .= "\t\t\t\t\$args['show_in_rest'] = true;\n";
-		$menu_function_code .= "\t\t\t}\n";
+		$menu_function_code .= "\t\t\t\$wp_post_types[ \$cpt_slug ]->show_ui = true;\n";
 		$menu_function_code .= "\t\t}\n";
-		$menu_function_code .= "\t\treturn \$args;\n";
-		$menu_function_code .= "\t}, 10, 2 );\n";
+		$menu_function_code .= "\t}\n";
 		$menu_function_code .= "}\n";
-		$menu_function_code .= "add_action( 'init', '{$menu_function_name}', 5 ); // Priority 5 to run BEFORE CPT registration (default is 10)\n";
+		$menu_function_code .= "add_action( 'admin_menu', '{$menu_function_name}', 10 ); // Priority 10 runs AFTER parent menu (priority 5)\n\n";
 		
-		// Add menu function BEFORE CPT registration (so filter runs before CPTs are registered)
+		// Function 3: Add ACF filter to include non-public CPTs in Post Types settings
+		$acf_function_name = $project_slug . '_acf_include_cpts';
+		$menu_function_code .= "function {$acf_function_name}( \$post_types, \$args ) {\n";
+		$menu_function_code .= "\t// Ensure all project CPTs appear in ACF Post Types settings\n";
+		$menu_function_code .= "\t// This is especially important for non-public CPTs (like FAQ)\n";
+		$menu_function_code .= "\t\$cpt_slugs = array(";
+		foreach ( $cpt_slugs as $cpt_slug ) {
+			$menu_function_code .= "\n\t\t'" . esc_attr( $cpt_slug ) . "',";
+		}
+		$menu_function_code .= "\n\t);\n\n";
+		$menu_function_code .= "\tforeach ( \$cpt_slugs as \$cpt_slug ) {\n";
+		$menu_function_code .= "\t\tif ( ! in_array( \$cpt_slug, \$post_types, true ) ) {\n";
+		$menu_function_code .= "\t\t\t\$post_types[] = \$cpt_slug;\n";
+		$menu_function_code .= "\t\t}\n";
+		$menu_function_code .= "\t}\n";
+		$menu_function_code .= "\treturn \$post_types;\n";
+		$menu_function_code .= "}\n";
+		$menu_function_code .= "add_filter( 'acf/get_post_types', '{$acf_function_name}', 10, 2 );\n";
+		
+		// Add menu function BEFORE CPT registration (so it's available when CPTs register)
 		// Find the first register_post_type or add_action('init', ...) for CPT registration
 		$insert_pos = strpos( $theme_content, "function " . $project_slug . "_register_post_types" );
 		if ( $insert_pos === false ) {
