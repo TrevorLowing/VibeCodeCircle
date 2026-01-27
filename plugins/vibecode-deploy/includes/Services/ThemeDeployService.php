@@ -1639,14 +1639,66 @@ final class ThemeDeployService {
 		foreach ( $staging_functions as $func_name => $func_code ) {
 			// Check if function already exists
 			$pattern = '/function\s+' . preg_quote( $func_name, '/' ) . '\s*\(/';
-			if ( preg_match( $pattern, $theme_content ) ) {
-				// Replace existing function - match multi-line function definitions
-				$theme_content = preg_replace(
-					'/function\s+' . preg_quote( $func_name, '/' ) . '\s*\([^)]*\)\s*\{.*?\}\s*;/s',
-					$func_code,
-					$theme_content,
-					1
-				);
+			if ( preg_match( $pattern, $theme_content, $match, PREG_OFFSET_CAPTURE ) ) {
+				// Function exists - find its start and end
+				$func_start = $match[0][1];
+				$brace_start = strpos( $theme_content, '{', $func_start );
+				
+				if ( $brace_start !== false ) {
+					// Balance braces to find the closing brace
+					$brace_count = 1;
+					$search_pos = $brace_start + 1;
+					$brace_end = false;
+					
+					while ( $search_pos < strlen( $theme_content ) && $brace_count > 0 ) {
+						$char = $theme_content[ $search_pos ];
+						if ( $char === '{' ) {
+							$brace_count++;
+						} elseif ( $char === '}' ) {
+							$brace_count--;
+							if ( $brace_count === 0 ) {
+								$brace_end = $search_pos;
+								break;
+							}
+						}
+						$search_pos++;
+					}
+					
+					if ( $brace_end !== false ) {
+						// Check for add_filter/add_action calls after the function
+						$search_start = $brace_end + 1;
+						$search_end = min( $search_start + 200, strlen( $theme_content ) );
+						$after_function = substr( $theme_content, $search_start, $search_end - $search_start );
+						
+						// Find all add_filter/add_action calls for this function
+						$filter_pattern = '/add_(?:filter|action)\s*\(\s*[^,]+,\s*[\'"]' . preg_quote( $func_name, '/' ) . '[\'"]/';
+						$filter_end = $brace_end;
+						
+						if ( preg_match( $filter_pattern, $after_function, $filter_match, PREG_OFFSET_CAPTURE ) ) {
+							// Find the end of the last filter call
+							$last_filter_pos = $filter_match[0][1];
+							$line_end = strpos( $after_function, "\n", $last_filter_pos );
+							if ( $line_end !== false ) {
+								$filter_end = $search_start + $line_end;
+							} else {
+								$filter_end = $search_start + strlen( $after_function );
+							}
+						}
+						
+						// Replace function (and any existing filter calls) with new code
+						$before = substr( $theme_content, 0, $func_start );
+						$after = substr( $theme_content, $filter_end + 1 );
+						$theme_content = $before . $func_code . "\n" . $after;
+					} else {
+						// Fallback: use regex replacement
+						$theme_content = preg_replace(
+							'/function\s+' . preg_quote( $func_name, '/' ) . '\s*\([^)]*\)\s*\{[^}]*\}/s',
+							$func_code,
+							$theme_content,
+							1
+						);
+					}
+				}
 			} else {
 				// Add new function before first CPT registration or shortcode
 				$insert_pos = strpos( $theme_content, 'register_post_type' );
