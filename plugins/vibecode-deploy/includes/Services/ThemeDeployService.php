@@ -1545,6 +1545,76 @@ final class ThemeDeployService {
 				if ( $brace_end !== false ) {
 					// Extract full function including the closing brace
 					$func_code = substr( $content, $func_start, $brace_end - $func_start + 1 );
+					
+					// CRITICAL: Search for add_filter/add_action calls that reference this function
+					// These calls appear after the function definition and must be included
+					$search_start = $brace_end + 1;
+					$search_end = min( $search_start + 1000, strlen( $content ) ); // Look at next ~20 lines
+					$after_function = substr( $content, $search_start, $search_end - $search_start );
+					
+					// Match add_filter or add_action calls with this function name
+					// Pattern: add_filter('hook', 'function_name', ...) or add_action('hook', 'function_name', ...)
+					$filter_pattern = '/add_(?:filter|action)\s*\(\s*[^,]+,\s*[\'"]' . preg_quote( $func_name, '/' ) . '[\'"]/';
+					
+					if ( preg_match( $filter_pattern, $after_function, $filter_match, PREG_OFFSET_CAPTURE ) ) {
+						// Found add_filter/add_action call - extract it along with any preceding comments
+						$filter_match_pos = $filter_match[0][1];
+						
+						// Find the start of the line containing the filter call
+						$line_start = strrpos( substr( $after_function, 0, $filter_match_pos ), "\n" );
+						if ( $line_start === false ) {
+							$line_start = 0;
+						} else {
+							$line_start++; // Include the newline
+						}
+						
+						// Find the end of the line (semicolon or newline)
+						$line_end = strpos( $after_function, "\n", $filter_match_pos );
+						if ( $line_end === false ) {
+							$line_end = strlen( $after_function );
+						} else {
+							$line_end++; // Include the newline
+						}
+						
+						// Check for preceding comments (PHP comment style: // or /* */)
+						$before_filter = substr( $after_function, 0, $line_start );
+						$comment_pattern = '/(\/\/[^\n]*|\/\*[\s\S]*?\*\/)\s*$/';
+						if ( preg_match( $comment_pattern, $before_filter, $comment_match ) ) {
+							// Include the comment
+							$comment_start = strrpos( $before_filter, "\n", -strlen( $comment_match[0] ) );
+							if ( $comment_start !== false ) {
+								$line_start = $comment_start + 1;
+							}
+						}
+						
+						// Extract the filter call (and comment if found)
+						$filter_code = substr( $after_function, $line_start, $line_end - $line_start );
+						
+						// Append filter call to function code
+						$func_code .= "\n" . $filter_code;
+						
+						// Check for multiple filter calls (less common but possible)
+						$remaining = substr( $after_function, $line_end );
+						while ( preg_match( $filter_pattern, $remaining, $next_match, PREG_OFFSET_CAPTURE ) ) {
+							$next_pos = $next_match[0][1];
+							$next_line_start = strrpos( substr( $remaining, 0, $next_pos ), "\n" );
+							if ( $next_line_start === false ) {
+								$next_line_start = 0;
+							} else {
+								$next_line_start++;
+							}
+							$next_line_end = strpos( $remaining, "\n", $next_pos );
+							if ( $next_line_end === false ) {
+								$next_line_end = strlen( $remaining );
+							} else {
+								$next_line_end++;
+							}
+							$next_filter_code = substr( $remaining, $next_line_start, $next_line_end - $next_line_start );
+							$func_code .= $next_filter_code;
+							$remaining = substr( $remaining, $next_line_end );
+						}
+					}
+					
 					$functions[ $func_name ] = $func_code;
 					$pos = $brace_end + 1;
 				} else {
