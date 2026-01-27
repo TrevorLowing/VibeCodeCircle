@@ -8,6 +8,106 @@ use VibeCode\Deploy\Settings;
 defined( 'ABSPATH' ) || exit;
 
 final class AssetService {
+	/**
+	 * CDN whitelist configuration for common mapping and utility libraries.
+	 * 
+	 * Maps CDN URL patterns to WordPress script handles and dependencies.
+	 * When a whitelisted CDN is detected, it will be automatically enqueued.
+	 * 
+	 * @var array<string, array{handle: string, deps: string[], version: string|null}>
+	 */
+	private static function get_cdn_whitelist(): array {
+		return array(
+			// Leaflet.js - Interactive maps
+			'leaflet' => array(
+				'patterns' => array(
+					'leaflet.js',
+					'leaflet@',
+					'unpkg.com/leaflet',
+					'cdn.jsdelivr.net/npm/leaflet',
+				),
+				'handle' => 'leaflet-js',
+				'deps' => array(),
+				'version' => null, // Use CDN version
+				'css_patterns' => array(
+					'leaflet.css',
+					'unpkg.com/leaflet/dist/leaflet.css',
+					'cdn.jsdelivr.net/npm/leaflet/dist/leaflet.css',
+				),
+				'css_handle' => 'leaflet-css',
+			),
+			// Leaflet MarkerCluster - Marker clustering for Leaflet
+			'leaflet-markercluster' => array(
+				'patterns' => array(
+					'leaflet.markercluster',
+					'markercluster',
+				),
+				'handle' => 'leaflet-markercluster',
+				'deps' => array( 'leaflet-js' ),
+				'version' => null,
+			),
+			// Google Maps API
+			'google-maps' => array(
+				'patterns' => array(
+					'maps.googleapis.com',
+					'googleapis.com/maps',
+				),
+				'handle' => 'google-maps-api',
+				'deps' => array(),
+				'version' => null,
+			),
+		);
+	}
+
+	/**
+	 * Detect if a URL matches a whitelisted CDN pattern.
+	 * 
+	 * @param string $url CDN URL to check.
+	 * @return array|null CDN configuration if matched, null otherwise.
+	 */
+	private static function detect_cdn( string $url ): ?array {
+		$whitelist = self::get_cdn_whitelist();
+		$url_lower = strtolower( $url );
+		
+		foreach ( $whitelist as $cdn_key => $cdn_config ) {
+			foreach ( $cdn_config['patterns'] as $pattern ) {
+				if ( strpos( $url_lower, strtolower( $pattern ) ) !== false ) {
+					return array_merge( $cdn_config, array( 'key' => $cdn_key, 'url' => $url ) );
+				}
+			}
+		}
+		
+		return null;
+	}
+
+	/**
+	 * Detect CDN CSS from URL.
+	 * 
+	 * @param string $url CSS URL to check.
+	 * @return array|null CDN CSS configuration if matched, null otherwise.
+	 */
+	private static function detect_cdn_css( string $url ): ?array {
+		$whitelist = self::get_cdn_whitelist();
+		$url_lower = strtolower( $url );
+		
+		foreach ( $whitelist as $cdn_key => $cdn_config ) {
+			if ( ! isset( $cdn_config['css_patterns'] ) ) {
+				continue;
+			}
+			foreach ( $cdn_config['css_patterns'] as $pattern ) {
+				if ( strpos( $url_lower, strtolower( $pattern ) ) !== false ) {
+					return array(
+						'key' => $cdn_key,
+						'url' => $url,
+						'handle' => $cdn_config['css_handle'] ?? $cdn_key . '-css',
+					);
+				}
+			}
+		}
+		
+		return null;
+	}
+
 	private static function normalize_local_asset_path( string $path ): string {
 		$path = trim( $path );
 		if ( $path === '' ) {
@@ -39,6 +139,8 @@ final class AssetService {
 		$css = array();
 		$js = array();
 		$fonts = array(); // Google Fonts and other external font links
+		$cdn_scripts = array(); // Whitelisted CDN scripts
+		$cdn_css = array(); // Whitelisted CDN CSS
 
 		$xpath = new \DOMXPath( $dom );
 		// CSS: Extract from <head> only
@@ -56,11 +158,20 @@ final class AssetService {
 					continue;
 				}
 				
+				// Check for whitelisted CDN CSS (e.g., Leaflet.css)
+				if ( strpos( $href, 'http://' ) === 0 || strpos( $href, 'https://' ) === 0 ) {
+					$cdn_css_config = self::detect_cdn_css( $href );
+					if ( $cdn_css_config !== null ) {
+						$cdn_css[] = $cdn_css_config;
+						continue;
+					}
+				}
+				
 				$href = self::normalize_local_asset_path( $href );
 				if ( $href === '' ) {
 					continue;
 				}
-				// Skip external URLs (http://, https://)
+				// Skip external URLs (http://, https://) that aren't whitelisted
 				if ( strpos( $href, 'http://' ) === 0 || strpos( $href, 'https://' ) === 0 ) {
 					continue;
 				}
@@ -90,10 +201,28 @@ final class AssetService {
 					continue;
 				}
 				$src = (string) $node->getAttribute( 'src' );
+				$original_src = $src;
+				
+				// Check for whitelisted CDN scripts (e.g., Leaflet.js)
+				if ( strpos( $src, 'http://' ) === 0 || strpos( $src, 'https://' ) === 0 ) {
+					$cdn_config = self::detect_cdn( $src );
+					if ( $cdn_config !== null ) {
+						$cdn_scripts[] = array(
+							'url' => $src,
+							'handle' => $cdn_config['handle'],
+							'deps' => $cdn_config['deps'] ?? array(),
+							'version' => $cdn_config['version'] ?? null,
+							'key' => $cdn_config['key'],
+						);
+						continue;
+					}
+				}
+				
 				$src = self::normalize_local_asset_path( $src );
 				if ( $src === '' ) {
 					continue;
 				}
+				// Skip external URLs (http://, https://) that aren't whitelisted
 				if ( strpos( $src, 'http://' ) === 0 || strpos( $src, 'https://' ) === 0 ) {
 					continue;
 				}
@@ -110,11 +239,87 @@ final class AssetService {
 			}
 		}
 
+		// Auto-detect CDN dependencies for local scripts
+		// Example: If map.js is detected, automatically add Leaflet.js as dependency
+		$auto_cdn_deps = self::detect_auto_cdn_dependencies( $js, $project_slug );
+		$cdn_scripts = array_merge( $cdn_scripts, $auto_cdn_deps );
+
+		// Log detected CDN scripts
+		if ( ! empty( $cdn_scripts ) || ! empty( $cdn_css ) ) {
+			$log_project_slug = $project_slug !== '' ? $project_slug : ( Settings::get_all()['project_slug'] ?? '' );
+			Logger::info( 'Detected whitelisted CDN assets.', array(
+				'cdn_scripts' => $cdn_scripts,
+				'cdn_css' => $cdn_css,
+				'script_count' => count( $cdn_scripts ),
+				'css_count' => count( $cdn_css ),
+			), $log_project_slug );
+		}
+
 		return array(
 			'css' => array_values( array_unique( $css ) ),
 			'js' => $js,
 			'fonts' => array_values( array_unique( $fonts ) ), // Google Fonts and external fonts
+			'cdn_scripts' => $cdn_scripts, // Whitelisted CDN scripts
+			'cdn_css' => $cdn_css, // Whitelisted CDN CSS
 		);
+	}
+
+	/**
+	 * Auto-detect CDN dependencies for local scripts.
+	 * 
+	 * Example: If map.js is detected, automatically add Leaflet.js as dependency.
+	 * 
+	 * @param array $local_js Array of local JavaScript files.
+	 * @param string $project_slug Project slug for logging.
+	 * @return array Array of CDN script configurations to auto-enqueue.
+	 */
+	private static function detect_auto_cdn_dependencies( array $local_js, string $project_slug = '' ): array {
+		$auto_deps = array();
+		
+		// Check each local JS file for known dependencies
+		foreach ( $local_js as $js_file ) {
+			$src = $js_file['src'] ?? '';
+			if ( $src === '' ) {
+				continue;
+			}
+			
+			// map.js depends on Leaflet.js
+			if ( strpos( $src, 'map.js' ) !== false ) {
+				// Check if Leaflet.js is already in the list (avoid duplicates)
+				$leaflet_already_added = false;
+				foreach ( $auto_deps as $dep ) {
+					if ( isset( $dep['key'] ) && $dep['key'] === 'leaflet' ) {
+						$leaflet_already_added = true;
+						break;
+					}
+				}
+				
+				if ( ! $leaflet_already_added ) {
+					$leaflet_config = self::get_cdn_whitelist()['leaflet'];
+					$auto_deps[] = array(
+						'url' => 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', // Default Leaflet CDN URL
+						'handle' => $leaflet_config['handle'],
+						'deps' => $leaflet_config['deps'],
+						'version' => $leaflet_config['version'],
+						'key' => 'leaflet',
+						'auto_detected' => true,
+						'triggered_by' => $src,
+					);
+					
+					// Also add Leaflet CSS
+					$auto_deps[] = array(
+						'url' => 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+						'handle' => $leaflet_config['css_handle'],
+						'type' => 'css',
+						'key' => 'leaflet',
+						'auto_detected' => true,
+						'triggered_by' => $src,
+					);
+				}
+			}
+		}
+		
+		return $auto_deps;
 	}
 
 	public static function copy_assets_to_plugin_folder( string $staging_root ): void {

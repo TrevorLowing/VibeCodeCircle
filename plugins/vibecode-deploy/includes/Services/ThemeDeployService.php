@@ -265,7 +265,19 @@ final class ThemeDeployService {
 			}
 		}
 
-		// Deploy ACF JSON files
+		// Generate ACF CPT JSON files from extracted CPT registrations
+		if ( $deploy_functions && ! empty( $staging_cpts ) ) {
+			$staging_acf_dir = $staging_theme_dir . '/acf-json';
+			$cpt_json_files = self::generate_acf_cpt_json_files( $staging_cpts, $staging_acf_dir, $project_slug );
+			if ( ! empty( $cpt_json_files ) ) {
+				Logger::info( 'Generated ACF CPT JSON files', array(
+					'files' => $cpt_json_files,
+					'count' => count( $cpt_json_files ),
+				), $project_slug ?: 'vibecode-deploy' );
+			}
+		}
+
+		// Deploy ACF JSON files (including generated CPT JSON files)
 		if ( $deploy_acf ) {
 			$staging_acf_dir = $staging_theme_dir . '/acf-json';
 			$theme_acf_dir = $theme_dir . '/acf-json';
@@ -336,7 +348,7 @@ final class ThemeDeployService {
 		}
 		
 		// Validate staging file syntax before merging
-		$staging_syntax = self::validate_php_syntax( $staging_content );
+		$staging_syntax = self::validate_php_syntax( $staging_content, 'staging file validation' );
 		if ( ! $staging_syntax['valid'] ) {
 			Logger::error( 'Staging functions.php has syntax errors. Cannot merge.', array(
 				'error' => $staging_syntax['error'],
@@ -354,7 +366,7 @@ final class ThemeDeployService {
 			}
 			
 			// Validate existing theme file syntax before merging
-			$theme_syntax = self::validate_php_syntax( $theme_content );
+			$theme_syntax = self::validate_php_syntax( $theme_content, 'existing theme file validation' );
 			if ( ! $theme_syntax['valid'] ) {
 				Logger::error( 'Existing theme functions.php has syntax errors. Cannot merge safely.', array(
 					'error' => $theme_syntax['error'],
@@ -405,16 +417,19 @@ final class ThemeDeployService {
 		}
 		
 		// Validate after helper functions merge
-		$syntax_check = self::validate_php_syntax( $theme_content );
+		$syntax_check = self::validate_php_syntax( $theme_content, 'helper functions merge' );
 		if ( ! $syntax_check['valid'] ) {
 			Logger::error( 'PHP syntax error after helper functions merge. File NOT written.', array(
 				'error' => $syntax_check['error'],
 				'file' => $theme_file,
 				'step' => 'merge_helper_functions',
+				'merge_stage' => 'helper_functions',
+				'content_length' => strlen( $theme_content ),
 			), $project_slug ?: 'vibecode-deploy' );
 			return array( 
 				'success' => false, 
-				'error' => 'PHP syntax error after helper functions merge: ' . $syntax_check['error'] . ' File was NOT written to prevent site breakage.' 
+				'error' => 'PHP syntax error after helper functions merge: ' . $syntax_check['error'] . ' File was NOT written to prevent site breakage.',
+				'merge_stage' => 'helper_functions',
 			);
 		}
 
@@ -433,7 +448,8 @@ final class ThemeDeployService {
 			), $project_slug ?: 'vibecode-deploy' );
 			return array( 
 				'success' => false, 
-				'error' => 'PHP syntax error after CPT merge: ' . $syntax_check['error'] . ' File was NOT written to prevent site breakage.' 
+				'error' => 'PHP syntax error after CPT merge: ' . $syntax_check['error'] . ' File was NOT written to prevent site breakage.',
+				'merge_stage' => 'cpt_registration',
 			);
 		}
 		
@@ -457,7 +473,7 @@ final class ThemeDeployService {
 		), $project_slug ?: 'vibecode-deploy' );
 		
 		// Validate after shortcode merge
-		$syntax_check = self::validate_php_syntax( $theme_content );
+		$syntax_check = self::validate_php_syntax( $theme_content, 'shortcode merge' );
 		if ( ! $syntax_check['valid'] ) {
 			// Log detailed error information
 			$error_line = 0;
@@ -474,13 +490,17 @@ final class ThemeDeployService {
 				'file' => $theme_file,
 				'step' => 'merge_shortcode_registrations',
 				'error_line' => $error_line,
+				'merge_stage' => 'shortcode_registration',
+				'content_length' => strlen( $theme_content ),
+				'shortcode_count' => count( $staging_shortcodes['individual'] ?? array() ),
 				'context_lines' => $context_lines,
 				'content_length' => strlen( $theme_content ),
 				'content_preview_around_error' => $error_line > 0 ? implode( "\n", $context_lines ) : substr( $theme_content, 0, 1000 ),
 			), $project_slug ?: 'vibecode-deploy' );
 			return array( 
 				'success' => false, 
-				'error' => 'PHP syntax error after shortcode merge: ' . $syntax_check['error'] . ' File was NOT written to prevent site breakage.' 
+				'error' => 'PHP syntax error after shortcode merge: ' . $syntax_check['error'] . ' File was NOT written to prevent site breakage.',
+				'merge_stage' => 'shortcode_registration',
 			);
 		}
 
@@ -505,16 +525,19 @@ final class ThemeDeployService {
 		}
 
 		// CRITICAL: Final validation after ALL merges are complete
-		$syntax_check = self::validate_php_syntax( $theme_content );
+		$syntax_check = self::validate_php_syntax( $theme_content, 'final validation' );
 		if ( ! $syntax_check['valid'] ) {
 			Logger::error( 'PHP syntax error detected after functions.php merge. File NOT written.', array(
 				'error' => $syntax_check['error'],
 				'file' => $theme_file,
 				'step' => 'final_validation',
+				'merge_stage' => 'final_validation',
+				'content_length' => strlen( $theme_content ),
 			), $project_slug ?: 'vibecode-deploy' );
 			return array( 
 				'success' => false, 
-				'error' => 'PHP syntax error after merge: ' . $syntax_check['error'] . ' File was NOT written to prevent site breakage.' 
+				'error' => 'PHP syntax error after merge: ' . $syntax_check['error'] . ' File was NOT written to prevent site breakage.',
+				'merge_stage' => 'final_validation',
 			);
 		}
 
@@ -949,7 +972,36 @@ final class ThemeDeployService {
 	 * @param string $project_slug Project slug for removing conflicting show_in_menu settings.
 	 * @return string Merged content.
 	 */
+	/**
+	 * Merge CPT registrations into theme content with pre-merge validation.
+	 * 
+	 * @param string $theme_content Current theme functions.php content.
+	 * @param array $staging_cpts Extracted CPT registrations from staging.
+	 * @param string $project_slug Project slug for logging.
+	 * @return string Merged content.
+	 */
 	private static function merge_cpt_registrations( string $theme_content, array $staging_cpts, string $project_slug = '' ): string {
+		// Pre-merge validation: Validate extracted CPT code blocks before merging
+		if ( ! empty( $staging_cpts['init_block'] ) ) {
+			$cpt_block_syntax = self::validate_php_syntax( '<?php ' . $staging_cpts['init_block'], 'CPT init block pre-merge' );
+			if ( ! $cpt_block_syntax['valid'] ) {
+				Logger::warning( 'CPT init block has syntax errors before merge. Merge will proceed but may fail.', array(
+					'error' => $cpt_block_syntax['error'],
+					'block_length' => strlen( $staging_cpts['init_block'] ),
+				), $project_slug ?: 'vibecode-deploy' );
+			}
+		}
+		
+		foreach ( $staging_cpts['individual'] ?? array() as $cpt_slug => $cpt_code ) {
+			$cpt_syntax = self::validate_php_syntax( '<?php ' . $cpt_code, 'CPT individual block pre-merge' );
+			if ( ! $cpt_syntax['valid'] ) {
+				Logger::warning( 'CPT registration code has syntax errors before merge.', array(
+					'cpt_slug' => $cpt_slug,
+					'error' => $cpt_syntax['error'],
+					'code_length' => strlen( $cpt_code ),
+				), $project_slug ?: 'vibecode-deploy' );
+			}
+		}
 		// Get project_slug for logging (plugin is agnostic - works with any project)
 		$project_slug = Settings::get_all()['project_slug'] ?? '';
 		
@@ -1306,7 +1358,14 @@ final class ThemeDeployService {
 	 * @param string $php_code PHP code to validate.
 	 * @return array Array with 'valid' (bool) and 'error' (string) keys.
 	 */
-	private static function validate_php_syntax( string $php_code ): array {
+	/**
+	 * Validate PHP syntax with optional merge stage context.
+	 * 
+	 * @param string $php_code PHP code to validate.
+	 * @param string $merge_stage Optional merge stage name for error context (e.g., 'CPT merge', 'shortcode merge').
+	 * @return array Array with 'valid' (bool) and 'error' (string) keys.
+	 */
+	private static function validate_php_syntax( string $php_code, string $merge_stage = '' ): array {
 		// Use php -l via shell if available
 		$temp_file = sys_get_temp_dir() . '/vibecode-deploy-syntax-check-' . uniqid( '', true ) . '.php';
 		
@@ -1343,6 +1402,12 @@ final class ThemeDeployService {
 	/**
 	 * Validate PHP syntax of an existing file.
 	 *
+	 * @param string $file_path Path to PHP file to validate.
+	 * @return array Array with 'valid' (bool) and 'error' (string) keys.
+	 */
+	/**
+	 * Validate PHP syntax of a file.
+	 * 
 	 * @param string $file_path Path to PHP file to validate.
 	 * @return array Array with 'valid' (bool) and 'error' (string) keys.
 	 */
@@ -1757,6 +1822,188 @@ final class ThemeDeployService {
 	 * @param string $theme_acf_dir Path to theme acf-json directory.
 	 * @return array Results with 'created', 'updated', 'errors' keys.
 	 */
+	/**
+	 * Generate ACF CPT JSON files from extracted CPT registrations.
+	 * 
+	 * Parses register_post_type() calls and converts them to ACF post_type JSON format.
+	 * Writes post_type_{slug}.json files to staging acf-json directory.
+	 * 
+	 * @param array $staging_cpts Extracted CPT registrations with 'init_block' and/or 'individual' keys.
+	 * @param string $staging_acf_dir Path to staging acf-json directory.
+	 * @param string $project_slug Project slug for logging.
+	 * @return array Array of generated JSON file names.
+	 */
+	private static function generate_acf_cpt_json_files( array $staging_cpts, string $staging_acf_dir, string $project_slug = '' ): array {
+		$generated_files = array();
+		
+		// Ensure staging acf-json directory exists
+		if ( ! is_dir( $staging_acf_dir ) ) {
+			wp_mkdir_p( $staging_acf_dir );
+		}
+		
+		// Extract CPT registrations from init_block or individual registrations
+		$cpt_registrations = array();
+		
+		// Parse init_block for CPT registrations
+		if ( ! empty( $staging_cpts['init_block'] ) ) {
+			$init_block = $staging_cpts['init_block'];
+			// Extract all register_post_type() calls from the block
+			preg_match_all( '/register_post_type\s*\(\s*[\'"]([^\'"]+)[\'"]\s*,\s*array\s*\(([^)]+(?:\([^)]*\)[^)]*)*)\)\s*\)\s*;/s', $init_block, $matches, PREG_SET_ORDER );
+			foreach ( $matches as $match ) {
+				$cpt_slug = $match[1];
+				$cpt_args_text = $match[2];
+				$cpt_registrations[ $cpt_slug ] = $cpt_args_text;
+			}
+		}
+		
+		// Parse individual CPT registrations
+		foreach ( $staging_cpts['individual'] ?? array() as $cpt_slug => $cpt_code ) {
+			// Extract arguments from register_post_type call
+			if ( preg_match( '/register_post_type\s*\(\s*[\'"]([^\'"]+)[\'"]\s*,\s*array\s*\(([^)]+(?:\([^)]*\)[^)]*)*)\)\s*\)\s*;/s', $cpt_code, $match ) ) {
+				$cpt_slug = $match[1];
+				$cpt_args_text = $match[2];
+				$cpt_registrations[ $cpt_slug ] = $cpt_args_text;
+			}
+		}
+		
+		// Convert each CPT registration to ACF JSON format
+		foreach ( $cpt_registrations as $cpt_slug => $cpt_args_text ) {
+			$json_data = self::convert_cpt_to_acf_json( $cpt_slug, $cpt_args_text, $project_slug );
+			if ( $json_data !== null ) {
+				$filename = 'post_type_' . $cpt_slug . '.json';
+				$file_path = $staging_acf_dir . '/' . $filename;
+				$json_encoded = wp_json_encode( $json_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+				if ( $json_encoded !== false && file_put_contents( $file_path, $json_encoded ) !== false ) {
+					$generated_files[] = $filename;
+					Logger::info( 'Generated ACF CPT JSON file', array(
+						'cpt_slug' => $cpt_slug,
+						'filename' => $filename,
+						'file_path' => $file_path,
+					), $project_slug ?: 'vibecode-deploy' );
+				} else {
+					Logger::warning( 'Failed to write ACF CPT JSON file', array(
+						'cpt_slug' => $cpt_slug,
+						'filename' => $filename,
+						'file_path' => $file_path,
+					), $project_slug ?: 'vibecode-deploy' );
+				}
+			}
+		}
+		
+		return $generated_files;
+	}
+
+	/**
+	 * Convert CPT registration arguments to ACF post_type JSON format.
+	 * 
+	 * @param string $cpt_slug CPT slug (e.g., 'bgp_product').
+	 * @param string $cpt_args_text PHP array text from register_post_type() call.
+	 * @param string $project_slug Project slug for logging.
+	 * @return array|null ACF JSON data structure or null on error.
+	 */
+	private static function convert_cpt_to_acf_json( string $cpt_slug, string $cpt_args_text, string $project_slug = '' ): ?array {
+		// Parse PHP array syntax to extract arguments
+		// This is a simplified parser - it handles basic array structures
+		// For complex nested arrays, we'll extract key values
+		
+		$cpt_args = array();
+		
+		// Extract labels
+		if ( preg_match( '/[\'"]labels[\'"]\s*=>\s*array\s*\(([^)]+(?:\([^)]*\)[^)]*)*)\)/s', $cpt_args_text, $labels_match ) ) {
+			$labels_text = $labels_match[1];
+			$labels = array();
+			// Extract common label keys
+			$label_keys = array( 'name', 'singular_name', 'add_new', 'add_new_item', 'edit_item', 'new_item', 'view_item', 'search_items', 'not_found', 'not_found_in_trash' );
+			foreach ( $label_keys as $key ) {
+				if ( preg_match( '/[\'"]' . preg_quote( $key, '/' ) . '[\'"]\s*=>\s*__\s*\(\s*[\'"]([^\'"]+)[\'"]/s', $labels_text, $label_match ) ) {
+					$labels[ $key ] = $label_match[1];
+				} elseif ( preg_match( '/[\'"]' . preg_quote( $key, '/' ) . '[\'"]\s*=>\s*[\'"]([^\'"]+)[\'"]/s', $labels_text, $label_match ) ) {
+					$labels[ $key ] = $label_match[1];
+				}
+			}
+			if ( ! empty( $labels ) ) {
+				$cpt_args['labels'] = $labels;
+			}
+		}
+		
+		// Extract boolean and simple string arguments
+		$simple_args = array( 'public', 'has_archive', 'rewrite', 'show_in_rest', 'publicly_queryable', 'show_ui', 'show_in_menu', 'show_in_nav_menus', 'show_in_admin_bar' );
+		foreach ( $simple_args as $arg_key ) {
+			if ( preg_match( '/[\'"]' . preg_quote( $arg_key, '/' ) . '[\'"]\s*=>\s*(true|false|\d+)/', $cpt_args_text, $arg_match ) ) {
+				$value = $arg_match[1];
+				if ( $value === 'true' ) {
+					$cpt_args[ $arg_key ] = true;
+				} elseif ( $value === 'false' ) {
+					$cpt_args[ $arg_key ] = false;
+				} elseif ( is_numeric( $value ) ) {
+					$cpt_args[ $arg_key ] = (int) $value;
+				}
+			}
+		}
+		
+		// Extract menu_position and menu_icon
+		if ( preg_match( '/[\'"]menu_position[\'"]\s*=>\s*(\d+)/', $cpt_args_text, $pos_match ) ) {
+			$cpt_args['menu_position'] = (int) $pos_match[1];
+		}
+		if ( preg_match( '/[\'"]menu_icon[\'"]\s*=>\s*[\'"]([^\'"]+)[\'"]/', $cpt_args_text, $icon_match ) ) {
+			$cpt_args['menu_icon'] = $icon_match[1];
+		}
+		
+		// Extract supports array
+		if ( preg_match( '/[\'"]supports[\'"]\s*=>\s*array\s*\(([^)]+)\)/', $cpt_args_text, $supports_match ) ) {
+			$supports_text = $supports_match[1];
+			$supports = array();
+			preg_match_all( '/[\'"]([^\'"]+)[\'"]/', $supports_text, $support_matches );
+			if ( ! empty( $support_matches[1] ) ) {
+				$cpt_args['supports'] = $support_matches[1];
+			}
+		}
+		
+		// Build ACF JSON structure
+		// ACF post_type JSON format requires specific structure
+		$acf_json = array(
+			'key' => 'post_type_' . $cpt_slug,
+			'title' => isset( $cpt_args['labels']['name'] ) ? $cpt_args['labels']['name'] : ucfirst( str_replace( '_', ' ', $cpt_slug ) ),
+			'acf_post_type_key' => $cpt_slug,
+			'name' => $cpt_slug,
+			'label' => isset( $cpt_args['labels']['name'] ) ? $cpt_args['labels']['name'] : ucfirst( str_replace( '_', ' ', $cpt_slug ) ),
+			'singular_label' => isset( $cpt_args['labels']['singular_name'] ) ? $cpt_args['labels']['singular_name'] : ucfirst( str_replace( '_', ' ', $cpt_slug ) ),
+			'description' => '',
+			'public' => $cpt_args['public'] ?? true,
+			'publicly_queryable' => $cpt_args['publicly_queryable'] ?? ( $cpt_args['public'] ?? true ),
+			'show_ui' => $cpt_args['show_ui'] ?? ( $cpt_args['public'] ?? true ),
+			'show_in_menu' => $cpt_args['show_in_menu'] ?? ( $cpt_args['show_ui'] ?? ( $cpt_args['public'] ?? true ) ),
+			'show_in_nav_menus' => $cpt_args['show_in_nav_menus'] ?? ( $cpt_args['public'] ?? true ),
+			'show_in_admin_bar' => $cpt_args['show_in_admin_bar'] ?? ( $cpt_args['public'] ?? true ),
+			'show_in_rest' => $cpt_args['show_in_rest'] ?? false,
+			'rest_base' => $cpt_slug,
+			'rest_controller_class' => 'WP_REST_Posts_Controller',
+			'has_archive' => $cpt_args['has_archive'] ?? false,
+			'has_archive_slug' => $cpt_args['has_archive'] === true ? $cpt_slug : '',
+			'hierarchical' => false,
+			'exclude_from_search' => ! ( $cpt_args['public'] ?? true ),
+			'capability_type' => 'post',
+			'map_meta_cap' => true,
+			'menu_position' => $cpt_args['menu_position'] ?? null,
+			'menu_icon' => $cpt_args['menu_icon'] ?? null,
+			'supports' => $cpt_args['supports'] ?? array( 'title', 'editor' ),
+			'taxonomies' => array(),
+			'rewrite' => $cpt_args['rewrite'] ?? true,
+			'query_var' => true,
+			'can_export' => true,
+			'delete_with_user' => false,
+			'labels' => $cpt_args['labels'] ?? array(),
+			'active' => true,
+		);
+		
+		// Remove null values
+		$acf_json = array_filter( $acf_json, function( $value ) {
+			return $value !== null;
+		} );
+		
+		return $acf_json;
+	}
+
 	private static function copy_acf_json_files( string $staging_acf_dir, string $theme_acf_dir ): array {
 		$results = array(
 			'created' => array(),

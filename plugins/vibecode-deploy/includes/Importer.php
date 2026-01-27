@@ -18,6 +18,8 @@ final class Importer {
 	public const META_ASSET_CSS = '_vibecode_deploy_assets_css';
 	public const META_ASSET_JS = '_vibecode_deploy_assets_js';
 	public const META_ASSET_FONTS = '_vibecode_deploy_assets_fonts';
+	public const META_ASSET_CDN_SCRIPTS = '_vibecode_deploy_assets_cdn_scripts';
+	public const META_ASSET_CDN_CSS = '_vibecode_deploy_assets_cdn_css';
 	public const META_BODY_CLASS = '_vibecode_deploy_body_class';
 
 	public static function get_active_fingerprint( string $project_slug ): string {
@@ -153,6 +155,54 @@ final class Importer {
 						) );
 					}
 
+					// Enqueue CDN CSS first (before local CSS)
+					$cdn_css = get_post_meta( $post_id, self::META_ASSET_CDN_CSS, true );
+					if ( is_array( $cdn_css ) && ! empty( $cdn_css ) ) {
+						foreach ( $cdn_css as $cdn_css_item ) {
+							if ( ! is_array( $cdn_css_item ) || ! isset( $cdn_css_item['url'] ) || ! isset( $cdn_css_item['handle'] ) ) {
+								continue;
+							}
+							$cdn_css_handle = sanitize_key( $cdn_css_item['handle'] );
+							$cdn_css_url = esc_url_raw( $cdn_css_item['url'] );
+							if ( $cdn_css_handle !== '' && $cdn_css_url !== '' ) {
+								wp_enqueue_style( $cdn_css_handle, $cdn_css_url, array(), null );
+							}
+						}
+					}
+
+					// Enqueue CDN scripts (before local scripts, respecting dependencies)
+					$cdn_scripts = get_post_meta( $post_id, self::META_ASSET_CDN_SCRIPTS, true );
+					if ( is_array( $cdn_scripts ) && ! empty( $cdn_scripts ) ) {
+						// Sort by dependencies: scripts with no deps first, then by dependency chain
+						usort( $cdn_scripts, function( $a, $b ) {
+							$a_deps = isset( $a['deps'] ) && is_array( $a['deps'] ) ? $a['deps'] : array();
+							$b_deps = isset( $b['deps'] ) && is_array( $b['deps'] ) ? $b['deps'] : array();
+							// If a depends on b, a should come after b
+							if ( in_array( $b['handle'] ?? '', $a_deps, true ) ) {
+								return 1;
+							}
+							if ( in_array( $a['handle'] ?? '', $b_deps, true ) ) {
+								return -1;
+							}
+							return 0;
+						});
+						
+						foreach ( $cdn_scripts as $cdn_script ) {
+							if ( ! is_array( $cdn_script ) || ! isset( $cdn_script['url'] ) || ! isset( $cdn_script['handle'] ) ) {
+								continue;
+							}
+							$cdn_handle = sanitize_key( $cdn_script['handle'] );
+							$cdn_url = esc_url_raw( $cdn_script['url'] );
+							$cdn_deps = isset( $cdn_script['deps'] ) && is_array( $cdn_script['deps'] ) ? $cdn_script['deps'] : array();
+							$cdn_version = isset( $cdn_script['version'] ) ? $cdn_script['version'] : null;
+							
+							if ( $cdn_handle !== '' && $cdn_url !== '' ) {
+								// CDN scripts load in footer (false) to ensure dependencies are ready
+								wp_enqueue_script( $cdn_handle, $cdn_url, $cdn_deps, $cdn_version, false );
+							}
+						}
+					}
+
 					$js = get_post_meta( $post_id, self::META_ASSET_JS, true );
 					if ( is_array( $js ) ) {
 						foreach ( $js as $i => $item ) {
@@ -168,7 +218,15 @@ final class Importer {
 							$enqueued_js_paths[] = $src;
 				$handle = 'vibecode-deploy-js-' . md5( $project_slug . '|' . $fingerprint . '|' . $src . '|' . (string) $i );
 				$version = defined( 'VIBECODE_DEPLOY_PLUGIN_VERSION' ) ? VIBECODE_DEPLOY_PLUGIN_VERSION . '-' . $fingerprint : $fingerprint;
-				wp_enqueue_script( $handle, $base_url . ltrim( $src, '/' ), array(), $version, true );
+				
+				// Check if this script depends on any CDN scripts
+				$script_deps = array();
+				if ( strpos( $src, 'map.js' ) !== false ) {
+					// map.js depends on Leaflet.js
+					$script_deps[] = 'leaflet-js';
+				}
+				
+				wp_enqueue_script( $handle, $base_url . ltrim( $src, '/' ), $script_deps, $version, true );
 
 							$script_attr_map[ $handle ] = array(
 								'defer' => ! empty( $item['defer'] ),
@@ -405,8 +463,29 @@ final class Importer {
 	 * @param string $build_root Optional build root path for image uploads during deployment.
 	 * @return string Gutenberg block markup.
 	 */
+	/**
+	 * Check if parent node is a list (ul/ol) or inside a list.
+	 * 
+	 * @param \DOMNode $parent Parent node to check.
+	 * @return bool True if parent is a list or inside a list.
+	 */
+	private static function is_list_context( \DOMNode $parent ): bool {
+		if ( $parent instanceof \DOMElement ) {
+			$tag = strtolower( $parent->tagName );
+			if ( $tag === 'ul' || $tag === 'ol' ) {
+				return true;
+			}
+			// Check if parent is inside a list
+			return self::is_inside_list_ancestor( $parent );
+		}
+		return false;
+	}
+
 	private static function convert_dom_children( \DOMNode $parent, string $build_root = '' ): string {
 		$blocks = '';
+		
+		// Check if we're in a list context - if so, preserve HTML instead of converting to blocks
+		$in_list_context = self::is_list_context( $parent );
 
 		foreach ( $parent->childNodes as $child ) {
 			if ( $child instanceof \DOMComment ) {
@@ -467,6 +546,29 @@ final class Importer {
 				continue;
 			}
 
+			// If in list context, preserve HTML for non-list elements to prevent block groups inside list items
+			if ( $in_list_context ) {
+				$child_tag = strtolower( $child->tagName );
+				// List items (li) are handled by convert_element() which checks is_inside_list
+				// Other elements inside lists should be preserved as HTML
+				if ( $child_tag !== 'ul' && $child_tag !== 'ol' && $child_tag !== 'li' ) {
+					// Preserve as HTML instead of converting to blocks
+					$inner_html = '';
+					foreach ( $child->childNodes as $grandchild ) {
+						$inner_html .= $child->ownerDocument->saveHTML( $grandchild );
+					}
+					$attrs_html = '';
+					$child_attrs = self::pick_attributes( $child );
+					foreach ( $child_attrs as $key => $value ) {
+						if ( is_string( $value ) && $value !== '' ) {
+							$attrs_html .= ' ' . esc_attr( $key ) . '="' . esc_attr( $value ) . '"';
+						}
+					}
+					$blocks .= '<' . $child_tag . $attrs_html . '>' . $inner_html . '</' . $child_tag . '>';
+					continue;
+				}
+			}
+
 			$blocks .= self::convert_element( $child, $build_root );
 		}
 
@@ -501,19 +603,32 @@ final class Importer {
 	 * @param string $build_root Optional build root path for image uploads during deployment.
 	 * @return string Gutenberg block markup.
 	 */
+	/**
+	 * Check if an element is inside a list (ul/ol) by traversing ancestor chain.
+	 * 
+	 * @param \DOMElement $el Element to check.
+	 * @return bool True if element is inside a list.
+	 */
+	private static function is_inside_list_ancestor( \DOMElement $el ): bool {
+		$current = $el->parentNode;
+		while ( $current instanceof \DOMElement ) {
+			$tag = strtolower( $current->tagName );
+			if ( $tag === 'ul' || $tag === 'ol' ) {
+				return true;
+			}
+			$current = $current->parentNode;
+		}
+		return false;
+	}
+
 	private static function convert_element( \DOMElement $el, string $build_root = '' ): string {
 		$tag = strtolower( $el->tagName );
 		$attrs = self::pick_attributes( $el );
 		$attrs_for_json = empty( $attrs ) ? new \stdClass() : $attrs;
 		
-		// Check if this element is inside a list (ul/ol)
-		// If so, list items should remain as raw HTML, not blocks
-		$parent = $el->parentNode;
-		$is_inside_list = false;
-		if ( $parent instanceof \DOMElement ) {
-			$parent_tag = strtolower( $parent->tagName );
-			$is_inside_list = ( $parent_tag === 'ul' || $parent_tag === 'ol' );
-		}
+		// Check if this element is inside a list (ul/ol) by traversing ancestor chain
+		// If so, list items and their content should remain as raw HTML, not blocks
+		$is_inside_list = self::is_inside_list_ancestor( $el );
 
 		// Special handling for void elements (br, hr, input, etc.)
 		// Note: 'img' is handled separately as a semantic block (wp:image)

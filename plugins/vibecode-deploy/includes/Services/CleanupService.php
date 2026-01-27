@@ -91,6 +91,8 @@ final class CleanupService {
 			delete_post_meta( $post_id, Importer::META_FINGERPRINT );
 			delete_post_meta( $post_id, Importer::META_ASSET_CSS );
 			delete_post_meta( $post_id, Importer::META_ASSET_JS );
+			delete_post_meta( $post_id, Importer::META_ASSET_CDN_SCRIPTS );
+			delete_post_meta( $post_id, Importer::META_ASSET_CDN_CSS );
 			$count++;
 		}
 

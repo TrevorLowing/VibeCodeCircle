@@ -27,6 +27,8 @@ final class DeployService {
 			Importer::META_FINGERPRINT,
 			Importer::META_ASSET_CSS,
 			Importer::META_ASSET_JS,
+			Importer::META_ASSET_CDN_SCRIPTS,
+			Importer::META_ASSET_CDN_CSS,
 		);
 
 		$out = array();
@@ -1010,6 +1012,8 @@ final class DeployService {
 			}
 
 			$assets = AssetService::extract_head_assets( $dom, $project_slug );
+			$cdn_scripts = isset( $assets['cdn_scripts'] ) && is_array( $assets['cdn_scripts'] ) ? $assets['cdn_scripts'] : array();
+			$cdn_css = isset( $assets['cdn_css'] ) && is_array( $assets['cdn_css'] ) ? $assets['cdn_css'] : array();
 
 			$content = self::inner_html( $dom, $main );
 			

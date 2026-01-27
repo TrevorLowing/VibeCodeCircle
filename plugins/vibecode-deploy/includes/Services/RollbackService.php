@@ -66,6 +66,8 @@ final class RollbackService {
 			Importer::META_FINGERPRINT,
 			Importer::META_ASSET_CSS,
 			Importer::META_ASSET_JS,
+			Importer::META_ASSET_CDN_SCRIPTS,
+			Importer::META_ASSET_CDN_CSS,
 		);
 
 		foreach ( $keys as $key ) {
