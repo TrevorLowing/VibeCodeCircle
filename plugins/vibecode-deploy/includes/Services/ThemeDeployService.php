@@ -1988,35 +1988,38 @@ Version: 1.0.0
 		$parent_menu_function .= "}\n";
 		$parent_menu_function .= "add_action( 'admin_menu', '{$menu_function_name}_parent', 5 ); // Priority 5 to run early\n\n";
 		
-		// Function 2: Modify CPTs to nest under parent menu (runs on admin_menu, AFTER parent menu exists)
-		// CRITICAL: Must run on admin_menu hook AFTER parent menu is created (priority 10 > 5)
-		// The init hook runs BEFORE admin_menu, so filter approach doesn't work
+		// Function 2: Modify CPTs to nest under parent menu using register_post_type_args filter
+		// This filter runs during CPT registration, allowing us to set show_in_menu before registration completes
 		$menu_function_code .= $parent_menu_function;
 		$menu_function_code .= "function {$menu_function_name}() {\n";
 		$menu_function_code .= "\t\$project_slug = '" . esc_attr( $project_slug ) . "';\n";
 		$menu_function_code .= "\t\$parent_menu_slug = '" . esc_attr( $parent_menu_slug ) . "';\n\n";
-		$menu_function_code .= "\t// Modify CPTs to nest under parent menu\n";
-		$menu_function_code .= "\t// CRITICAL: This runs on admin_menu hook (priority 10) AFTER parent menu is created (priority 5)\n";
-		$menu_function_code .= "\t// Directly modify \$wp_post_types global array to set show_in_menu\n";
-		$menu_function_code .= "\tglobal \$wp_post_types;\n";
-		$menu_function_code .= "\tif ( ! isset( \$wp_post_types ) ) {\n";
-		$menu_function_code .= "\t\treturn;\n";
-		$menu_function_code .= "\t}\n\n";
+		$menu_function_code .= "\t// Modify CPT registrations to nest under parent menu\n";
+		$menu_function_code .= "\t// Use register_post_type_args filter to modify during registration\n";
 		$menu_function_code .= "\t\$cpt_slugs = array(";
 		foreach ( $cpt_slugs as $cpt_slug ) {
 			$menu_function_code .= "\n\t\t'" . esc_attr( $cpt_slug ) . "',";
 		}
 		$menu_function_code .= "\n\t);\n\n";
-		$menu_function_code .= "\tforeach ( \$cpt_slugs as \$cpt_slug ) {\n";
-		$menu_function_code .= "\t\tif ( isset( \$wp_post_types[ \$cpt_slug ] ) ) {\n";
+		$menu_function_code .= "\tadd_filter( 'register_post_type_args', function( \$args, \$post_type ) use ( \$cpt_slugs, \$parent_menu_slug ) {\n";
+		$menu_function_code .= "\t\tif ( in_array( \$post_type, \$cpt_slugs, true ) ) {\n";
 		$menu_function_code .= "\t\t\t// Nest CPT under parent menu\n";
-		$menu_function_code .= "\t\t\t\$wp_post_types[ \$cpt_slug ]->show_in_menu = \$parent_menu_slug;\n";
+		$menu_function_code .= "\t\t\t\$args['show_in_menu'] = \$parent_menu_slug;\n";
 		$menu_function_code .= "\t\t\t// Ensure show_ui is true for menu visibility and ACF compatibility\n";
-		$menu_function_code .= "\t\t\t\$wp_post_types[ \$cpt_slug ]->show_ui = true;\n";
+		$menu_function_code .= "\t\t\t\$args['show_ui'] = true;\n";
+		$menu_function_code .= "\t\t\t// Ensure publicly_queryable is true for ACF to detect CPT\n";
+		$menu_function_code .= "\t\t\tif ( ! isset( \$args['publicly_queryable'] ) ) {\n";
+		$menu_function_code .= "\t\t\t\t\$args['publicly_queryable'] = true;\n";
+		$menu_function_code .= "\t\t\t}\n";
+		$menu_function_code .= "\t\t\t// Ensure show_in_rest is true for ACF compatibility\n";
+		$menu_function_code .= "\t\t\tif ( ! isset( \$args['show_in_rest'] ) ) {\n";
+		$menu_function_code .= "\t\t\t\t\$args['show_in_rest'] = true;\n";
+		$menu_function_code .= "\t\t\t}\n";
 		$menu_function_code .= "\t\t}\n";
-		$menu_function_code .= "\t}\n";
+		$menu_function_code .= "\t\treturn \$args;\n";
+		$menu_function_code .= "\t}, 10, 2 );\n";
 		$menu_function_code .= "}\n";
-		$menu_function_code .= "add_action( 'admin_menu', '{$menu_function_name}', 10 ); // Priority 10 runs AFTER parent menu (priority 5)\n\n";
+		$menu_function_code .= "add_action( 'init', '{$menu_function_name}', 5 ); // Priority 5 to run BEFORE CPT registration (default is 10)\n\n";
 		
 		// Function 3: Add ACF filter to include non-public CPTs in Post Types settings
 		$acf_function_name = $project_slug . '_acf_include_cpts';
