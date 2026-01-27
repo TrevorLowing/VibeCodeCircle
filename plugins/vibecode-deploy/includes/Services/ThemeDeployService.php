@@ -404,8 +404,8 @@ final class ThemeDeployService {
 			);
 		}
 
-		// Merge CPTs
-		$theme_content = self::merge_cpt_registrations( $theme_content, $staging_cpts );
+		// Merge CPTs (remove show_in_menu from staging so filter can set it)
+		$theme_content = self::merge_cpt_registrations( $theme_content, $staging_cpts, $project_slug );
 		
 		// Validate after CPT merge
 		$syntax_check = self::validate_php_syntax( $theme_content );
@@ -932,9 +932,10 @@ final class ThemeDeployService {
 	 *
 	 * @param string $theme_content Current theme functions.php content.
 	 * @param array  $staging_cpts CPT registrations from staging (with 'init_block' and/or 'individual' keys).
+	 * @param string $project_slug Project slug for removing conflicting show_in_menu settings.
 	 * @return string Merged content.
 	 */
-	private static function merge_cpt_registrations( string $theme_content, array $staging_cpts ): string {
+	private static function merge_cpt_registrations( string $theme_content, array $staging_cpts, string $project_slug = '' ): string {
 		// Get project_slug for logging (plugin is agnostic - works with any project)
 		$project_slug = Settings::get_all()['project_slug'] ?? '';
 		
@@ -1076,9 +1077,20 @@ final class ThemeDeployService {
 				}
 			}
 			
+			// Remove show_in_menu from staging block so filter can set it
+			// This prevents conflicts where staging has show_in_menu => true but filter wants to set parent menu slug
+			$staging_block = $staging_cpts['init_block'];
+			if ( ! empty( $project_slug ) ) {
+				// Remove show_in_menu settings from CPT registrations in staging block
+				// Pattern: 'show_in_menu' => true, or "show_in_menu" => true,
+				$staging_block = preg_replace( "/['\"]show_in_menu['\"]\s*=>\s*(true|false|['\"][^'\"]+['\"])\s*,?\s*/i", '', $staging_block );
+				// Also remove menu_position as it conflicts with nested menu structure
+				$staging_block = preg_replace( "/['\"]menu_position['\"]\s*=>\s*\d+\s*,?\s*/i", '', $staging_block );
+			}
+			
 			// Add the new init block at the end
 			$before_add = strlen( $theme_content );
-			$theme_content = rtrim( $theme_content ) . "\n\n" . $staging_cpts['init_block'] . "\n";
+			$theme_content = rtrim( $theme_content ) . "\n\n" . $staging_block . "\n";
 			$after_add = strlen( $theme_content );
 			
 			Logger::info( 'CPT merge: Added new init block', array(
@@ -1813,13 +1825,15 @@ Version: 1.0.0
 		$parent_menu_function .= "}\n";
 		$parent_menu_function .= "add_action( 'admin_menu', '{$menu_function_name}_parent', 5 ); // Priority 5 to run early\n\n";
 		
-		// Function 2: Modify CPTs to nest under parent menu (runs on init, after CPT registration)
+		// Function 2: Modify CPTs to nest under parent menu (runs on init, BEFORE CPT registration)
+		// CRITICAL: Filter must be registered BEFORE CPTs are registered, so use priority 5 (before default 10)
 		$menu_function_code .= $parent_menu_function;
 		$menu_function_code .= "function {$menu_function_name}() {\n";
 		$menu_function_code .= "\t\$project_slug = '" . esc_attr( $project_slug ) . "';\n";
 		$menu_function_code .= "\t\$parent_menu_slug = '" . esc_attr( $parent_menu_slug ) . "';\n\n";
 		$menu_function_code .= "\t// Modify CPT registrations to nest under parent menu\n";
 		$menu_function_code .= "\t// Use register_post_type_args filter to modify during registration\n";
+		$menu_function_code .= "\t// CRITICAL: This filter must run BEFORE CPTs are registered (priority 5 < 10)\n";
 		$menu_function_code .= "\t\$cpt_slugs = array(";
 		foreach ( $cpt_slugs as $cpt_slug ) {
 			$menu_function_code .= "\n\t\t'" . esc_attr( $cpt_slug ) . "',";
@@ -1829,28 +1843,46 @@ Version: 1.0.0
 		$menu_function_code .= "\t\tif ( in_array( \$post_type, \$cpt_slugs, true ) ) {\n";
 		$menu_function_code .= "\t\t\t// Nest CPT under parent menu\n";
 		$menu_function_code .= "\t\t\t\$args['show_in_menu'] = \$parent_menu_slug;\n";
-		$menu_function_code .= "\t\t\t// Ensure show_ui is true for menu visibility\n";
+		$menu_function_code .= "\t\t\t// Ensure show_ui is true for menu visibility and ACF compatibility\n";
 		$menu_function_code .= "\t\t\t\$args['show_ui'] = true;\n";
+		$menu_function_code .= "\t\t\t// Ensure publicly_queryable is true for ACF to detect CPT\n";
+		$menu_function_code .= "\t\t\tif ( ! isset( \$args['publicly_queryable'] ) ) {\n";
+		$menu_function_code .= "\t\t\t\t\$args['publicly_queryable'] = true;\n";
+		$menu_function_code .= "\t\t\t}\n";
+		$menu_function_code .= "\t\t\t// Ensure show_in_rest is true for ACF compatibility\n";
+		$menu_function_code .= "\t\t\tif ( ! isset( \$args['show_in_rest'] ) ) {\n";
+		$menu_function_code .= "\t\t\t\t\$args['show_in_rest'] = true;\n";
+		$menu_function_code .= "\t\t\t}\n";
 		$menu_function_code .= "\t\t}\n";
 		$menu_function_code .= "\t\treturn \$args;\n";
 		$menu_function_code .= "\t}, 10, 2 );\n";
 		$menu_function_code .= "}\n";
-		$menu_function_code .= "add_action( 'init', '{$menu_function_name}', 20 ); // Priority 20 to run after CPT registration\n";
+		$menu_function_code .= "add_action( 'init', '{$menu_function_name}', 5 ); // Priority 5 to run BEFORE CPT registration (default is 10)\n";
 		
-		// Add menu function after CPT registration (before shortcodes)
-		// Find the last add_action('init', ...) for CPT registration
-		$insert_pos = strrpos( $theme_content, "add_action( 'init', '" );
+		// Add menu function BEFORE CPT registration (so filter runs before CPTs are registered)
+		// Find the first register_post_type or add_action('init', ...) for CPT registration
+		$insert_pos = strpos( $theme_content, "function " . $project_slug . "_register_post_types" );
+		if ( $insert_pos === false ) {
+			// Fallback: look for add_action('init', ...) for CPT registration
+			$insert_pos = strpos( $theme_content, "add_action( 'init', '" . $project_slug . "_register_post_types" );
+		}
+		if ( $insert_pos === false ) {
+			// Fallback: look for any register_post_type
+			$insert_pos = strpos( $theme_content, "register_post_type" );
+		}
 		if ( $insert_pos === false ) {
 			// Fallback: add at end before closing PHP tag or at very end
 			$theme_content = rtrim( $theme_content ) . $menu_function_code . "\n";
 		} else {
-			// Find end of line after add_action
-			$line_end = strpos( $theme_content, "\n", $insert_pos );
-			if ( $line_end === false ) {
-				$line_end = strlen( $theme_content );
+			// Find start of line before the CPT registration
+			$line_start = strrpos( substr( $theme_content, 0, $insert_pos ), "\n" );
+			if ( $line_start === false ) {
+				$line_start = 0;
+			} else {
+				$line_start++; // Include the newline
 			}
-			$before = substr( $theme_content, 0, $line_end + 1 );
-			$after = substr( $theme_content, $line_end + 1 );
+			$before = substr( $theme_content, 0, $line_start );
+			$after = substr( $theme_content, $line_start );
 			$theme_content = $before . $menu_function_code . $after;
 		}
 		
