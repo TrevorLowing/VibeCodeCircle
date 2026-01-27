@@ -143,38 +143,21 @@ final class ThemeDeployService {
 							if ( preg_match( $registration_function_pattern, $merged_content, $func_match ) ) {
 								$registration_function = $func_match[1];
 								
-								// CRITICAL: Force reload of functions.php to get latest CPT registration code
-								// WordPress may have already loaded the old version during theme setup
-								// We need to reload it to get the new registration function
-								// Use output buffering to prevent any output from breaking the page
-								ob_start();
+								// CRITICAL: Check if function exists before trying to call it
+								// WordPress loads functions.php automatically, so the function should already be available
+								// We do NOT re-include the file as that would cause "Cannot redeclare" fatal errors
 								
-								// Check if function already exists (from previous load)
-								$function_already_loaded = function_exists( $registration_function );
-								
-								// Use include (not include_once) to force re-execution
-								// This ensures the latest version of functions.php is loaded
-								// Note: PHP will re-execute the file, updating any function definitions
-								$include_result = @include $theme_file;
-								ob_end_clean();
-								
-								// Log if function was already loaded (indicates functions.php was loaded earlier)
-								if ( $function_already_loaded ) {
-									Logger::info( 'CPT registration function was already loaded, forcing reload', array(
-										'function_name' => $registration_function,
-										'file_included' => $include_result !== false,
-									), $project_slug ?: 'vibecode-deploy' );
-								}
-								
-								// If function exists, call it directly to register CPTs immediately
+								// Check if function already exists
 								if ( function_exists( $registration_function ) ) {
+									// Function exists - just call it directly
+									// No need to include the file again (WordPress already loaded it)
 									$registration_function();
 									Logger::info( 'Manually triggered CPT registration function', array(
 										'function_name' => $registration_function,
 										'cpt_count' => $cpt_count,
 									), $project_slug ?: 'vibecode-deploy' );
 									
-								// CRITICAL: Verify CPTs are registered and have data
+									// CRITICAL: Verify CPTs are registered and have data
 								// Check that CPTs are actually queryable and have proper settings
 								global $wp_post_types;
 								if ( isset( $wp_post_types ) && ! empty( $project_slug ) ) {
@@ -218,9 +201,12 @@ final class ThemeDeployService {
 									}
 								}
 								} else {
-									Logger::warning( 'CPT registration function not callable after including functions.php', array(
+									// Function doesn't exist - this shouldn't happen if functions.php was written correctly
+									// WordPress should have loaded it automatically
+									Logger::warning( 'CPT registration function not found - may need page refresh', array(
 										'function_name' => $registration_function,
-										'file_included' => $include_result !== false,
+										'theme_file' => $theme_file,
+										'file_exists' => file_exists( $theme_file ),
 									), $project_slug ?: 'vibecode-deploy' );
 								}
 							} else {
