@@ -3,21 +3,18 @@
 **Purpose:** Establish a systematic process for reviewing and ensuring compliance with official Etch child theme, WordPress best practices, and EtchWP plugin updates.
 
 **Last Updated:** 2026-01-26  
-**Review Frequency:** Quarterly or on trigger events
+**Review Frequency:** Monthly or on trigger events
 
 ---
 
 ## Review Schedule
 
-### Quarterly Reviews
+### Monthly Reviews
 
 **Schedule:**
-- Q1: January-March
-- Q2: April-June
-- Q3: July-September
-- Q4: October-December
+- First week of each month
 
-**Review Date:** First week of each quarter
+**Review Date:** First Monday of each month (or first business day)
 
 **Reviewer:** Development team lead or designated maintainer
 
@@ -63,11 +60,18 @@
 - [ ] Test block conversion accuracy
 - [ ] Check for new EtchWP requirements
 - [ ] Verify editability in EtchWP IDE
+- [ ] Test block editability (all blocks have etchData)
+- [ ] Verify post content preservation
+- [ ] Test template structure compliance
+- [ ] Verify block conversion accuracy (semantic blocks vs HTML blocks)
+- [ ] Test comprehensive compliance checking
 
 **Actions:**
 - Update plugin code if EtchWP requirements change
 - Test with latest EtchWP version
 - Document any compatibility issues
+- Run automated compliance checks
+- Fix any compliance failures
 
 ### 3. WordPress Best Practices
 
@@ -88,18 +92,41 @@
 
 **Check Items:**
 - [ ] Verify image URL conversion works correctly
-- [ ] Test plugin asset URLs in EtchWP IDE
-- [ ] Evaluate Media Library integration need
+- [ ] Test Media Library URLs in EtchWP IDE (default method)
+- [ ] Test plugin asset URLs in EtchWP IDE (fallback method)
+- [ ] Verify image blocks have absolute URLs
+- [ ] Verify image blocks have etchData metadata
+- [ ] Test image redeployment (duplicate detection, file updates)
 - [ ] Review performance implications
 - [ ] Check SEO best practices
 - [ ] Test with actual deployed pages
 
 **Actions:**
 - Fix any image handling issues
-- Consider Media Library integration if needed
+- Verify Media Library integration works correctly
+- Test fallback to plugin assets when Media Library fails
 - Update image handling documentation
 
-### 5. Child Theme Compliance
+### 5. Comprehensive EtchWP Compliance
+
+**Check Items:**
+- [ ] **Block Editability:** Verify all blocks have etchData metadata (95%+ target)
+- [ ] **Post Content Preservation:** Verify post_content populated when EtchWP active
+- [ ] **Template Structure:** Verify block templates (`.html` files) not PHP templates
+- [ ] **Image Handling:** Verify image blocks have absolute URLs and etchData
+- [ ] **Block Conversion:** Verify semantic blocks (not excessive HTML blocks)
+- [ ] **Child Theme Structure:** Verify matches official structure
+- [ ] Run automated compliance checks on deployed pages
+- [ ] Review compliance check results
+- [ ] Fix any compliance failures
+
+**Actions:**
+- Run comprehensive compliance checks
+- Fix any compliance issues
+- Update documentation
+- Review compliance scores
+
+### 6. Child Theme Compliance
 
 **Check Items:**
 - [ ] Verify child theme structure matches requirements
@@ -107,6 +134,8 @@
 - [ ] Review ACF JSON file handling
 - [ ] Verify template compatibility
 - [ ] Test with latest Etch parent theme
+- [ ] Verify child theme is actually a child theme (has Template header)
+- [ ] Check for required directories (acf-json, templates, etc.)
 
 **Actions:**
 - Update child theme structure if needed
@@ -278,13 +307,14 @@
 ### Current Status
 
 **Last Review:** 2026-01-26  
-**Next Review:** 2026-04-01 (Q2 2026)
+**Next Review:** 2026-02-03 (First Monday of February 2026)
 
 **Status Summary:**
 - ✅ Official Etch Child Theme: Compliant
 - ✅ EtchWP Plugin: Compatible
-- ✅ Image Handling: Working (plugin assets)
-- ✅ WordPress Best Practices: Partially compliant (plugin assets work, Media Library optional)
+- ✅ Image Handling: Working (Media Library default, plugin assets fallback)
+- ✅ WordPress Best Practices: Compliant (Media Library integration implemented)
+- ✅ Comprehensive Compliance: Implemented (automated checks available)
 
 ### Known Issues
 
@@ -292,8 +322,8 @@
 
 ### Future Enhancements
 
-1. ⏳ Media Library integration (optional feature)
-2. ⏳ Automated compliance checking
+1. ✅ Media Library integration (implemented as default)
+2. ✅ Automated compliance checking (implemented)
 3. ⏳ Repository monitoring automation
 
 ---
@@ -305,10 +335,11 @@
 **Role:** Development team lead or designated maintainer
 
 **Responsibilities:**
-- Schedule quarterly reviews
+- Schedule monthly reviews
 - Execute review checklist
 - Document findings
 - Coordinate fixes
+- Run automated compliance checks
 
 ### Development Team
 
@@ -335,7 +366,9 @@
 **Actions:**
 - Documented compliance status
 - Created review process
-- Established quarterly review schedule
+- Established monthly review schedule
+- Implemented Media Library integration (default)
+- Implemented comprehensive compliance checking
 
 ---
 

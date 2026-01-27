@@ -134,6 +134,14 @@ final class SettingsPage {
 			'vibecode_deploy',
 			'vibecode_deploy_main'
 		);
+
+		add_settings_field(
+			'vibecode_deploy_image_storage_method',
+			__( 'Image Storage Method', 'vibecode-deploy' ),
+			array( __CLASS__, 'field_image_storage_method' ),
+			'vibecode_deploy',
+			'vibecode_deploy_main'
+		);
 	}
 
 	public static function render(): void {
@@ -185,6 +193,7 @@ final class SettingsPage {
 		self::field_on_unknown_placeholder();
 		self::field_prefix_validation_mode();
 		self::field_prefix_validation_scope();
+		self::field_image_storage_method();
 		echo '</table>';
 		echo '</details>';
 		
@@ -268,6 +277,17 @@ final class SettingsPage {
 			echo '</p>';
 			echo '</div>';
 			
+			// Staging Directories option (always visible, works with any scope)
+			$staging_fingerprints = \VibeCode\Deploy\Services\BuildService::list_build_fingerprints( $project_slug );
+			$staging_count = count( $staging_fingerprints );
+			echo '<div style="margin-bottom: 1.5rem;">';
+			echo '<h4>' . esc_html__( 'Additional Options', 'vibecode-deploy' ) . '</h4>';
+			echo '<p>';
+			echo '<label><input type="checkbox" name="vibecode_deploy_nuclear_types[]" value="staging_directories" /> ' . esc_html__( 'Staging Directories', 'vibecode-deploy' ) . ' (' . esc_html( (string) $staging_count ) . ')</label>';
+			echo '<p class="description">' . esc_html__( 'Delete all staging directories for this project. This is a destructive operation and cannot be undone.', 'vibecode-deploy' ) . '</p>';
+			echo '</p>';
+			echo '</div>';
+			
 			// Type Selection (shown when "Choose by Type" selected)
 			echo '<div id="vibecode-deploy-nuclear-by-type" style="display: none; margin-bottom: 1.5rem;">';
 			echo '<h4>' . esc_html__( 'Select Types', 'vibecode-deploy' ) . '</h4>';
@@ -277,7 +297,20 @@ final class SettingsPage {
 			echo '<label><input type="checkbox" name="vibecode_deploy_nuclear_types[]" value="template_parts" /> ' . esc_html__( 'Template Parts', 'vibecode-deploy' ) . ' (' . count( $project_template_parts ) . ')</label><br />';
 			echo '<label><input type="checkbox" name="vibecode_deploy_nuclear_types[]" value="theme_files" /> ' . esc_html__( 'Theme Files (functions.php)', 'vibecode-deploy' ) . '</label><br />';
 			echo '<label><input type="checkbox" name="vibecode_deploy_nuclear_types[]" value="acf_json" /> ' . esc_html__( 'ACF JSON Files', 'vibecode-deploy' ) . '</label><br />';
-			echo '<label><input type="checkbox" name="vibecode_deploy_nuclear_types[]" value="assets" /> ' . esc_html__( 'CSS/JS Assets', 'vibecode-deploy' ) . '</label>';
+			echo '<label><input type="checkbox" name="vibecode_deploy_nuclear_types[]" value="assets" /> ' . esc_html__( 'CSS/JS Assets', 'vibecode-deploy' ) . '</label><br />';
+			
+			// Media Library Attachments option
+			$project_attachments = \VibeCode\Deploy\Services\MediaLibraryService::get_project_attachments( $project_slug );
+			$attachments_count = count( $project_attachments );
+			echo '<label><input type="checkbox" name="vibecode_deploy_nuclear_types[]" value="media_library_attachments" id="vibecode-deploy-nuclear-media-attachments" /> ' . esc_html__( 'Media Library Attachments', 'vibecode-deploy' ) . ' (' . esc_html( (string) $attachments_count ) . ')</label>';
+			
+			// Delete mode selection (shown when Media Library Attachments is checked)
+			echo '<div id="vibecode-deploy-nuclear-media-mode" style="display: none; margin-left: 2rem; margin-top: 0.5rem;">';
+			echo '<p class="description">' . esc_html__( 'Delete mode:', 'vibecode-deploy' ) . '</p>';
+			echo '<label><input type="radio" name="vibecode_deploy_media_delete_mode" value="orphaned" checked /> ' . esc_html__( 'Orphaned only (safer)', 'vibecode-deploy' ) . '</label><br />';
+			echo '<label><input type="radio" name="vibecode_deploy_media_delete_mode" value="all" /> ' . esc_html__( 'All project attachments', 'vibecode-deploy' ) . '</label>';
+			echo '</div>';
+			
 			echo '</p>';
 			echo '</div>';
 			
@@ -354,6 +387,8 @@ final class SettingsPage {
 				var scopeRadios = form.querySelectorAll('input[name="vibecode_deploy_nuclear_scope"]');
 				var byTypeDiv = document.getElementById('vibecode-deploy-nuclear-by-type');
 				var byPageDiv = document.getElementById('vibecode-deploy-nuclear-by-page');
+				var mediaModeDiv = document.getElementById('vibecode-deploy-nuclear-media-mode');
+				var mediaAttachmentsCheckbox = document.getElementById('vibecode-deploy-nuclear-media-attachments');
 				var summaryDiv = document.getElementById('vibecode-deploy-nuclear-summary');
 				var confirmInput = document.getElementById('vibecode-deploy-nuclear-confirm');
 				var submitBtn = document.getElementById('vibecode-deploy-nuclear-submit');
@@ -370,8 +405,14 @@ final class SettingsPage {
 					var action = form.querySelector('input[name="vibecode_deploy_nuclear_action"]:checked')?.value || 'delete';
 					var summary = [];
 					
+					// Check if staging directories is selected (works with any scope)
+					var stagingChecked = form.querySelector('input[name="vibecode_deploy_nuclear_types[]"][value="staging_directories"]')?.checked;
+					
 					if (scope === 'everything') {
 						summary.push('Everything will be deleted');
+						if (stagingChecked) {
+							summary.push('+ Staging Directories');
+						}
 					} else if (scope === 'by_type') {
 						var types = Array.from(form.querySelectorAll('input[name="vibecode_deploy_nuclear_types[]"]:checked')).map(cb => cb.value);
 						if (types.length > 0) {
@@ -382,6 +423,9 @@ final class SettingsPage {
 					} else if (scope === 'by_page') {
 						var pages = Array.from(form.querySelectorAll('input[name="vibecode_deploy_nuclear_pages[]"]:checked')).map(cb => cb.value);
 						summary.push('Pages: ' + pages.length + ' selected');
+						if (stagingChecked) {
+							summary.push('+ Staging Directories');
+						}
 					}
 					
 					summary.push('Action: ' + (action === 'rollback' ? 'Delete and Restore' : 'Delete Only'));
@@ -424,6 +468,15 @@ final class SettingsPage {
 						validateForm();
 					});
 				});
+				
+				// Show/hide Media Library delete mode when checkbox is checked
+				if (mediaAttachmentsCheckbox && mediaModeDiv) {
+					mediaAttachmentsCheckbox.addEventListener('change', function() {
+						mediaModeDiv.style.display = this.checked ? 'block' : 'none';
+						updateSummary();
+						validateForm();
+					});
+				}
 				
 				confirmInput.addEventListener('input', validateForm);
 				
@@ -588,6 +641,12 @@ final class SettingsPage {
 			$selected_pages = array_filter( $selected_pages );
 		}
 
+		// Get Media Library delete mode (only used if media_library_attachments is selected)
+		$media_delete_mode = isset( $_POST['vibecode_deploy_media_delete_mode'] ) ? sanitize_key( (string) $_POST['vibecode_deploy_media_delete_mode'] ) : 'orphaned';
+		if ( $media_delete_mode !== 'all' && $media_delete_mode !== 'orphaned' ) {
+			$media_delete_mode = 'orphaned'; // Default to safer option
+		}
+
 		// Validate scope and selections
 		if ( $scope === 'by_type' && empty( $selected_types ) ) {
 			self::redirect_result( __( 'Nuclear operation', 'vibecode-deploy' ), false );
@@ -600,13 +659,13 @@ final class SettingsPage {
 
 		// Execute nuclear operation
 		// Nuclear operation = clean slate (delete everything, no restore)
-		$results = CleanupService::nuclear_operation( $project_slug, $scope, $selected_types, $selected_pages, $action );
+		$results = CleanupService::nuclear_operation( $project_slug, $scope, $selected_types, $selected_pages, $action, $media_delete_mode );
 		
 		// Note: Nuclear operation with 'delete' action provides a clean slate - it deletes everything
 		// Rollback is a separate operation that should be run independently if you want to restore
 		// We don't combine delete + rollback because nuclear should be a true clean slate
 
-		$total_deleted = (int) ( $results['deleted_pages'] ?? 0 ) + (int) ( $results['deleted_templates'] ?? 0 ) + (int) ( $results['deleted_template_parts'] ?? 0 );
+		$total_deleted = (int) ( $results['deleted_pages'] ?? 0 ) + (int) ( $results['deleted_templates'] ?? 0 ) + (int) ( $results['deleted_template_parts'] ?? 0 ) + (int) ( $results['deleted_attachments'] ?? 0 ) + (int) ( $results['deleted_invalid_attachments'] ?? 0 ) + (int) ( $results['deleted_staging_directories'] ?? 0 );
 		$total_restored = (int) ( $results['restored_pages'] ?? 0 ) + (int) ( $results['restored_templates'] ?? 0 ) + (int) ( $results['restored_template_parts'] ?? 0 );
 		
 		// Separate actual errors from warnings
@@ -639,11 +698,32 @@ final class SettingsPage {
 			), $project_slug );
 		}
 		
-		$message = sprintf(
-			__( 'Deleted: %d items. Restored: %d items.', 'vibecode-deploy' ),
-			$total_deleted,
-			$total_restored
-		);
+		// Build detailed message with breakdown
+		$deleted_parts = array();
+		if ( ! empty( $results['deleted_pages'] ) ) {
+			$deleted_parts[] = sprintf( __( '%d pages', 'vibecode-deploy' ), (int) $results['deleted_pages'] );
+		}
+		if ( ! empty( $results['deleted_templates'] ) ) {
+			$deleted_parts[] = sprintf( __( '%d templates', 'vibecode-deploy' ), (int) $results['deleted_templates'] );
+		}
+		if ( ! empty( $results['deleted_template_parts'] ) ) {
+			$deleted_parts[] = sprintf( __( '%d template parts', 'vibecode-deploy' ), (int) $results['deleted_template_parts'] );
+		}
+		if ( ! empty( $results['deleted_attachments'] ) ) {
+			$deleted_parts[] = sprintf( __( '%d image attachments', 'vibecode-deploy' ), (int) $results['deleted_attachments'] );
+		}
+		if ( ! empty( $results['deleted_invalid_attachments'] ) ) {
+			$deleted_parts[] = sprintf( __( '%d invalid attachments', 'vibecode-deploy' ), (int) $results['deleted_invalid_attachments'] );
+		}
+		if ( ! empty( $results['deleted_staging_directories'] ) ) {
+			$deleted_parts[] = sprintf( __( '%d staging directories', 'vibecode-deploy' ), (int) $results['deleted_staging_directories'] );
+		}
+		
+		if ( ! empty( $deleted_parts ) ) {
+			$message = sprintf( __( 'Deleted: %s (%d total items).', 'vibecode-deploy' ), implode( ', ', $deleted_parts ), $total_deleted );
+		} else {
+			$message = sprintf( __( 'Deleted: %d items. Restored: %d items.', 'vibecode-deploy' ), $total_deleted, $total_restored );
+		}
 		
 		self::redirect_result( __( 'Nuclear operation', 'vibecode-deploy' ), empty( $results['errors'] ), $total_deleted );
 	}
@@ -828,6 +908,24 @@ final class SettingsPage {
 		echo '<label><input type="radio" name="' . $name . '[' . $field . ']" value="cpts"' . checked( $current, 'cpts', false ) . ' /> ' . esc_html__( 'CPTs only', 'vibecode-deploy' ) . '</label>';
 		echo '</fieldset>';
 		echo '<p class="description">' . esc_html__( 'Which items to validate for project prefix compliance. "All" validates both shortcodes and custom post types.', 'vibecode-deploy' ) . '</p>';
+		echo '</td>';
+		echo '</tr>';
+	}
+
+	public static function field_image_storage_method(): void {
+		$opts = Settings::get_all();
+		$name = esc_attr( Settings::OPTION_NAME );
+		$current = isset( $opts['image_storage_method'] ) && is_string( $opts['image_storage_method'] ) ? (string) $opts['image_storage_method'] : 'media_library';
+		$current = ( $current === 'plugin_assets' ) ? 'plugin_assets' : 'media_library';
+
+		echo '<tr>';
+		echo '<th scope="row"><label for="' . $name . '_image_storage_method">' . esc_html__( 'Image Storage Method', 'vibecode-deploy' ) . '</label></th>';
+		echo '<td>';
+		echo '<fieldset>';
+		echo '<label><input type="radio" name="' . $name . '[image_storage_method]" value="media_library" ' . checked( $current, 'media_library', false ) . ' /> ' . esc_html__( 'WordPress Media Library (Recommended)', 'vibecode-deploy' ) . '</label><br />';
+		echo '<label><input type="radio" name="' . $name . '[image_storage_method]" value="plugin_assets" ' . checked( $current, 'plugin_assets', false ) . ' /> ' . esc_html__( 'Plugin Assets (Fallback)', 'vibecode-deploy' ) . '</label>';
+		echo '</fieldset>';
+		echo '<p class="description">' . esc_html__( 'How to handle images during deployment. Media Library (recommended) provides WordPress optimization features. Plugin Assets (fallback) is simpler but lacks optimization.', 'vibecode-deploy' ) . '</p>';
 		echo '</td>';
 		echo '</tr>';
 	}

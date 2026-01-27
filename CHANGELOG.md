@@ -16,6 +16,11 @@ All notable changes to Vibe Code Deploy will be documented in this file.
 - **Image URL Conversion (v0.1.63+)**: Enhanced image handling with automatic URL conversion during block conversion, ensuring image blocks always have absolute plugin URLs for proper EtchWP IDE compatibility
 - **Comprehensive HTML Test Page (v0.1.60+)**: Generate test pages with full HTML4/HTML5 element coverage for testing block conversion accuracy
 - **Audit Report Generation (v0.1.61+)**: Generate compliance audit reports analyzing block conversion accuracy, etchData coverage, and EtchWP editability
+- **Media Library Attachment Cleanup (v0.1.64+)**: Automatic tracking and cleanup of Media Library attachments during rollback and nuclear operations
+  - Attachment tracking in deployment manifests (`created_attachments`, `updated_attachments`)
+  - Orphaned attachment detection (attachments not referenced in post content)
+  - Automatic cleanup of orphaned attachments during rollback
+  - Optional Media Library attachment deletion in nuclear operations with mode selection (all vs orphaned only)
 
 ### Fixed
 - Asset 404 errors by checking both root and /assets subfolder

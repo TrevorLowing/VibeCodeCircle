@@ -486,12 +486,127 @@ final class ImportPage {
 					'selected_template_parts' => count( $selected_template_parts ),
 					'selected_theme_files' => count( $selected_theme_files ),
 				), (string) $settings['project_slug'] );
-				$import_result = Importer::run_import( (string) $settings['project_slug'], $selected_fingerprint, $build_root, $set_front_page, $force_claim_unowned, $deploy_template_parts, $generate_404_template, $force_claim_templates, $validate_cpt_shortcodes, $selected_pages, $selected_css, $selected_js, $selected_templates, $selected_template_parts, $selected_theme_files );
-				if ( is_array( $import_result ) && (int) ( $import_result['errors'] ?? 0 ) === 0 ) {
-					BuildService::set_active_fingerprint( (string) $settings['project_slug'], $selected_fingerprint );
+				
+				// Register shutdown function to catch fatal errors
+				$fatal_error_data = array(
+					'caught' => false,
+					'message' => '',
+				);
+				$project_slug_for_logging = (string) $settings['project_slug'];
+				register_shutdown_function( function() use ( &$fatal_error_data, $project_slug_for_logging ) {
+					$last_error = error_get_last();
+					if ( $last_error !== null && in_array( $last_error['type'], array( E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR, E_PARSE, E_RECOVERABLE_ERROR ), true ) ) {
+						$fatal_error_data['caught'] = true;
+						$fatal_error_data['message'] = sprintf(
+							'Fatal error: %s in %s on line %d',
+							$last_error['message'],
+							$last_error['file'],
+							$last_error['line']
+						);
+						
+						// Log to WordPress debug.log
+						if ( defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) {
+							error_log( 'VibeCode Deploy: ' . $fatal_error_data['message'] );
+						}
+						
+						// Log to Logger
+						Logger::error( 'Fatal error during deployment.', array(
+							'error_message' => $last_error['message'],
+							'error_file' => $last_error['file'],
+							'error_line' => $last_error['line'],
+							'error_type' => $last_error['type'],
+						), $project_slug_for_logging );
+					}
+				} );
+				
+				// Start output buffering to catch any unexpected output
+				ob_start();
+				
+				try {
+					$import_result = Importer::run_import( (string) $settings['project_slug'], $selected_fingerprint, $build_root, $set_front_page, $force_claim_unowned, $deploy_template_parts, $generate_404_template, $force_claim_templates, $validate_cpt_shortcodes, $selected_pages, $selected_css, $selected_js, $selected_templates, $selected_template_parts, $selected_theme_files );
+					
+					// Get any buffered output (should be empty, but log if not)
+					$buffered_output = ob_get_clean();
+					if ( $buffered_output !== '' && $buffered_output !== false ) {
+						Logger::warning( 'Unexpected output during deployment.', array(
+							'output_length' => strlen( $buffered_output ),
+							'output_preview' => substr( $buffered_output, 0, 200 ),
+						), (string) $settings['project_slug'] );
+					}
+					
+					// Check for fatal errors
+					if ( $fatal_error_data['caught'] ) {
+						$error = 'Deployment failed with a fatal error. Please check the error logs for details.';
+						if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+							$error .= ' Error: ' . esc_html( $fatal_error_data['message'] );
+						}
+						Logger::error( 'Deployment failed due to fatal error.', array(
+							'fatal_error' => $fatal_error_data['message'],
+						), (string) $settings['project_slug'] );
+					} elseif ( is_array( $import_result ) && (int) ( $import_result['errors'] ?? 0 ) === 0 ) {
+						BuildService::set_active_fingerprint( (string) $settings['project_slug'], $selected_fingerprint );
+						$notice = __( 'Deploy complete.', 'vibecode-deploy' );
+						Logger::info( 'Import complete.', array( 'project_slug' => (string) $settings['project_slug'], 'fingerprint' => $selected_fingerprint, 'result' => $import_result ), (string) $settings['project_slug'] );
+					} else {
+						$error = 'Deployment completed with errors. Please check the logs for details.';
+						if ( is_array( $import_result ) && isset( $import_result['errors'] ) ) {
+							$error .= ' Error count: ' . (int) $import_result['errors'];
+						}
+						Logger::error( 'Deployment completed with errors.', array(
+							'import_result' => $import_result,
+						), (string) $settings['project_slug'] );
+					}
+				} catch ( \Exception $e ) {
+					// Clean output buffer
+					ob_end_clean();
+					
+					$error_message = $e->getMessage();
+					$error_trace = $e->getTraceAsString();
+					
+					// Log to WordPress debug.log
+					if ( defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) {
+						error_log( 'VibeCode Deploy Exception: ' . $error_message );
+						error_log( 'VibeCode Deploy Trace: ' . $error_trace );
+					}
+					
+					// Log to Logger
+					Logger::error( 'Exception during deployment.', array(
+						'exception_message' => $error_message,
+						'exception_trace' => $error_trace,
+						'exception_file' => $e->getFile(),
+						'exception_line' => $e->getLine(),
+					), (string) $settings['project_slug'] );
+					
+					$error = 'Deployment failed with an exception. Please check the error logs for details.';
+					if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+						$error .= ' Error: ' . esc_html( $error_message );
+					}
+				} catch ( \Error $e ) {
+					// Clean output buffer
+					ob_end_clean();
+					
+					$error_message = $e->getMessage();
+					$error_trace = $e->getTraceAsString();
+					
+					// Log to WordPress debug.log
+					if ( defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) {
+						error_log( 'VibeCode Deploy Error: ' . $error_message );
+						error_log( 'VibeCode Deploy Trace: ' . $error_trace );
+					}
+					
+					// Log to Logger
+					Logger::error( 'PHP Error during deployment.', array(
+						'error_message' => $error_message,
+						'error_trace' => $error_trace,
+						'error_file' => $e->getFile(),
+						'error_line' => $e->getLine(),
+					), (string) $settings['project_slug'] );
+					
+					$error = 'Deployment failed with a PHP error. Please check the error logs for details.';
+					if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+						$error .= ' Error: ' . esc_html( $error_message );
+					}
 				}
-				$notice = __( 'Deploy complete.', 'vibecode-deploy' );
-				Logger::info( 'Import complete.', array( 'project_slug' => (string) $settings['project_slug'], 'fingerprint' => $selected_fingerprint, 'result' => $import_result ), (string) $settings['project_slug'] );
 			}
 		}
 

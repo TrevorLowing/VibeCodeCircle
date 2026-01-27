@@ -733,52 +733,148 @@ vibecode-deploy-staging/
 - `VibeCodeCircle/plugins/vibecode-deploy/includes/Services/AssetService.php::rewrite_asset_urls()`
 - Pattern: `/(href|src)="(css|js|resources)\/([^"]+)"/`
 
-### Image Block URL Conversion (v0.1.63+)
+### Image Block URL Conversion and Media Library Integration (v0.1.64+)
 
-**Enhanced Image Handling:** The plugin now ensures image URLs are properly converted during block conversion, even if URL rewriting didn't catch them.
+**Enhanced Image Handling:** The plugin now supports WordPress Media Library as the default image storage method, with plugin assets as an optional fallback.
 
-**How It Works:**
+**How It Works (Media Library Mode - Default):**
+1. **Pre-Processing:** During deployment, images are collected from HTML
+2. **Upload to Media Library:** Images are uploaded to WordPress Media Library (or existing attachments reused)
+3. **Block Conversion:** Image handler uses Media Library attachment URLs in image blocks
+4. **Result:** Image blocks have Media Library URLs with attachment IDs stored in block attributes
+
+**How It Works (Plugin Assets Mode - Fallback):**
 1. **URL Rewriting (First):** `rewrite_asset_urls()` converts `resources/` paths to plugin URLs in HTML
 2. **Block Conversion (Second):** Image handler converts relative paths to full plugin URLs during block creation
-3. **Result:** Image blocks always have absolute URLs in both the `url` attribute and HTML `<img>` tag
+3. **Result:** Image blocks always have absolute plugin asset URLs in both the `url` attribute and HTML `<img>` tag
+
+**Redeployment Behavior:**
+- **Smart Duplicate Detection:** Checks existing attachments by source path hash
+- **File Change Detection:** Compares file hash to detect changes
+- **Efficient Updates:** Only uploads new images or updates changed files
+- **Stable URLs:** Attachment IDs preserved (URLs don't break on redeployment)
 
 **Code Reference:**
-- `VibeCodeCircle/plugins/vibecode-deploy/includes/Services/AssetService.php::convert_asset_path_to_url()` - Helper method for URL conversion
-- `VibeCodeCircle/plugins/vibecode-deploy/includes/Importer.php` - Image block conversion (line ~697-736)
+- `VibeCodeCircle/plugins/vibecode-deploy/includes/Services/MediaLibraryService.php` - Media Library upload and lookup
+- `VibeCodeCircle/plugins/vibecode-deploy/includes/Services/AssetService.php::convert_asset_path_to_url()` - Plugin asset URL conversion
+- `VibeCodeCircle/plugins/vibecode-deploy/includes/Importer.php` - Image block conversion (line ~697-744)
 
 **Benefits:**
-- ✅ Images work even if URL rewriting missed them
-- ✅ Image blocks have consistent absolute URLs
-- ✅ EtchWP IDE can properly display and edit images
-- ✅ Frontend rendering works correctly
+- ✅ WordPress best practices (Media Library default)
+- ✅ Automatic image optimization (srcset, lazy loading)
+- ✅ No duplicate uploads on redeployment
+- ✅ Efficient file updates (only changed files)
+- ✅ Stable URLs (attachment IDs preserved)
+- ✅ EtchWP IDE compatibility (both methods work)
+- ✅ Fallback option (plugin assets if Media Library fails)
 
 ### WordPress Best Practices and Media Library Integration
 
-**Current Approach: Plugin Asset URLs**
-- Images stored in plugin assets directory
+**Default Approach: WordPress Media Library (v0.1.64+)**
+- Images uploaded to WordPress Media Library during deployment (default)
+- URLs: `/wp-content/uploads/2026/01/image.jpg`
+- **Default method** - follows WordPress best practices
+- Provides automatic srcset generation, lazy loading, optimization
+- Better integration with WordPress ecosystem
+- Smart duplicate detection on redeployment (reuses existing attachments)
+- File change detection (updates attachments when files change)
+
+**Fallback Approach: Plugin Asset URLs**
+- Images stored in plugin assets directory (optional fallback)
 - URLs: `/wp-content/plugins/vibecode-deploy/assets/resources/images/...`
-- **Status:** Works correctly with EtchWP and Gutenberg
+- **Optional fallback** - selectable in plugin settings
+- **Use when:** Media Library upload fails or user preference
 - **Limitations:** Missing srcset, lazy loading, Media Library management
 
-**WordPress Best Practice: Media Library**
-- WordPress recommends Media Library for images
-- **Benefits:** Srcset support, lazy loading, optimization, centralized management
-- **Trade-off:** More complex deployment, slower process
+**Configuration:**
+- Plugin setting: `image_storage_method`
+- Default: `media_library` (recommended)
+- Fallback: `plugin_assets` (optional)
+- Configure in: **Vibe Code Deploy → Configuration → Image Storage Method**
+
+**Redeployment Behavior:**
+- **Media Library Mode:**
+  - Checks existing attachments by source path hash
+  - Reuses existing attachments if file unchanged (no duplicate uploads)
+  - Updates attachments if file changed (same attachment ID, new file)
+  - Uploads new images if not found
+- **Plugin Assets Mode:**
+  - Copies images to plugin folder (current behavior)
+  - No duplicate detection (files overwritten)
 
 **EtchWP Compatibility:**
-- ✅ EtchWP works with both plugin asset URLs and Media Library URLs
+- ✅ EtchWP works with both Media Library URLs and plugin asset URLs
 - ✅ No EtchWP-specific requirement for Media Library
 - ✅ `etchData` metadata enables editability (not URL source)
-
-**Future Enhancement:**
-- Media Library integration may be added as optional feature
-- Users can choose: plugin assets (simple) or Media Library (optimal)
-- See `reports/development/wordpress-media-library-evaluation-2026-01-26.md` for detailed analysis
+- ✅ Both methods provide absolute URLs required for EtchWP
 
 **Reference:**
 - `reports/development/etchwp-image-handling-analysis-2026-01-26.md` - EtchWP compatibility analysis
 - `reports/development/wordpress-media-library-evaluation-2026-01-26.md` - Media Library evaluation
-- `docs/COMPLIANCE_REVIEW_PROCESS.md` - Periodic review process
+- `docs/COMPLIANCE_REVIEW_PROCESS.md` - Monthly review process
+- Plugin code: `includes/Services/MediaLibraryService.php` - Media Library upload service
+
+### Media Library Attachment Cleanup (v0.1.64+)
+
+**Attachment Tracking:**
+- Media Library attachments created during deployment are tracked in the deployment manifest
+- Manifest includes `created_attachments` array with attachment IDs and metadata
+- Attachments are identified by project slug meta (`_vibecode_deploy_project_slug`)
+
+**Rollback Behavior:**
+- When rolling back a deployment, orphaned attachments are automatically deleted
+- **Orphaned Detection:** Attachments not referenced in any post content are considered orphaned
+- **Safety First:** Only truly orphaned attachments are deleted (conservative approach)
+- Attachments still referenced in other posts are preserved
+- Rollback results include `deleted_attachments` count
+
+**Nuclear Operation Behavior:**
+- Media Library attachments can be optionally deleted during nuclear operations
+- **Delete Mode Options:**
+  - **Orphaned Only (Default):** Deletes only attachments not referenced in any post content (safer)
+  - **All Project Attachments:** Deletes all attachments with project slug meta (complete cleanup)
+- **UI:** Checkbox option in nuclear operation UI with mode selection
+- **Safety:** Default mode is "orphaned only" to preserve user content
+
+**Orphaned Detection:**
+- Searches all post content for attachment URL or ID in block attributes
+- Checks for patterns: attachment URL, `"id":123`, `"id": 123`
+- Only considers posts with status != 'trash'
+- Returns true if attachment is not found in any post content
+
+**Manifest Structure:**
+```json
+{
+  "created_attachments": [
+    {
+      "attachment_id": 123,
+      "source_path": "resources/images/logo.png",
+      "filename": "logo.png"
+    }
+  ],
+  "updated_attachments": [
+    {
+      "attachment_id": 456,
+      "source_path": "resources/images/hero.jpg",
+      "filename": "hero.jpg",
+      "was_updated": true
+    }
+  ]
+}
+```
+
+**Best Practices:**
+- ✅ Use rollback for safe cleanup of orphaned attachments
+- ✅ Use nuclear operation "orphaned only" mode for safer cleanup
+- ✅ Use nuclear operation "all" mode only when you want complete project cleanup
+- ✅ Check deployment manifest to see which attachments were created/updated
+- ✅ Verify attachment references before using "all" mode in nuclear operation
+
+**Reference:**
+- Plugin code: `includes/Services/MediaLibraryService.php` - Attachment cleanup methods
+- Plugin code: `includes/Services/RollbackService.php` - Rollback attachment cleanup
+- Plugin code: `includes/Services/CleanupService.php` - Nuclear operation attachment cleanup
+- Plugin code: `includes/Services/DeployService.php` - Attachment tracking during deployment
 
 ---
 
@@ -1440,6 +1536,65 @@ add_filter( 'render_block', 'bgp_ensure_shortcode_execution', 5, 2 );
 
 ---
 
+## Plugin Agnosticism and Generic Verification
+
+### ✅ REQUIRED: Plugin is Fully Agnostic
+
+**Critical Principle:** The plugin is fully agnostic and works with any project's bespoke CPTs and shortcodes. It does NOT validate or check for specific CPT names.
+
+**How Plugin Extracts/Merges:**
+- Extracts CPT registrations by pattern matching: `register_post_type` calls
+- Extracts function definitions containing `register_post_type`
+- Extracts `add_action('init', 'function_name')` patterns
+- Merges based on function names and patterns, not specific CPT slugs
+- Verification checks for generic patterns, not specific names
+
+**What Projects Must Do (Predictable Coding):**
+- Use named functions for CPT registration (e.g., `{project}_register_post_types()`)
+- Use project prefix for CPT slugs (e.g., `{project}_product`, `{project}_advisory`)
+- Hook functions to `init` action: `add_action('init', 'function_name')`
+- Follow consistent structure so plugin can extract/merge correctly
+
+**What Plugin Does NOT Do:**
+- Does NOT check for specific CPT names (e.g., 'bgp_product', 'cfa_advisory')
+- Does NOT validate that specific CPTs exist
+- Does NOT assume any project's CPT structure
+- Verification is pattern-based, not name-based
+
+**Verification Output:**
+- Checks if `register_post_type` calls exist (generic)
+- Counts how many CPTs are registered (generic)
+- Checks if `add_action('init', ...)` patterns exist (generic)
+- Optionally lists CPTs with project prefix (if project_slug available)
+- Never validates specific CPT names
+
+**Why This Matters:**
+- Each project has unique CPTs (bgp_product, cfa_advisory, etc.)
+- Plugin must work generically with any project's structure
+- Projects must code predictably for reliable extraction/merging
+- Verification helps debug issues without assuming specific CPT names
+
+**Example:**
+```php
+// ✅ Good: Named function with project prefix - plugin can extract this
+function bgp_register_post_types() {
+    register_post_type( 'bgp_product', array( /* ... */ ) );
+    register_post_type( 'bgp_case_study', array( /* ... */ ) );
+}
+add_action( 'init', 'bgp_register_post_types' );
+
+// ✅ Good: Plugin extracts by pattern, not by specific name
+// Works for: bgp_product, cfa_advisory, any_project_cpt, etc.
+```
+
+**Plugin Code Reference:**
+- `VibeCodeCircle/plugins/vibecode-deploy/includes/Services/ThemeDeployService.php`
+- `extract_cpt_registrations()` - Pattern-based extraction
+- `merge_cpt_registrations()` - Generic merge logic
+- `deploy_theme_files()` - Generic verification
+
+---
+
 ## EtchWP Compatibility
 
 ### ✅ REQUIRED: EtchWP Content Storage
@@ -1491,6 +1646,72 @@ add_filter( 'render_block', 'bgp_ensure_shortcode_execution', 5, 2 );
 **Reference:**
 - **Compatibility Report:** `VibeCodeCircle/reference/etchwp/COMPATIBILITY_REPORT.md`
 - **Plugin Code:** `VibeCodeCircle/plugins/vibecode-deploy/includes/Services/DeployService.php` (lines 972-994, 1289-1332)
+
+### ✅ REQUIRED: Comprehensive EtchWP Compliance
+
+**Purpose:** Ensure all deployed pages meet EtchWP requirements for optimal editability and functionality.
+
+**Compliance Areas:**
+
+1. **Block Editability:**
+   - All blocks must have `etchData` metadata for EtchWP IDE editability
+   - Target: 95%+ of blocks have etchData
+   - Semantic blocks (wp:paragraph, wp:heading, wp:image) should have etchData
+   - HTML blocks (wp:html) should also have etchData when possible
+
+2. **Post Content Preservation:**
+   - `post_content` must be populated when EtchWP is active
+   - Templates use `wp:post-content` block which requires populated content
+   - Content should not be cleared for EtchWP sites
+
+3. **Template Structure:**
+   - Block templates (`.html` files) not PHP templates
+   - Template parts (header/footer) use block markup
+   - No `get_header()` or `get_footer()` calls in templates
+
+4. **Image Handling:**
+   - Image blocks must have absolute URLs (Media Library or plugin assets)
+   - Image blocks must have `etchData` metadata
+   - Images should be accessible and properly formatted
+
+5. **Block Conversion Accuracy:**
+   - Semantic elements convert to proper blocks (wp:paragraph, wp:heading, etc.)
+   - Lists use `wp:list` not nested `wp:list-item` blocks
+   - Inline elements stay inline (not converted to blocks)
+   - Minimal HTML blocks (prefer semantic blocks)
+
+6. **Child Theme Structure:**
+   - Child theme structure matches official Etch child theme
+   - `functions.php` smart merge compatibility
+   - ACF JSON file handling correct
+   - Required directories present
+
+**Automated Compliance Checking:**
+- Plugin includes `EtchWPComplianceService` for comprehensive checks
+- Compliance checks run automatically after deployment (when EtchWP active)
+- Manual compliance checks available in **Health Check** page
+- Results include pass/fail status and detailed issues
+
+**How to Run Compliance Checks:**
+1. **Automatic:** Runs after each deployment (logged, non-blocking)
+2. **Manual:** Go to **Vibe Code Deploy → Health Check → EtchWP Compliance Check**
+3. **Select Page:** Choose a deployed page from dropdown
+4. **View Results:** See compliance status for all areas
+
+**Compliance Scores:**
+- **100%:** All checks pass (excellent)
+- **70-99%:** Most checks pass (warning, minor issues)
+- **<70%:** Multiple failures (fail, needs attention)
+
+**Code Reference:**
+- `VibeCodeCircle/plugins/vibecode-deploy/includes/Services/EtchWPComplianceService.php` - Compliance checking service
+- `VibeCodeCircle/plugins/vibecode-deploy/includes/Admin/HealthCheckPage.php` - Compliance check UI
+- `VibeCodeCircle/plugins/vibecode-deploy/includes/Services/DeployService.php` - Automatic compliance checks after deployment
+
+**Review Process:**
+- Monthly compliance reviews (see `docs/COMPLIANCE_REVIEW_PROCESS.md`)
+- Automated checks help identify issues early
+- Compliance reports generated for documentation
 
 ---
 

@@ -44,8 +44,8 @@ Vibe Code Deploy is a WordPress plugin that converts static HTML websites into G
 - Support for local assets only (css/, js/, resources/)
 - Exclude external URLs and CDN resources
 - **WordPress CSS Reset System**: Automatically enqueues comprehensive WordPress reset styles to neutralize WordPress default styles and ensure visual parity with local HTML
-- **Image URL Conversion (v0.1.63+)**: Automatic conversion of relative image paths to full plugin URLs during block conversion, ensuring image blocks have absolute URLs for proper EtchWP IDE compatibility
-- **WordPress Media Library Integration (Future Enhancement)**: Optional feature to upload images to WordPress Media Library during deployment for better WordPress integration, srcset support, and optimization (see evaluation report for trade-offs)
+- **WordPress Media Library Integration (v0.1.64+, Default)**: Images are uploaded to WordPress Media Library during deployment by default, providing automatic srcset generation, lazy loading, optimization, and better WordPress integration. Includes smart duplicate detection on redeployment (reuses existing attachments) and file change detection (updates attachments when files change). Plugin assets available as optional fallback.
+- **Image URL Conversion**: Automatic conversion of relative image paths to full Media Library URLs (default) or plugin URLs (fallback) during block conversion, ensuring image blocks have absolute URLs for proper EtchWP IDE compatibility
 
 #### 2.1.4 Template Part Extraction
 - Automatically extract header from home.html
@@ -137,6 +137,20 @@ Vibe Code Deploy is a WordPress plugin that converts static HTML websites into G
 - Page slug mapping
 - Resource URL handling
 - 404 template generation
+
+#### 2.3.3 Comprehensive EtchWP Compliance Checking (v0.1.64+)
+- **Automated Compliance Checks**: Runs automatically after deployment when EtchWP is active
+- **Manual Compliance Checks**: Available in Health Check page for on-demand verification
+- **Compliance Areas Checked:**
+  - Block editability (etchData on all blocks) - Target: 95%+ compliance
+  - Post content preservation (post_content populated when EtchWP active)
+  - Template structure (block templates, not PHP templates)
+  - Image handling (absolute URLs, etchData metadata)
+  - Block conversion accuracy (semantic blocks vs HTML blocks)
+  - Child theme structure (matches official structure)
+- **Compliance Scoring**: Overall score (0-100%) with pass/warning/fail status
+- **Issue Reporting**: Detailed list of compliance issues with recommendations
+- **Non-Blocking**: Compliance failures logged but don't block deployment
 
 ## 3. Technical Requirements
 
@@ -248,6 +262,7 @@ staging-zip.zip
 ### 4.4 Settings Page
 - Project slug configuration
 - Class prefix settings
+- **Image Storage Method** (v0.1.64+): Choose between WordPress Media Library (default, recommended) or Plugin Assets (fallback)
 - Validation options
 - Default deployment preferences
 

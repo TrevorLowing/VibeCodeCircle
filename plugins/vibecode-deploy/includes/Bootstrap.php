@@ -26,6 +26,7 @@ final class Bootstrap {
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/BuildService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/ClassPrefixDetector.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/AssetService.php';
+		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/MediaLibraryService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/ShortcodePlaceholderService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/HtmlToEtchConverter.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/DeployService.php';
@@ -42,6 +43,7 @@ final class Bootstrap {
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/TestDataService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/HtmlTestPageService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/HtmlTestPageAuditService.php';
+		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/EtchWPComplianceService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Importer.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Cli.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Admin/SettingsPage.php';

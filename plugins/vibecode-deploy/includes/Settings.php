@@ -32,6 +32,7 @@ final class Settings {
 			'on_unknown_placeholder' => 'warn',
 			'prefix_validation_mode' => 'warn',
 			'prefix_validation_scope' => 'all',
+			'image_storage_method' => 'media_library',
 		);
 	}
 
@@ -118,6 +119,15 @@ final class Settings {
 				$out['prefix_validation_scope'] = $scope;
 			} else {
 				$out['prefix_validation_scope'] = 'all';
+			}
+		}
+
+		if ( isset( $input['image_storage_method'] ) ) {
+			$method = strtolower( trim( (string) $input['image_storage_method'] ) );
+			if ( $method === 'plugin_assets' ) {
+				$out['image_storage_method'] = 'plugin_assets';
+			} else {
+				$out['image_storage_method'] = 'media_library';
 			}
 		}
 

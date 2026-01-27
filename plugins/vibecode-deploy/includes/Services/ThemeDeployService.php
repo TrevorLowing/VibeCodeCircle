@@ -40,6 +40,9 @@ final class ThemeDeployService {
 	 * @return array Results with 'created', 'updated', 'errors', 'snapshots' keys.
 	 */
 	public static function deploy_theme_files( string $build_root, string $theme_slug, array $selected_theme_files = array() ): array {
+		// Get project_slug for logging (plugin is agnostic - works with any project)
+		$project_slug = Settings::get_all()['project_slug'] ?? '';
+		
 		$results = array(
 			'created' => array(),
 			'updated' => array(),
@@ -96,6 +99,149 @@ final class ThemeDeployService {
 				$theme_file
 			);
 			if ( $merge_result['success'] ) {
+				// Verify CPT code exists in merged file (generic verification - works for any project)
+				if ( file_exists( $theme_file ) ) {
+					$merged_content = file_get_contents( $theme_file );
+					if ( $merged_content !== false ) {
+						// Generic verification - works for any project's bespoke CPTs
+						// Count register_post_type calls (generic pattern)
+						$cpt_count = preg_match_all( '/register_post_type\s*\(/i', $merged_content );
+						
+						// Check for add_action('init', ...) patterns (generic)
+						$has_init_action = preg_match( '/add_action\s*\(\s*[\'"]init[\'"]\s*,/i', $merged_content ) === 1;
+						
+						// Extract found CPT slugs for debugging (if project_slug available, optionally filter by prefix)
+						$found_cpt_slugs = array();
+						if ( preg_match_all( '/register_post_type\s*\(\s*[\'"]([^\'"]+)[\'"]/i', $merged_content, $cpt_matches ) ) {
+							$found_cpt_slugs = array_unique( $cpt_matches[1] );
+							// Optionally filter by project prefix if project_slug is available
+							if ( ! empty( $project_slug ) ) {
+								$prefixed_cpts = array_filter( $found_cpt_slugs, function( $slug ) use ( $project_slug ) {
+									return strpos( $slug, $project_slug . '_' ) === 0;
+								} );
+								$found_cpt_slugs = array_values( $prefixed_cpts );
+							}
+						}
+						
+						$cpt_verification = array(
+							'file_exists' => true,
+							'contains_register_post_type' => strpos( $merged_content, 'register_post_type' ) !== false,
+							'register_post_type_count' => $cpt_count,
+							'contains_add_action_init' => $has_init_action,
+							'found_cpt_slugs' => $found_cpt_slugs,
+							'project_slug' => $project_slug,
+						);
+						Logger::info( 'CPT verification after merge', $cpt_verification, $project_slug ?: 'vibecode-deploy' );
+						
+						// CRITICAL: Manually trigger CPT registration immediately after writing functions.php
+						// WordPress has already loaded functions.php and fired 'init', so we need to manually
+						// include the file and call the registration functions to register CPTs immediately
+						if ( $cpt_count > 0 ) {
+							// Try to find and call the CPT registration function directly
+							// Pattern: function {project}_register_post_types() or similar
+							$registration_function_pattern = '/function\s+([a-z0-9_]+register_post_types?)\s*\(/i';
+							if ( preg_match( $registration_function_pattern, $merged_content, $func_match ) ) {
+								$registration_function = $func_match[1];
+								
+								// CRITICAL: Force reload of functions.php to get latest CPT registration code
+								// WordPress may have already loaded the old version during theme setup
+								// We need to reload it to get the new registration function
+								// Use output buffering to prevent any output from breaking the page
+								ob_start();
+								
+								// Check if function already exists (from previous load)
+								$function_already_loaded = function_exists( $registration_function );
+								
+								// Use include (not include_once) to force re-execution
+								// This ensures the latest version of functions.php is loaded
+								// Note: PHP will re-execute the file, updating any function definitions
+								$include_result = @include $theme_file;
+								ob_end_clean();
+								
+								// Log if function was already loaded (indicates functions.php was loaded earlier)
+								if ( $function_already_loaded ) {
+									Logger::info( 'CPT registration function was already loaded, forcing reload', array(
+										'function_name' => $registration_function,
+										'file_included' => $include_result !== false,
+									), $project_slug ?: 'vibecode-deploy' );
+								}
+								
+								// If function exists, call it directly to register CPTs immediately
+								if ( function_exists( $registration_function ) ) {
+									$registration_function();
+									Logger::info( 'Manually triggered CPT registration function', array(
+										'function_name' => $registration_function,
+										'cpt_count' => $cpt_count,
+									), $project_slug ?: 'vibecode-deploy' );
+									
+									// CRITICAL: Ensure all registered CPTs have explicit show_ui and show_in_menu
+									// This prevents CPTs from disappearing from admin menu
+									global $wp_post_types;
+									if ( isset( $wp_post_types ) && ! empty( $project_slug ) ) {
+										$prefixed_cpts = array();
+										foreach ( $wp_post_types as $post_type => $post_type_obj ) {
+											if ( strpos( $post_type, $project_slug . '_' ) === 0 ) {
+												// Ensure show_ui is explicitly set to true
+												if ( ! isset( $post_type_obj->show_ui ) || $post_type_obj->show_ui !== true ) {
+													$wp_post_types[ $post_type ]->show_ui = true;
+												}
+												// Ensure show_in_menu is explicitly set (true or parent menu slug)
+												if ( ! isset( $post_type_obj->show_in_menu ) ) {
+													$wp_post_types[ $post_type ]->show_in_menu = true;
+												}
+												$prefixed_cpts[ $post_type ] = $post_type_obj;
+											}
+										}
+										
+										if ( ! empty( $prefixed_cpts ) ) {
+											Logger::info( 'CPTs registered with explicit menu settings', array(
+												'cpt_count' => count( $prefixed_cpts ),
+												'cpt_slugs' => array_keys( $prefixed_cpts ),
+											), $project_slug ?: 'vibecode-deploy' );
+										}
+									}
+								} else {
+									Logger::warning( 'CPT registration function not callable after including functions.php', array(
+										'function_name' => $registration_function,
+										'file_included' => $include_result !== false,
+									), $project_slug ?: 'vibecode-deploy' );
+								}
+							} else {
+								// Fallback: Try to trigger init hooks manually for anonymous functions
+								// This is less reliable but may work for anonymous function registrations
+								Logger::info( 'No named CPT registration function found, CPTs will register on next page load', array(
+									'cpt_count' => $cpt_count,
+								), $project_slug ?: 'vibecode-deploy' );
+							}
+						}
+						
+						// Verify CPTs are actually registered in WordPress (generic check)
+						if ( function_exists( 'get_post_types' ) ) {
+							$registered_cpts = get_post_types( array( 'public' => true ), 'names' );
+							$all_registered_cpts = get_post_types( array(), 'names' );
+							
+							// Generic: Count how many CPTs with project prefix are registered (if project_slug available)
+							$prefixed_registered_count = 0;
+							if ( ! empty( $project_slug ) ) {
+								$prefixed_registered_count = count( array_filter( $all_registered_cpts, function( $slug ) use ( $project_slug ) {
+									return strpos( $slug, $project_slug . '_' ) === 0;
+								} ) );
+							}
+							
+							$cpt_registration_check = array(
+								'registered_cpt_count' => count( $registered_cpts ),
+								'all_registered_cpt_count' => count( $all_registered_cpts ),
+								'prefixed_cpt_count' => $prefixed_registered_count,
+								'project_slug' => $project_slug,
+								'all_registered_cpts' => array_values( $all_registered_cpts ),
+							);
+							Logger::info( 'CPT registration check in WordPress', $cpt_registration_check, $project_slug ?: 'vibecode-deploy' );
+						} else {
+							Logger::warning( 'get_post_types() not available during deployment - CPTs will be registered on next page load', array(), $project_slug ?: 'vibecode-deploy' );
+						}
+					}
+				}
+				
 				if ( $merge_result['created'] ) {
 					$results['created'][] = 'functions.php';
 				} else {
@@ -146,6 +292,16 @@ final class ThemeDeployService {
 		// Flush rewrite rules if functions.php was deployed (CPTs may have changed)
 		if ( $deploy_functions && ( ! empty( $results['created'] ) || ! empty( $results['updated'] ) ) ) {
 			flush_rewrite_rules( false ); // Soft flush (faster)
+			Logger::info( 'Flushed rewrite rules after functions.php deployment', array(
+				'created' => in_array( 'functions.php', $results['created'], true ),
+				'updated' => in_array( 'functions.php', $results['updated'], true ),
+			), $project_slug ?: 'vibecode-deploy' );
+			
+			// Force WordPress to reload functions.php by clearing opcode cache if available
+			if ( function_exists( 'opcache_reset' ) ) {
+				@opcache_reset();
+				Logger::info( 'Cleared opcode cache to force functions.php reload', array(), $project_slug ?: 'vibecode-deploy' );
+			}
 		}
 
 		return $results;
@@ -168,6 +324,9 @@ final class ThemeDeployService {
 	 * @return array Result with 'success', 'created', 'error' keys.
 	 */
 	private static function smart_merge_functions_php( string $staging_file, string $theme_file ): array {
+		// Get project_slug for logging (plugin is agnostic - works with any project)
+		$project_slug = Settings::get_all()['project_slug'] ?? '';
+		
 		$staging_content = file_get_contents( $staging_file );
 		if ( $staging_content === false ) {
 			return array( 'success' => false, 'error' => 'Unable to read staging functions.php' );
@@ -179,7 +338,7 @@ final class ThemeDeployService {
 			Logger::error( 'Staging functions.php has syntax errors. Cannot merge.', array(
 				'error' => $staging_syntax['error'],
 				'staging_file' => $staging_file,
-			), 'cfa' );
+			), $project_slug ?: 'vibecode-deploy' );
 			return array( 'success' => false, 'error' => 'Staging functions.php has syntax errors: ' . $staging_syntax['error'] );
 		}
 
@@ -197,7 +356,7 @@ final class ThemeDeployService {
 				Logger::error( 'Existing theme functions.php has syntax errors. Cannot merge safely.', array(
 					'error' => $theme_syntax['error'],
 					'theme_file' => $theme_file,
-				), 'cfa' );
+				), $project_slug ?: 'vibecode-deploy' );
 				return array( 'success' => false, 'error' => 'Existing theme functions.php has syntax errors: ' . $theme_syntax['error'] . ' Please fix manually before deploying.' );
 			}
 		} else {
@@ -212,10 +371,15 @@ final class ThemeDeployService {
 			'created' => $created,
 			'staging_size' => strlen( $staging_content ),
 			'theme_size' => strlen( $theme_content ),
-		), 'cfa' );
+		), $project_slug ?: 'vibecode-deploy' );
 
 		// Extract CPT registrations from staging
 		$staging_cpts = self::extract_cpt_registrations( $staging_content );
+		Logger::info( 'CPT extraction result', array(
+			'has_init_block' => ! empty( $staging_cpts['init_block'] ),
+			'init_block_length' => strlen( $staging_cpts['init_block'] ?? '' ),
+			'individual_count' => count( $staging_cpts['individual'] ?? array() ),
+		), $project_slug ?: 'vibecode-deploy' );
 		$staging_shortcodes = self::extract_shortcode_registrations( $staging_content );
 		$staging_acf_filters = self::extract_acf_filters( $staging_content );
 		$staging_helper_functions = self::extract_helper_functions( $staging_content );
@@ -230,7 +394,7 @@ final class ThemeDeployService {
 				'error' => $syntax_check['error'],
 				'file' => $theme_file,
 				'step' => 'merge_helper_functions',
-			), 'cfa' );
+			), $project_slug ?: 'vibecode-deploy' );
 			return array( 
 				'success' => false, 
 				'error' => 'PHP syntax error after helper functions merge: ' . $syntax_check['error'] . ' File was NOT written to prevent site breakage.' 
@@ -247,24 +411,56 @@ final class ThemeDeployService {
 				'error' => $syntax_check['error'],
 				'file' => $theme_file,
 				'step' => 'merge_cpt_registrations',
-			), 'cfa' );
+				'content_preview' => substr( $theme_content, 0, 500 ),
+				'content_length' => strlen( $theme_content ),
+			), $project_slug ?: 'vibecode-deploy' );
 			return array( 
 				'success' => false, 
 				'error' => 'PHP syntax error after CPT merge: ' . $syntax_check['error'] . ' File was NOT written to prevent site breakage.' 
 			);
 		}
+		
+		// Generic verification - check for register_post_type pattern (works for any project)
+		$cpt_count = preg_match_all( '/register_post_type\s*\(/i', $theme_content );
+		Logger::info( 'CPT merge completed successfully, syntax valid', array(
+			'content_length' => strlen( $theme_content ),
+			'register_post_type_count' => $cpt_count,
+			'contains_register_post_type' => $cpt_count > 0,
+		), $project_slug ?: 'vibecode-deploy' );
 
 		// Merge shortcodes
+		$before_shortcode_merge = strlen( $theme_content );
 		$theme_content = self::merge_shortcode_registrations( $theme_content, $staging_shortcodes );
+		$after_shortcode_merge = strlen( $theme_content );
+		
+		Logger::info( 'Shortcode merge completed', array(
+			'content_length_before' => $before_shortcode_merge,
+			'content_length_after' => $after_shortcode_merge,
+			'shortcodes_count' => count( $staging_shortcodes ),
+		), $project_slug ?: 'vibecode-deploy' );
 		
 		// Validate after shortcode merge
 		$syntax_check = self::validate_php_syntax( $theme_content );
 		if ( ! $syntax_check['valid'] ) {
+			// Log detailed error information
+			$error_line = 0;
+			if ( preg_match( '/line (\d+)/', $syntax_check['error'], $line_match ) ) {
+				$error_line = (int) $line_match[1];
+			}
+			$lines = explode( "\n", $theme_content );
+			$context_start = max( 0, $error_line - 5 );
+			$context_end = min( count( $lines ), $error_line + 5 );
+			$context_lines = array_slice( $lines, $context_start, $context_end - $context_start );
+			
 			Logger::error( 'PHP syntax error after shortcode merge. File NOT written.', array(
 				'error' => $syntax_check['error'],
 				'file' => $theme_file,
 				'step' => 'merge_shortcode_registrations',
-			), 'cfa' );
+				'error_line' => $error_line,
+				'context_lines' => $context_lines,
+				'content_length' => strlen( $theme_content ),
+				'content_preview_around_error' => $error_line > 0 ? implode( "\n", $context_lines ) : substr( $theme_content, 0, 1000 ),
+			), $project_slug ?: 'vibecode-deploy' );
 			return array( 
 				'success' => false, 
 				'error' => 'PHP syntax error after shortcode merge: ' . $syntax_check['error'] . ' File was NOT written to prevent site breakage.' 
@@ -274,6 +470,9 @@ final class ThemeDeployService {
 		// Ensure ACF JSON filters exist
 		$theme_content = self::ensure_acf_filters( $theme_content, $staging_acf_filters );
 		
+		// Add menu creation function to organize CPTs under parent menu (if CPTs exist)
+		$theme_content = self::ensure_cpt_menu_structure( $theme_content, $project_slug );
+		
 		// Validate after ACF filters
 		$syntax_check = self::validate_php_syntax( $theme_content );
 		if ( ! $syntax_check['valid'] ) {
@@ -281,7 +480,7 @@ final class ThemeDeployService {
 				'error' => $syntax_check['error'],
 				'file' => $theme_file,
 				'step' => 'ensure_acf_filters',
-			), 'cfa' );
+			), $project_slug ?: 'vibecode-deploy' );
 			return array( 
 				'success' => false, 
 				'error' => 'PHP syntax error after ACF filters merge: ' . $syntax_check['error'] . ' File was NOT written to prevent site breakage.' 
@@ -295,7 +494,7 @@ final class ThemeDeployService {
 				'error' => $syntax_check['error'],
 				'file' => $theme_file,
 				'step' => 'final_validation',
-			), 'cfa' );
+			), $project_slug ?: 'vibecode-deploy' );
 			return array( 
 				'success' => false, 
 				'error' => 'PHP syntax error after merge: ' . $syntax_check['error'] . ' File was NOT written to prevent site breakage.' 
@@ -303,9 +502,26 @@ final class ThemeDeployService {
 		}
 
 		// Write merged content (only if syntax is valid)
-		if ( file_put_contents( $theme_file, $theme_content ) === false ) {
+		$write_result = file_put_contents( $theme_file, $theme_content );
+		if ( $write_result === false ) {
+			Logger::error( 'Failed to write merged functions.php', array(
+				'theme_file' => $theme_file,
+			) );
 			return array( 'success' => false, 'error' => 'Unable to write theme functions.php' );
 		}
+		
+		// Generic verification - check for register_post_type and add_action('init') patterns
+		$cpt_count = preg_match_all( '/register_post_type\s*\(/i', $theme_content );
+		$has_init_action = preg_match( '/add_action\s*\(\s*[\'"]init[\'"]\s*,/i', $theme_content ) === 1;
+		
+		Logger::info( 'Successfully wrote merged functions.php', array(
+			'theme_file' => $theme_file,
+			'bytes_written' => $write_result,
+			'final_content_length' => strlen( $theme_content ),
+			'register_post_type_count' => $cpt_count,
+			'contains_register_post_type' => $cpt_count > 0,
+			'contains_add_action_init' => $has_init_action,
+		), $project_slug ?: 'vibecode-deploy' );
 
 		// Double-check the written file has valid syntax
 		$written_check = self::validate_php_syntax_file( $theme_file );
@@ -313,7 +529,7 @@ final class ThemeDeployService {
 			Logger::error( 'PHP syntax error in written file. Attempting to restore from backup.', array(
 				'error' => $written_check['error'],
 				'file' => $theme_file,
-			), 'cfa' );
+			), $project_slug ?: 'vibecode-deploy' );
 			// Try to restore from backup if it exists
 			$backup_file = $theme_file . '.backup';
 			if ( file_exists( $backup_file ) ) {
@@ -347,6 +563,10 @@ final class ThemeDeployService {
 			'init_block' => '',
 			'individual' => array(),
 		);
+		
+		Logger::info( 'Extracting CPT registrations from staging functions.php', array(
+			'content_length' => strlen( $content ),
+		) );
 		
 		// First, try to extract the entire add_action('init', function() { ... }) block containing CPTs
 		// Look for add_action('init', function() { ... }) that contains register_post_type
@@ -386,6 +606,10 @@ final class ThemeDeployService {
 							// Check if this block contains register_post_type
 							if ( strpos( $full_block, 'register_post_type' ) !== false ) {
 								$result['init_block'] = $full_block;
+								Logger::info( 'Found anonymous function CPT registration block', array(
+									'block_length' => strlen( $full_block ),
+									'preview' => substr( $full_block, 0, 100 ) . '...',
+								) );
 								return $result; // Return early if we found the init block with CPTs
 							}
 						}
@@ -394,6 +618,85 @@ final class ThemeDeployService {
 			}
 			// Continue searching for next add_action('init', ...) block
 			$pos = $init_start + 1;
+		}
+		
+		// Second, try to extract named function pattern: function_name() + add_action('init', 'function_name')
+		// Look for function definitions that contain register_post_type, then find their add_action calls
+		$function_def_pattern = '/function\s+([a-z0-9_]+)\s*\([^)]*\)\s*\{/i';
+		$pos = 0;
+		while ( preg_match( $function_def_pattern, $content, $func_match, PREG_OFFSET_CAPTURE, $pos ) ) {
+			$function_name = $func_match[1][0];
+			$func_start = $func_match[0][1];
+			$brace_start = strpos( $content, '{', $func_start );
+			
+			if ( $brace_start !== false ) {
+				// Balance braces to find the closing brace of the function
+				$brace_count = 1;
+				$search_pos = $brace_start + 1;
+				$brace_end = false;
+				
+				while ( $search_pos < strlen( $content ) && $brace_count > 0 ) {
+					$char = $content[ $search_pos ];
+					if ( $char === '{' ) {
+						$brace_count++;
+					} elseif ( $char === '}' ) {
+						$brace_count--;
+						if ( $brace_count === 0 ) {
+							$brace_end = $search_pos;
+							break;
+						}
+					}
+					$search_pos++;
+				}
+				
+				if ( $brace_end !== false ) {
+					// Extract the function definition
+					$function_block = substr( $content, $func_start, $brace_end - $func_start + 1 );
+					
+					// Check if this function contains register_post_type
+					if ( strpos( $function_block, 'register_post_type' ) !== false ) {
+						Logger::info( 'Found function with register_post_type', array(
+							'function_name' => $function_name,
+							'function_length' => strlen( $function_block ),
+						) );
+						
+						// Find add_action call for this function (search after function definition)
+						// Increased window from 200 to 500 to handle comments/whitespace
+						$search_after_func = substr( $content, $brace_end + 1, 500 );
+						// Improved pattern to handle whitespace variations and comments
+						$add_action_pattern = '/add_action\s*\(\s*[\'"]init[\'"]\s*,\s*[\'"]' . preg_quote( $function_name, '/' ) . '[\'"]\s*\)\s*;/i';
+						
+						if ( preg_match( $add_action_pattern, $search_after_func, $action_match ) ) {
+							$add_action_call = $action_match[0];
+							
+							Logger::info( 'Found add_action call for named function', array(
+								'function_name' => $function_name,
+								'add_action_call' => $add_action_call,
+							) );
+							
+							// Combine function definition and add_action call
+							// Order: function definition first, then add_action (matching staging structure)
+							$full_block = $function_block . "\n" . $add_action_call;
+							
+							$result['init_block'] = $full_block;
+							Logger::info( 'Successfully extracted named function CPT registration block', array(
+								'function_name' => $function_name,
+								'block_length' => strlen( $full_block ),
+								'preview' => substr( $full_block, 0, 150 ) . '...',
+							) );
+							return $result; // Return early if we found the named function block with CPTs
+						} else {
+							Logger::warning( 'Function contains register_post_type but add_action call not found', array(
+								'function_name' => $function_name,
+								'search_window_preview' => substr( $search_after_func, 0, 200 ),
+							) );
+						}
+					}
+				}
+			}
+			
+			// Continue searching for next function definition
+			$pos = $func_start + 1;
 		}
 		
 		// Fallback: Extract individual register_post_type() calls
@@ -405,18 +708,102 @@ final class ThemeDeployService {
 			}
 		}
 		
+		Logger::info( 'CPT extraction complete', array(
+			'has_init_block' => ! empty( $result['init_block'] ),
+			'init_block_length' => strlen( $result['init_block'] ),
+			'individual_count' => count( $result['individual'] ),
+			'individual_slugs' => array_keys( $result['individual'] ),
+		) );
+		
 		return $result;
 	}
 
 	/**
 	 * Extract shortcode registration code blocks from functions.php content.
 	 *
-	 * Uses balanced brace matching to correctly extract multi-line shortcode closures.
+	 * First tries to extract named function pattern (function + add_action).
+	 * Falls back to extracting individual add_shortcode() calls.
 	 *
 	 * @param string $content Functions.php content.
-	 * @return array Array of shortcode tags => registration code blocks.
+	 * @return array Array with 'init_block' (function + add_action) and/or individual shortcode registrations.
 	 */
 	private static function extract_shortcode_registrations( string $content ): array {
+		$result = array(
+			'init_block' => '',
+			'individual' => array(),
+		);
+		
+		// First, try to extract named function pattern: function {project}_register_shortcodes() { ... } + add_action
+		// Look for function definitions that contain add_shortcode, then find their add_action calls
+		$function_def_pattern = '/function\s+([a-z0-9_]+)\s*\([^)]*\)\s*\{/i';
+		$pos = 0;
+		while ( preg_match( $function_def_pattern, $content, $func_match, PREG_OFFSET_CAPTURE, $pos ) ) {
+			$function_name = $func_match[1][0];
+			$func_start = $func_match[0][1];
+			$brace_start = strpos( $content, '{', $func_start );
+			
+			if ( $brace_start !== false ) {
+				// Balance braces to find the closing brace of the function
+				$brace_count = 1;
+				$search_pos = $brace_start + 1;
+				$brace_end = false;
+				
+				while ( $search_pos < strlen( $content ) && $brace_count > 0 ) {
+					$char = $content[ $search_pos ];
+					if ( $char === '{' ) {
+						$brace_count++;
+					} elseif ( $char === '}' ) {
+						$brace_count--;
+						if ( $brace_count === 0 ) {
+							$brace_end = $search_pos;
+							break;
+						}
+					}
+					$search_pos++;
+				}
+				
+				if ( $brace_end !== false ) {
+					// Extract the function definition
+					$function_block = substr( $content, $func_start, $brace_end - $func_start + 1 );
+					
+					// Check if this function contains add_shortcode
+					if ( strpos( $function_block, 'add_shortcode' ) !== false ) {
+						Logger::info( 'Found function with add_shortcode', array(
+							'function_name' => $function_name,
+							'function_length' => strlen( $function_block ),
+						) );
+						
+						// Find add_action call for this function (search after function definition)
+						$search_after_func = substr( $content, $brace_end + 1, 500 );
+						$add_action_pattern = '/add_action\s*\(\s*[\'"]init[\'"]\s*,\s*[\'"]' . preg_quote( $function_name, '/' ) . '[\'"]\s*\)\s*;/i';
+						
+						if ( preg_match( $add_action_pattern, $search_after_func, $action_match ) ) {
+							$add_action_call = $action_match[0];
+							
+							Logger::info( 'Found add_action call for shortcode function', array(
+								'function_name' => $function_name,
+								'add_action_call' => $add_action_call,
+							) );
+							
+							// Combine function definition and add_action call
+							$full_block = $function_block . "\n" . $add_action_call;
+							
+							$result['init_block'] = $full_block;
+							Logger::info( 'Successfully extracted named function shortcode registration block', array(
+								'function_name' => $function_name,
+								'block_length' => strlen( $full_block ),
+							) );
+							return $result; // Return early if we found the named function block
+						}
+					}
+				}
+			}
+			
+			// Continue searching for next function definition
+			$pos = $func_start + 1;
+		}
+		
+		// Fallback: Extract individual add_shortcode() calls
 		$shortcodes = array();
 		$pos = 0;
 		
@@ -500,7 +887,16 @@ final class ThemeDeployService {
 			$pos = $semicolon + 1;
 		}
 		
-		return $shortcodes;
+		// Store individual shortcodes in result
+		$result['individual'] = $shortcodes;
+		
+		Logger::info( 'Shortcode extraction complete', array(
+			'has_init_block' => ! empty( $result['init_block'] ),
+			'init_block_length' => strlen( $result['init_block'] ),
+			'individual_count' => count( $result['individual'] ),
+		) );
+		
+		return $result;
 	}
 
 	/**
@@ -536,11 +932,99 @@ final class ThemeDeployService {
 	 * @return string Merged content.
 	 */
 	private static function merge_cpt_registrations( string $theme_content, array $staging_cpts ): string {
+		// Get project_slug for logging (plugin is agnostic - works with any project)
+		$project_slug = Settings::get_all()['project_slug'] ?? '';
+		
+		$initial_length = strlen( $theme_content );
+		
+		Logger::info( 'Starting CPT registration merge', array(
+			'has_init_block' => ! empty( $staging_cpts['init_block'] ),
+			'init_block_length' => strlen( $staging_cpts['init_block'] ?? '' ),
+			'individual_count' => count( $staging_cpts['individual'] ?? array() ),
+			'theme_content_length' => $initial_length,
+		), $project_slug ?: 'vibecode-deploy' );
+		
 		// If we have an init block, replace the entire add_action('init', ...) block
 		if ( ! empty( $staging_cpts['init_block'] ) ) {
-			// Remove existing add_action('init', function() { ... }) blocks that contain register_post_type
-			$init_pattern = '/add_action\s*\(\s*[\'"]init[\'"]\s*,\s*function\s*\([^)]*\)\s*\{/';
-			$pos = 0;
+			// Check if staging block is a named function (contains function definition + add_action)
+			$is_named_function = preg_match( '/function\s+([a-z0-9_]+)\s*\(/i', $staging_cpts['init_block'], $staging_func_match );
+			
+			Logger::info( 'CPT merge: init block detected', array(
+				'is_named_function' => (bool) $is_named_function,
+				'function_name' => $is_named_function ? $staging_func_match[1] : null,
+			) );
+			
+			if ( $is_named_function ) {
+				// Handle named function pattern: remove function definition and add_action call
+				$staging_function_name = $staging_func_match[1];
+				
+				Logger::info( 'CPT merge: Processing named function', array(
+					'function_name' => $staging_function_name,
+				) );
+				
+				// Remove existing function definition
+				$function_pattern = '/function\s+' . preg_quote( $staging_function_name, '/' ) . '\s*\([^)]*\)\s*\{/';
+				$pos = 0;
+				while ( preg_match( $function_pattern, $theme_content, $func_match, PREG_OFFSET_CAPTURE, $pos ) ) {
+					$func_start = $func_match[0][1];
+					$brace_start = strpos( $theme_content, '{', $func_start );
+					
+					if ( $brace_start !== false ) {
+						// Balance braces to find the closing brace
+						$brace_count = 1;
+						$search_pos = $brace_start + 1;
+						$brace_end = false;
+						
+						while ( $search_pos < strlen( $theme_content ) && $brace_count > 0 ) {
+							$char = $theme_content[ $search_pos ];
+							if ( $char === '{' ) {
+								$brace_count++;
+							} elseif ( $char === '}' ) {
+								$brace_count--;
+								if ( $brace_count === 0 ) {
+									$brace_end = $search_pos;
+									break;
+								}
+							}
+							$search_pos++;
+						}
+						
+						if ( $brace_end !== false ) {
+							// Check if this function contains register_post_type
+							$function_block = substr( $theme_content, $func_start, $brace_end - $func_start + 1 );
+							if ( strpos( $function_block, 'register_post_type' ) !== false ) {
+								// Remove the function definition
+								$before = substr( $theme_content, 0, $func_start );
+								$after = substr( $theme_content, $brace_end + 1 );
+								$theme_content = $before . $after;
+								Logger::info( 'CPT merge: Removed existing function definition', array(
+									'function_name' => $staging_function_name,
+									'removed_length' => strlen( $function_block ),
+								) );
+								// Continue searching from the same position
+								$pos = $func_start;
+								continue;
+							}
+						}
+					}
+					$pos = $func_start + 1;
+				}
+				
+				// Remove existing add_action('init', 'function_name') calls
+				$action_pattern = '/add_action\s*\(\s*[\'"]init[\'"]\s*,\s*[\'"]' . preg_quote( $staging_function_name, '/' ) . '[\'"]\s*\)\s*;/i';
+				$before_action_remove = strlen( $theme_content );
+				$theme_content = preg_replace( $action_pattern, '', $theme_content );
+				$after_action_remove = strlen( $theme_content );
+				if ( $before_action_remove !== $after_action_remove ) {
+					Logger::info( 'CPT merge: Removed existing add_action call', array(
+						'function_name' => $staging_function_name,
+						'removed_length' => $before_action_remove - $after_action_remove,
+					) );
+				}
+			} else {
+				// Handle anonymous function pattern: remove existing add_action('init', function() { ... }) blocks
+				$init_pattern = '/add_action\s*\(\s*[\'"]init[\'"]\s*,\s*function\s*\([^)]*\)\s*\{/';
+				$pos = 0;
 			
 			while ( preg_match( $init_pattern, $theme_content, $match, PREG_OFFSET_CAPTURE, $pos ) ) {
 				$init_start = $match[0][1];
@@ -586,10 +1070,21 @@ final class ThemeDeployService {
 					}
 				}
 				$pos = $init_start + 1;
+				}
 			}
 			
 			// Add the new init block at the end
+			$before_add = strlen( $theme_content );
 			$theme_content = rtrim( $theme_content ) . "\n\n" . $staging_cpts['init_block'] . "\n";
+			$after_add = strlen( $theme_content );
+			
+			Logger::info( 'CPT merge: Added new init block', array(
+				'block_length' => strlen( $staging_cpts['init_block'] ),
+				'content_length_before' => $before_add,
+				'content_length_after' => $after_add,
+				'block_preview' => substr( $staging_cpts['init_block'], 0, 150 ) . '...',
+			) );
+			
 			return $theme_content;
 		}
 		
@@ -736,10 +1231,11 @@ final class ThemeDeployService {
 			
 			// Add the new registration
 			if ( $removed_count > 0 ) {
+				$project_slug = Settings::get_all()['project_slug'] ?? '';
 				Logger::info( 'Removed duplicate CPT registrations before adding new one.', array(
 					'post_type' => $slug,
 					'removed_count' => $removed_count,
-				), 'cfa' );
+				), $project_slug ?: 'vibecode-deploy' );
 			}
 			
 			// Add new registration at the end (after all other CPT registrations if any exist)
@@ -849,12 +1345,94 @@ final class ThemeDeployService {
 	/**
 	 * Merge shortcode registrations into theme content.
 	 *
+	 * If staging has an init block (function + add_action), replaces the entire block.
+	 * Otherwise, merges individual add_shortcode() calls.
+	 *
 	 * @param string $theme_content Current theme functions.php content.
-	 * @param array  $staging_shortcodes Shortcode registrations from staging.
+	 * @param array  $staging_shortcodes Shortcode registrations from staging (with 'init_block' and/or 'individual' keys).
 	 * @return string Merged content.
 	 */
 	private static function merge_shortcode_registrations( string $theme_content, array $staging_shortcodes ): string {
-		foreach ( $staging_shortcodes as $tag => $registration_code ) {
+		// If we have an init block, replace the entire function + add_action block
+		if ( ! empty( $staging_shortcodes['init_block'] ) ) {
+			// Check if staging block is a named function (contains function definition + add_action)
+			$is_named_function = preg_match( '/function\s+([a-z0-9_]+)\s*\(/i', $staging_shortcodes['init_block'], $staging_func_match );
+			
+			$project_slug = Settings::get_all()['project_slug'] ?? '';
+			Logger::info( 'Shortcode merge: init block detected', array(
+				'is_named_function' => (bool) $is_named_function,
+				'function_name' => $is_named_function ? $staging_func_match[1] : null,
+			), $project_slug ?: 'vibecode-deploy' );
+			
+			if ( $is_named_function ) {
+				// Handle named function pattern: remove function definition and add_action call
+				$staging_function_name = $staging_func_match[1];
+				
+				// Remove existing function definition
+				$function_pattern = '/function\s+' . preg_quote( $staging_function_name, '/' ) . '\s*\([^)]*\)\s*\{/';
+				$pos = 0;
+				while ( preg_match( $function_pattern, $theme_content, $func_match, PREG_OFFSET_CAPTURE, $pos ) ) {
+					$func_start = $func_match[0][1];
+					$brace_start = strpos( $theme_content, '{', $func_start );
+					
+					if ( $brace_start !== false ) {
+						// Balance braces to find the closing brace
+						$brace_count = 1;
+						$search_pos = $brace_start + 1;
+						$brace_end = false;
+						
+						while ( $search_pos < strlen( $theme_content ) && $brace_count > 0 ) {
+							$char = $theme_content[ $search_pos ];
+							if ( $char === '{' ) {
+								$brace_count++;
+							} elseif ( $char === '}' ) {
+								$brace_count--;
+								if ( $brace_count === 0 ) {
+									$brace_end = $search_pos;
+									break;
+								}
+							}
+							$search_pos++;
+						}
+						
+						if ( $brace_end !== false ) {
+							// Check if this function contains add_shortcode
+							$function_block = substr( $theme_content, $func_start, $brace_end - $func_start + 1 );
+							if ( strpos( $function_block, 'add_shortcode' ) !== false ) {
+								// Remove the function definition
+								$before = substr( $theme_content, 0, $func_start );
+								$after = substr( $theme_content, $brace_end + 1 );
+								$theme_content = $before . $after;
+								$project_slug = Settings::get_all()['project_slug'] ?? '';
+								Logger::info( 'Shortcode merge: Removed existing function definition', array(
+									'function_name' => $staging_function_name,
+								), $project_slug ?: 'vibecode-deploy' );
+								// Continue searching from the same position
+								$pos = $func_start;
+								continue;
+							}
+						}
+					}
+					$pos = $func_start + 1;
+				}
+				
+				// Remove existing add_action('init', 'function_name') calls
+				$action_pattern = '/add_action\s*\(\s*[\'"]init[\'"]\s*,\s*[\'"]' . preg_quote( $staging_function_name, '/' ) . '[\'"]\s*\)\s*;/i';
+				$theme_content = preg_replace( $action_pattern, '', $theme_content );
+			}
+			
+			// Add the new init block at the end
+			$theme_content = rtrim( $theme_content ) . "\n\n" . $staging_shortcodes['init_block'] . "\n";
+			$project_slug = Settings::get_all()['project_slug'] ?? '';
+			Logger::info( 'Shortcode merge: Added new init block', array(
+				'block_length' => strlen( $staging_shortcodes['init_block'] ),
+			), $project_slug ?: 'vibecode-deploy' );
+			return $theme_content;
+		}
+		
+		// Fallback: Handle individual add_shortcode() calls
+		$individual_shortcodes = $staging_shortcodes['individual'] ?? array();
+		foreach ( $individual_shortcodes as $tag => $registration_code ) {
 			// Check if shortcode already exists
 			$pattern = '/add_shortcode\s*\(\s*[\'"]' . preg_quote( $tag, '/' ) . '[\'"]\s*,/';
 			if ( preg_match( $pattern, $theme_content ) ) {
@@ -1163,5 +1741,115 @@ Version: 1.0.0
 		$result['activated'] = true;
 		Logger::info( 'Child theme activated.', array( 'theme_slug' => $theme_slug ) );
 		return $result;
+	}
+
+	/**
+	 * Ensure CPT menu structure exists with parent menu item and nested CPTs.
+	 *
+	 * Creates a parent menu item with uppercase project prefix and nests all CPTs under it.
+	 * Also ensures all CPTs have explicit show_ui and show_in_menu settings.
+	 *
+	 * @param string $theme_content Current theme functions.php content.
+	 * @param string $project_slug Project slug (e.g., 'bgp', 'cfa').
+	 * @return string Content with menu structure function added.
+	 */
+	private static function ensure_cpt_menu_structure( string $theme_content, string $project_slug ): string {
+		if ( empty( $project_slug ) ) {
+			return $theme_content; // Can't create menu without project slug
+		}
+		
+		// Check if CPTs exist in the content
+		$cpt_count = preg_match_all( '/register_post_type\s*\(\s*[\'"]([^\'"]+)[\'"]/i', $theme_content, $cpt_matches );
+		if ( $cpt_count === 0 ) {
+			return $theme_content; // No CPTs to organize
+		}
+		
+		// Extract CPT slugs with project prefix
+		$cpt_slugs = array();
+		foreach ( $cpt_matches[1] as $cpt_slug ) {
+			if ( strpos( $cpt_slug, $project_slug . '_' ) === 0 ) {
+				$cpt_slugs[] = $cpt_slug;
+			}
+		}
+		
+		if ( empty( $cpt_slugs ) ) {
+			return $theme_content; // No CPTs with project prefix
+		}
+		
+		// Check if menu creation function already exists
+		$menu_function_name = $project_slug . '_create_cpt_menu';
+		$menu_function_pattern = '/function\s+' . preg_quote( $menu_function_name, '/' ) . '\s*\(/';
+		if ( preg_match( $menu_function_pattern, $theme_content ) ) {
+			// Menu function already exists, skip
+			return $theme_content;
+		}
+		
+		// Generate parent menu slug (uppercase project prefix)
+		$parent_menu_slug = strtoupper( $project_slug );
+		$parent_menu_title = strtoupper( $project_slug );
+		
+		// Generate menu creation function code
+		$menu_function_code = "\n\n/**\n * Create Admin Menu Structure for CPTs\n * \n * Creates a parent menu item with uppercase project prefix and nests all CPTs under it.\n * This provides better organization in the WordPress admin menu.\n * \n * Auto-generated by Vibe Code Deploy plugin.\n */\n";
+		$menu_function_code .= "function {$menu_function_name}() {\n";
+		$menu_function_code .= "\t\$project_slug = '" . esc_attr( $project_slug ) . "';\n";
+		$menu_function_code .= "\t\$parent_menu_slug = '" . esc_attr( $parent_menu_slug ) . "';\n";
+		$menu_function_code .= "\t\$parent_menu_title = '" . esc_attr( $parent_menu_title ) . "';\n\n";
+		// Create parent menu item first (must exist before nesting CPTs)
+		$menu_function_code .= "\t// Create parent menu item\n";
+		$menu_function_code .= "\tadd_menu_page(\n";
+		$menu_function_code .= "\t\t\$parent_menu_title,\n";
+		$menu_function_code .= "\t\t\$parent_menu_title,\n";
+		$menu_function_code .= "\t\t'manage_options',\n";
+		$menu_function_code .= "\t\t\$parent_menu_slug,\n";
+		$menu_function_code .= "\t\t'',\n";
+		$menu_function_code .= "\t\t'dashicons-admin-generic',\n";
+		$menu_function_code .= "\t\t20 // Position in menu\n";
+		$menu_function_code .= "\t);\n\n";
+		$menu_function_code .= "\t// Modify CPT registrations to nest under parent menu\n";
+		$menu_function_code .= "\t// This must run after CPTs are registered (init hook) but before menu is built (admin_menu hook)\n";
+		$menu_function_code .= "\tglobal \$wp_post_types;\n";
+		$menu_function_code .= "\tif ( isset( \$wp_post_types ) ) {\n";
+		$menu_function_code .= "\t\t\$cpt_slugs = array(";
+		foreach ( $cpt_slugs as $cpt_slug ) {
+			$menu_function_code .= "\n\t\t\t'" . esc_attr( $cpt_slug ) . "',";
+		}
+		$menu_function_code .= "\n\t\t);\n\n";
+		$menu_function_code .= "\t\tforeach ( \$cpt_slugs as \$cpt_slug ) {\n";
+		$menu_function_code .= "\t\t\tif ( isset( \$wp_post_types[ \$cpt_slug ] ) ) {\n";
+		$menu_function_code .= "\t\t\t\t// Nest CPT under parent menu\n";
+		$menu_function_code .= "\t\t\t\t\$wp_post_types[ \$cpt_slug ]->show_in_menu = \$parent_menu_slug;\n";
+		$menu_function_code .= "\t\t\t\t// Ensure show_ui is true for menu visibility\n";
+		$menu_function_code .= "\t\t\t\t\$wp_post_types[ \$cpt_slug ]->show_ui = true;\n";
+		$menu_function_code .= "\t\t\t}\n";
+		$menu_function_code .= "\t\t}\n";
+		$menu_function_code .= "\t}\n";
+		$menu_function_code .= "}\n";
+		$menu_function_code .= "add_action( 'admin_menu', '{$menu_function_name}', 99 ); // Priority 99 to run after CPT registration\n";
+		
+		// Add menu function after CPT registration (before shortcodes)
+		// Find the last add_action('init', ...) for CPT registration
+		$insert_pos = strrpos( $theme_content, "add_action( 'init', '" );
+		if ( $insert_pos === false ) {
+			// Fallback: add at end before closing PHP tag or at very end
+			$theme_content = rtrim( $theme_content ) . $menu_function_code . "\n";
+		} else {
+			// Find end of line after add_action
+			$line_end = strpos( $theme_content, "\n", $insert_pos );
+			if ( $line_end === false ) {
+				$line_end = strlen( $theme_content );
+			}
+			$before = substr( $theme_content, 0, $line_end + 1 );
+			$after = substr( $theme_content, $line_end + 1 );
+			$theme_content = $before . $menu_function_code . $after;
+		}
+		
+		Logger::info( 'Added CPT menu structure function', array(
+			'function_name' => $menu_function_name,
+			'parent_menu_slug' => $parent_menu_slug,
+			'cpt_count' => count( $cpt_slugs ),
+			'cpt_slugs' => $cpt_slugs,
+		), $project_slug ?: 'vibecode-deploy' );
+		
+		return $theme_content;
 	}
 }

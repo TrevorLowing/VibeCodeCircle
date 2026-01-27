@@ -3,6 +3,8 @@
 namespace VibeCode\Deploy\Services;
 
 use VibeCode\Deploy\Importer;
+use VibeCode\Deploy\Services\BuildService;
+use VibeCode\Deploy\Services\MediaLibraryService;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -524,6 +526,81 @@ final class CleanupService {
 	}
 
 	/**
+	 * Delete staging directories for a project.
+	 *
+	 * @param string $project_slug Project slug.
+	 * @return array Results with 'deleted' count and 'errors' array.
+	 */
+	public static function delete_staging_directories( string $project_slug ): array {
+		$project_slug = sanitize_key( $project_slug );
+		$results = array(
+			'deleted' => 0,
+			'errors' => array(),
+		);
+
+		if ( $project_slug === '' ) {
+			return $results;
+		}
+
+		// Use BuildService to get the correct staging directory path (ensures path consistency)
+		$vibecode_deploy_dir = BuildService::get_project_staging_dir( $project_slug );
+		
+		// Count fingerprint directories before deletion for reporting
+		$fingerprints_before = BuildService::list_build_fingerprints( $project_slug );
+		$count_before = count( $fingerprints_before );
+
+		if ( is_dir( $vibecode_deploy_dir ) ) {
+			// Delete all staging directories for this project
+			if ( self::delete_dir_recursive( $vibecode_deploy_dir ) ) {
+				// Verify deletion succeeded
+				$fingerprints_after = BuildService::list_build_fingerprints( $project_slug );
+				$count_after = count( $fingerprints_after );
+				$results['deleted'] = $count_before; // Report number of fingerprint directories deleted
+				
+				\VibeCode\Deploy\Logger::info( 'Deleted staging directories for project.', array(
+					'project_slug' => $project_slug,
+					'staging_dir' => $vibecode_deploy_dir,
+					'fingerprints_before' => $fingerprints_before,
+					'count_before' => $count_before,
+					'count_after' => $count_after,
+					'deleted_count' => $count_before - $count_after,
+				) );
+				
+				// If directory still exists after deletion, log warning
+				if ( is_dir( $vibecode_deploy_dir ) ) {
+					$warning_msg = "Staging directory still exists after deletion attempt: {$vibecode_deploy_dir}";
+					$results['errors'][] = $warning_msg;
+					\VibeCode\Deploy\Logger::warning( 'Staging directory still exists after deletion.', array(
+						'project_slug' => $project_slug,
+						'staging_dir' => $vibecode_deploy_dir,
+						'warning' => $warning_msg,
+					) );
+				}
+			} else {
+				$error_msg = "Failed to delete staging directory: {$vibecode_deploy_dir}";
+				$results['errors'][] = $error_msg;
+				\VibeCode\Deploy\Logger::error( 'Failed to delete staging directories.', array(
+					'project_slug' => $project_slug,
+					'staging_dir' => $vibecode_deploy_dir,
+					'error' => $error_msg,
+					'fingerprints_before' => $fingerprints_before,
+					'count_before' => $count_before,
+				) );
+			}
+		} else {
+			// Directory doesn't exist - not an error, just log info
+			\VibeCode\Deploy\Logger::info( 'Staging directory does not exist (nothing to delete).', array(
+				'project_slug' => $project_slug,
+				'staging_dir' => $vibecode_deploy_dir,
+				'fingerprints_before' => $fingerprints_before,
+				'count_before' => $count_before,
+			) );
+		}
+
+		return $results;
+	}
+
+	/**
 	 * Delete CSS/JS assets from uploads directory AND plugin assets directory.
 	 *
 	 * Note: This does NOT delete staging directories - those are managed separately.
@@ -546,19 +623,10 @@ final class CleanupService {
 
 		// Only delete staging directories if explicitly requested (e.g., from purge_uploads)
 		if ( $include_staging ) {
-			// Delete staging directories from uploads
-			$uploads = wp_upload_dir();
-			$base = rtrim( (string) $uploads['basedir'], '/\\' );
-			$vibecode_deploy_dir = $base . DIRECTORY_SEPARATOR . 'vibecode-deploy' . DIRECTORY_SEPARATOR . 'staging' . DIRECTORY_SEPARATOR . $project_slug;
-
-			if ( is_dir( $vibecode_deploy_dir ) ) {
-				// Delete all staging directories for this project
-				if ( self::delete_dir_recursive( $vibecode_deploy_dir ) ) {
-					$results['deleted']++; // Count as one operation
-				} else {
-					$results['errors'][] = "Failed to delete assets directory: {$vibecode_deploy_dir}";
-				}
-			}
+			// Use dedicated method to delete staging directories
+			$staging_result = self::delete_staging_directories( $project_slug );
+			$results['deleted'] += $staging_result['deleted'];
+			$results['errors'] = array_merge( $results['errors'], $staging_result['errors'] );
 		}
 
 		// Also delete plugin assets directory
@@ -647,7 +715,7 @@ final class CleanupService {
 	 * @param string $action Action type: 'delete' (ignored - nuclear always deletes for clean slate).
 	 * @return array Results with counts and errors.
 	 */
-	public static function nuclear_operation( string $project_slug, string $scope, array $selected_types, array $selected_pages, string $action ): array {
+	public static function nuclear_operation( string $project_slug, string $scope, array $selected_types, array $selected_pages, string $action, string $media_delete_mode = 'orphaned' ): array {
 		$project_slug = sanitize_key( $project_slug );
 		$scope = sanitize_key( $scope );
 		$action = sanitize_key( $action );
@@ -658,6 +726,9 @@ final class CleanupService {
 			'deleted_template_parts' => 0,
 			'deleted_theme_files' => 0,
 			'deleted_assets' => 0,
+			'deleted_attachments' => 0,
+			'deleted_invalid_attachments' => 0,
+			'deleted_staging_directories' => 0,
 			'errors' => array(),
 		);
 
@@ -666,9 +737,22 @@ final class CleanupService {
 			return $results;
 		}
 
+		// Check if staging directories should be deleted (works with any scope)
+		// Note: selected_types is already sanitized in the handler, but sanitize again for safety
+		$selected_types = array_map( 'sanitize_key', $selected_types );
+		$delete_staging = in_array( 'staging_directories', $selected_types, true );
+		
+		// Log staging deletion decision for debugging
+		\VibeCode\Deploy\Logger::info( 'Nuclear operation staging directories check.', array(
+			'project_slug' => $project_slug,
+			'scope' => $scope,
+			'selected_types' => $selected_types,
+			'delete_staging' => $delete_staging,
+		) );
+
 		if ( $scope === 'everything' ) {
-			// Delete everything (content only - NOT staging directories)
-			// Staging directories are managed separately via "Purge uploads" action
+			// Delete everything (content only - NOT staging directories by default)
+			// Staging directories are deleted only if explicitly checked
 			$results['deleted_pages'] = self::delete_pages_for_project( $project_slug );
 			$results['deleted_templates'] = self::delete_templates_by_slugs( $project_slug ); // Gets all
 			$results['deleted_template_parts'] = self::delete_template_parts_by_slugs( $project_slug ); // Gets all
@@ -679,9 +763,22 @@ final class CleanupService {
 			$assets_result = self::delete_assets( $project_slug, false );
 			$results['deleted_assets'] = $assets_result['deleted'];
 			$results['errors'] = array_merge( $results['errors'], $assets_result['errors'] );
+			
+			// Delete invalid attachments (non-image files) first, then image attachments
+			// Check if media_library_attachments is in selected_types (for 'everything' scope, we delete all)
+			// For 'everything' scope, we delete all attachments regardless of selected_types
+			$results['deleted_invalid_attachments'] = MediaLibraryService::delete_invalid_attachments_for_project( $project_slug );
+			// For 'everything' scope, delete all image attachments (not just orphaned)
+			$results['deleted_attachments'] = MediaLibraryService::delete_attachments_for_project( $project_slug );
+			
+			// Delete staging directories if explicitly selected
+			if ( $delete_staging ) {
+				$staging_result = self::delete_staging_directories( $project_slug );
+				$results['deleted_staging_directories'] = $staging_result['deleted'];
+				$results['errors'] = array_merge( $results['errors'], $staging_result['errors'] );
+			}
 		} elseif ( $scope === 'by_type' ) {
 			// Delete by selected types
-			$selected_types = array_map( 'sanitize_key', $selected_types );
 			if ( in_array( 'pages', $selected_types, true ) ) {
 				$results['deleted_pages'] = self::delete_pages_for_project( $project_slug );
 			}
@@ -711,10 +808,36 @@ final class CleanupService {
 				$results['deleted_assets'] = $assets_result['deleted'];
 				$results['errors'] = array_merge( $results['errors'], $assets_result['errors'] );
 			}
+			if ( in_array( 'media_library_attachments', $selected_types, true ) ) {
+				// First, delete invalid attachments (non-image files like zip files)
+				// This ensures cleanup is comprehensive and handles incorrectly uploaded files
+				$results['deleted_invalid_attachments'] = MediaLibraryService::delete_invalid_attachments_for_project( $project_slug );
+				
+				// Then delete Media Library attachments based on mode
+				$media_delete_mode = sanitize_key( $media_delete_mode );
+				if ( $media_delete_mode === 'all' ) {
+					$results['deleted_attachments'] = MediaLibraryService::delete_attachments_for_project( $project_slug );
+				} else {
+					// Default: orphaned only (safer)
+					$results['deleted_attachments'] = MediaLibraryService::delete_orphaned_attachments_for_project( $project_slug );
+				}
+			}
+			if ( $delete_staging ) {
+				// Delete staging directories if explicitly selected
+				$staging_result = self::delete_staging_directories( $project_slug );
+				$results['deleted_staging_directories'] = $staging_result['deleted'];
+				$results['errors'] = array_merge( $results['errors'], $staging_result['errors'] );
+			}
 		} elseif ( $scope === 'by_page' ) {
 			// Delete by selected pages
 			if ( ! empty( $selected_pages ) ) {
 				$results['deleted_pages'] = self::delete_pages_by_slugs( $project_slug, $selected_pages );
+			}
+			// Delete staging directories if explicitly selected (works with any scope)
+			if ( $delete_staging ) {
+				$staging_result = self::delete_staging_directories( $project_slug );
+				$results['deleted_staging_directories'] = $staging_result['deleted'];
+				$results['errors'] = array_merge( $results['errors'], $staging_result['errors'] );
 			}
 		}
 

@@ -125,8 +125,17 @@ final class AssetService {
 		$target_dir = $plugin_dir . '/assets';
 		wp_mkdir_p( $target_dir );
 
+		// Check image storage method setting
+		$settings = Settings::get_all();
+		$storage_method = isset( $settings['image_storage_method'] ) && is_string( $settings['image_storage_method'] ) ? (string) $settings['image_storage_method'] : 'media_library';
+		
 		// Copy from root level (css/, js/, resources/ folders)
-		$folders = array( 'css', 'js', 'resources' );
+		// Skip resources/ folder if Media Library mode is active (images will be uploaded to Media Library instead)
+		$folders = array( 'css', 'js' );
+		if ( $storage_method !== 'media_library' ) {
+			$folders[] = 'resources';
+		}
+		
 		foreach ( $folders as $folder ) {
 			$src = $staging_root . '/' . $folder;
 			$dst = $target_dir . '/' . $folder;

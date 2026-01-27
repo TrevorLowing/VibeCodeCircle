@@ -5,6 +5,7 @@ namespace VibeCode\Deploy;
 use VibeCode\Deploy\Logger;
 use VibeCode\Deploy\Services\BuildService;
 use VibeCode\Deploy\Services\DeployService;
+use VibeCode\Deploy\Services\MediaLibraryService;
 use VibeCode\Deploy\Services\ShortcodePlaceholderService;
 use VibeCode\Deploy\Settings;
 
@@ -397,7 +398,14 @@ final class Importer {
 		return $attrs;
 	}
 
-	private static function convert_dom_children( \DOMNode $parent ): string {
+	/**
+	 * Convert DOM children to Gutenberg blocks.
+	 *
+	 * @param \DOMNode $parent Parent DOM node.
+	 * @param string $build_root Optional build root path for image uploads during deployment.
+	 * @return string Gutenberg block markup.
+	 */
+	private static function convert_dom_children( \DOMNode $parent, string $build_root = '' ): string {
 		$blocks = '';
 
 		foreach ( $parent->childNodes as $child ) {
@@ -459,7 +467,7 @@ final class Importer {
 				continue;
 			}
 
-			$blocks .= self::convert_element( $child );
+			$blocks .= self::convert_element( $child, $build_root );
 		}
 
 		return $blocks;
@@ -486,7 +494,14 @@ final class Importer {
 		);
 	}
 
-	private static function convert_element( \DOMElement $el ): string {
+	/**
+	 * Convert a DOM element to Gutenberg block markup.
+	 *
+	 * @param \DOMElement $el DOM element to convert.
+	 * @param string $build_root Optional build root path for image uploads during deployment.
+	 * @return string Gutenberg block markup.
+	 */
+	private static function convert_element( \DOMElement $el, string $build_root = '' ): string {
 		$tag = strtolower( $el->tagName );
 		$attrs = self::pick_attributes( $el );
 		$attrs_for_json = empty( $attrs ) ? new \stdClass() : $attrs;
@@ -554,7 +569,7 @@ final class Importer {
 		// Handle headings - convert to heading blocks, not groups
 		if ( preg_match( '/^h[1-6]$/', $tag ) ) {
 			$level = (int) substr( $tag, 1 );
-			$inner = self::convert_dom_children( $el );
+			$inner = self::convert_dom_children( $el, $build_root );
 			$inner_text = trim( strip_tags( $inner ) );
 			
 			// Build heading attributes
@@ -587,7 +602,7 @@ final class Importer {
 		
 		// Handle paragraphs - convert to paragraph blocks WITH etchData
 		if ( $tag === 'p' ) {
-			$inner = self::convert_dom_children( $el );
+			$inner = self::convert_dom_children( $el, $build_root );
 			
 			$paragraph_attrs = array();
 			if ( isset( $attrs['class'] ) && is_string( $attrs['class'] ) && $attrs['class'] !== '' ) {
@@ -620,7 +635,7 @@ final class Importer {
 		// IMPORTANT: List items inside <ul>/<ol> should remain as raw HTML (not blocks)
 		// Only standalone <li> elements (rare edge case) should be converted to blocks
 		if ( $tag === 'li' ) {
-			$inner = self::convert_dom_children( $el );
+			$inner = self::convert_dom_children( $el, $build_root );
 			
 			// Build HTML attributes
 			$element_attrs = '';
@@ -654,7 +669,7 @@ final class Importer {
 		
 		// Handle lists - convert to list blocks WITH etchData
 		if ( $tag === 'ul' || $tag === 'ol' ) {
-			$inner = self::convert_dom_children( $el );
+			$inner = self::convert_dom_children( $el, $build_root );
 			
 			$list_attrs = array();
 			if ( $tag === 'ol' ) {
@@ -698,12 +713,249 @@ final class Importer {
 		if ( $tag === 'img' ) {
 			$image_attrs = array();
 			$image_url = '';
-			if ( isset( $attrs['src'] ) && is_string( $attrs['src'] ) ) {
-				// Convert relative asset paths to full plugin URLs
-				// This ensures image blocks have absolute URLs even if URL rewriting didn't catch them
-				$image_url = \VibeCode\Deploy\Services\AssetService::convert_asset_path_to_url( $attrs['src'] );
-				$image_attrs['url'] = $image_url;
+			$attachment_id = 0;
+			
+			// Check if image was already processed by process_images_in_html() (has data-attachment-id)
+			if ( isset( $attrs['data-attachment-id'] ) && is_numeric( $attrs['data-attachment-id'] ) ) {
+				$attachment_id = (int) $attrs['data-attachment-id'];
+				if ( $attachment_id > 0 ) {
+					$image_url = MediaLibraryService::get_attachment_url( $attachment_id );
+					$image_attrs['id'] = $attachment_id;
+					Logger::info( 'Using pre-processed image from HTML processing.', array(
+						'attachment_id' => $attachment_id,
+						'image_url' => $image_url,
+					) );
+				}
 			}
+			
+			// Check plugin setting for image storage method
+			$settings = Settings::get_all();
+			$storage_method = isset( $settings['image_storage_method'] ) && is_string( $settings['image_storage_method'] ) ? (string) $settings['image_storage_method'] : 'media_library';
+			
+			if ( isset( $attrs['src'] ) && is_string( $attrs['src'] ) && $attrs['src'] !== '' ) {
+				$source_path = $attrs['src'];
+				
+				// If already processed, use the Media Library URL from src
+				if ( $attachment_id > 0 && $image_url !== '' ) {
+					$image_attrs['url'] = $image_url;
+				} else {
+					// Log image processing start
+					Logger::info( 'Processing image for Media Library upload.', array(
+						'source_path' => $source_path,
+						'storage_method' => $storage_method,
+						'build_root' => $build_root,
+						'build_root_is_dir' => $build_root !== '' ? @is_dir( $build_root ) : false,
+					) );
+					
+					if ( $storage_method === 'media_library' ) {
+					// Media Library mode: Upload image to Media Library (or reuse existing)
+					
+					// Check if source_path is already a plugin URL or absolute URL
+					$is_plugin_url = false;
+					$is_absolute_url = false;
+					$original_path = $source_path;
+					
+					// Check if it's an absolute URL (http://, https://, //)
+					if ( preg_match( '/^(https?:|\/\/)/i', $source_path ) ) {
+						$is_absolute_url = true;
+						Logger::info( 'Skipping Media Library upload - absolute URL detected.', array(
+							'source_path' => $source_path,
+						) );
+					} else {
+						// Check if it's a plugin URL (already converted by rewrite_asset_urls)
+						$plugin_url_base = plugins_url( 'assets', VIBECODE_DEPLOY_PLUGIN_FILE );
+						if ( strpos( $source_path, $plugin_url_base . '/' ) === 0 ) {
+							$is_plugin_url = true;
+							// Extract original path from plugin URL
+							// Format: [plugin_url]/assets/resources/image.jpg -> resources/image.jpg
+							$path_after_assets = substr( $source_path, strlen( $plugin_url_base . '/' ) );
+							$original_path = $path_after_assets;
+							Logger::info( 'Extracted original path from plugin URL.', array(
+								'plugin_url' => $source_path,
+								'original_path' => $original_path,
+							) );
+						}
+					}
+					
+					// Use build_root if provided (during deployment), otherwise fall back to active fingerprint
+					$use_build_root = false;
+					if ( $build_root !== '' && is_string( $build_root ) && strlen( $build_root ) > 0 ) {
+						// is_dir() doesn't throw exceptions - it returns false or generates warnings
+						// Use @ to suppress warnings if path is invalid
+						$use_build_root = @is_dir( $build_root );
+						Logger::info( 'Build root check.', array(
+							'build_root' => $build_root,
+							'is_dir' => $use_build_root,
+						) );
+					}
+					
+					if ( ! $is_absolute_url && $use_build_root ) {
+						// Use the original path (either from src or extracted from plugin URL)
+						$path_to_resolve = $original_path;
+						
+						// Normalize source path (remove leading ./ or /)
+						$normalized_path = (string) preg_replace( '/^\.\//', '', $path_to_resolve );
+						$normalized_path = ltrim( $normalized_path, '/' );
+						
+						// Try multiple path variations
+						$path_variations = array( $normalized_path );
+						
+						// If path doesn't start with resources/, try adding it
+						if ( strpos( $normalized_path, 'resources/' ) !== 0 && strpos( $normalized_path, 'images/' ) !== 0 ) {
+							$path_variations[] = 'resources/' . $normalized_path;
+							$path_variations[] = 'resources/images/' . $normalized_path;
+							$path_variations[] = 'images/' . $normalized_path;
+						}
+						
+						$file_path = '';
+						$found_path = '';
+						
+						foreach ( $path_variations as $path_var ) {
+							$test_path = rtrim( $build_root, '/\\' ) . DIRECTORY_SEPARATOR . str_replace( '/', DIRECTORY_SEPARATOR, $path_var );
+							Logger::info( 'Trying image path variation.', array(
+								'variation' => $path_var,
+								'full_path' => $test_path,
+								'exists' => file_exists( $test_path ),
+								'readable' => file_exists( $test_path ) ? is_readable( $test_path ) : false,
+							) );
+							
+							if ( file_exists( $test_path ) && is_readable( $test_path ) ) {
+								$file_path = $test_path;
+								$found_path = $path_var;
+								break;
+							}
+						}
+						
+						if ( $file_path !== '' ) {
+							// Extract filename from found path
+							$filename = basename( $found_path );
+							Logger::info( 'Image file found, uploading to Media Library.', array(
+								'file_path' => $file_path,
+								'filename' => $filename,
+								'original_source_path' => $source_path,
+							) );
+							
+							// Upload to Media Library (or reuse existing)
+							$metadata = array();
+							if ( isset( $attrs['alt'] ) && is_string( $attrs['alt'] ) ) {
+								$metadata['alt'] = $attrs['alt'];
+							}
+							$attachment_id = MediaLibraryService::upload_image_to_media_library( $file_path, $filename, $source_path, $metadata );
+							
+							if ( $attachment_id ) {
+								$image_url = MediaLibraryService::get_attachment_url( $attachment_id );
+								$image_attrs['id'] = $attachment_id;
+								Logger::info( 'Image uploaded to Media Library successfully.', array(
+									'attachment_id' => $attachment_id,
+									'image_url' => $image_url,
+								) );
+							} else {
+								Logger::warning( 'Media Library upload returned false.', array(
+									'file_path' => $file_path,
+									'filename' => $filename,
+								) );
+							}
+						} else {
+							Logger::warning( 'Image file not found in build root.', array(
+								'build_root' => $build_root,
+								'original_path' => $original_path,
+								'normalized_path' => $normalized_path,
+								'path_variations_tried' => $path_variations,
+							) );
+						}
+					} elseif ( ! $is_absolute_url ) {
+						// Fallback: Try to get build root from active fingerprint (for runtime processing)
+						$project_slug = isset( $settings['project_slug'] ) && is_string( $settings['project_slug'] ) ? (string) $settings['project_slug'] : '';
+						if ( $project_slug !== '' ) {
+							$active_fingerprint = self::get_active_fingerprint( $project_slug );
+							if ( $active_fingerprint !== '' ) {
+								$fallback_build_root = BuildService::build_root_path( $project_slug, $active_fingerprint );
+								Logger::info( 'Using fallback build root from active fingerprint.', array(
+									'fallback_build_root' => $fallback_build_root,
+									'active_fingerprint' => $active_fingerprint,
+								) );
+								
+								// Use the original path
+								$path_to_resolve = $original_path;
+								
+								// Normalize source path (remove leading ./ or /)
+								$normalized_path = (string) preg_replace( '/^\.\//', '', $path_to_resolve );
+								$normalized_path = ltrim( $normalized_path, '/' );
+								
+								// Try multiple path variations
+								$path_variations = array( $normalized_path );
+								if ( strpos( $normalized_path, 'resources/' ) !== 0 && strpos( $normalized_path, 'images/' ) !== 0 ) {
+									$path_variations[] = 'resources/' . $normalized_path;
+									$path_variations[] = 'resources/images/' . $normalized_path;
+									$path_variations[] = 'images/' . $normalized_path;
+								}
+								
+								$file_path = '';
+								$found_path = '';
+								
+								foreach ( $path_variations as $path_var ) {
+									$test_path = rtrim( $fallback_build_root, '/\\' ) . DIRECTORY_SEPARATOR . str_replace( '/', DIRECTORY_SEPARATOR, $path_var );
+									if ( file_exists( $test_path ) && is_readable( $test_path ) ) {
+										$file_path = $test_path;
+										$found_path = $path_var;
+										break;
+									}
+								}
+								
+								if ( $file_path !== '' ) {
+									// Extract filename from found path
+									$filename = basename( $found_path );
+									Logger::info( 'Image file found in fallback build root, uploading to Media Library.', array(
+										'file_path' => $file_path,
+										'filename' => $filename,
+									) );
+									
+									// Upload to Media Library (or reuse existing)
+									$metadata = array();
+									if ( isset( $attrs['alt'] ) && is_string( $attrs['alt'] ) ) {
+										$metadata['alt'] = $attrs['alt'];
+									}
+									$attachment_id = MediaLibraryService::upload_image_to_media_library( $file_path, $filename, $source_path, $metadata );
+									
+									if ( $attachment_id ) {
+										$image_url = MediaLibraryService::get_attachment_url( $attachment_id );
+										$image_attrs['id'] = $attachment_id;
+										Logger::info( 'Image uploaded to Media Library successfully (fallback).', array(
+											'attachment_id' => $attachment_id,
+										) );
+									}
+								} else {
+									Logger::warning( 'Image file not found in fallback build root.', array(
+										'fallback_build_root' => $fallback_build_root,
+										'original_path' => $original_path,
+									) );
+								}
+							}
+						}
+					}
+					
+					// Fallback to plugin assets if Media Library upload failed
+					if ( $image_url === '' ) {
+						Logger::info( 'Falling back to plugin assets URL conversion.', array(
+							'source_path' => $source_path,
+						) );
+						$image_url = \VibeCode\Deploy\Services\AssetService::convert_asset_path_to_url( $source_path );
+					}
+				} else {
+					// Plugin assets mode (fallback)
+					Logger::info( 'Using plugin assets mode (Media Library disabled).', array(
+						'source_path' => $source_path,
+					) );
+					$image_url = \VibeCode\Deploy\Services\AssetService::convert_asset_path_to_url( $source_path );
+				}
+				
+					// Only set URL if not already set from pre-processed image
+					if ( ! isset( $image_attrs['url'] ) ) {
+						$image_attrs['url'] = $image_url;
+					}
+				}
+			}
+			
 			if ( isset( $attrs['alt'] ) && is_string( $attrs['alt'] ) ) {
 				$image_attrs['alt'] = $attrs['alt'];
 			}
@@ -745,7 +997,7 @@ final class Importer {
 		
 		// Handle blockquotes - convert to quote blocks WITH etchData
 		if ( $tag === 'blockquote' ) {
-			$inner = self::convert_dom_children( $el );
+			$inner = self::convert_dom_children( $el, $build_root );
 			
 			$quote_attrs = array();
 			if ( isset( $attrs['class'] ) && is_string( $attrs['class'] ) && $attrs['class'] !== '' ) {
@@ -827,7 +1079,7 @@ final class Importer {
 		
 		// Handle tables - convert to table blocks WITH etchData
 		if ( $tag === 'table' ) {
-			$inner = self::convert_dom_children( $el );
+			$inner = self::convert_dom_children( $el, $build_root );
 			
 			$table_attrs = array();
 			if ( isset( $attrs['class'] ) && is_string( $attrs['class'] ) && $attrs['class'] !== '' ) {
@@ -860,7 +1112,7 @@ final class Importer {
 		if ( in_array( $tag, $inline_elements, true ) ) {
 			$dom = $el->ownerDocument;
 			if ( $dom instanceof \DOMDocument ) {
-				$inner_html = self::convert_dom_children( $el );
+				$inner_html = self::convert_dom_children( $el, $build_root );
 				$element_html = '<' . $tag;
 				foreach ( $attrs as $key => $value ) {
 					if ( is_string( $value ) && $value !== '' ) {
@@ -881,7 +1133,7 @@ final class Importer {
 				$styles[] = 'etch-flex-div-style';
 			}
 
-			$inner = self::convert_dom_children( $el );
+			$inner = self::convert_dom_children( $el, $build_root );
 
 			$etch_data = array(
 				'origin' => 'etch',
@@ -976,7 +1228,14 @@ final class Importer {
 		return '';
 	}
 
-	public static function html_to_etch_blocks( string $html ): string {
+	/**
+	 * Convert HTML to Gutenberg blocks with EtchWP metadata.
+	 *
+	 * @param string $html HTML content to convert.
+	 * @param string $build_root Optional build root path for image uploads during deployment.
+	 * @return string Gutenberg block markup.
+	 */
+	public static function html_to_etch_blocks( string $html, string $build_root = '' ): string {
 		libxml_use_internal_errors( true );
 		$dom = new \DOMDocument();
 		$dom->encoding = 'UTF-8';
@@ -994,7 +1253,7 @@ final class Importer {
 			return "<!-- wp:html -->\n" . $html . "\n<!-- /wp:html -->";
 		}
 
-		$inner = self::convert_dom_children( $root );
+		$inner = self::convert_dom_children( $root, $build_root );
 
 		return self::block_open(
 			'group',
@@ -1196,6 +1455,173 @@ final class Importer {
 
 	public static function preflight( string $project_slug, string $build_root ): array {
 		return DeployService::preflight( $project_slug, $build_root );
+	}
+
+	/**
+	 * Process images in raw HTML before URL rewriting.
+	 * 
+	 * Finds all <img> tags, uploads to Media Library if enabled, and updates src attributes.
+	 * This must run BEFORE rewrite_asset_urls() so images still have relative paths.
+	 *
+	 * @param string $html Raw HTML content.
+	 * @param string $build_root Build root path for finding image files.
+	 * @return string Modified HTML with updated image src attributes.
+	 */
+	public static function process_images_in_html( string $html, string $build_root = '' ): string {
+		if ( $html === '' ) {
+			return $html;
+		}
+		
+		$settings = Settings::get_all();
+		$storage_method = isset( $settings['image_storage_method'] ) && is_string( $settings['image_storage_method'] ) ? (string) $settings['image_storage_method'] : 'media_library';
+		
+		// If not using Media Library, return HTML unchanged
+		if ( $storage_method !== 'media_library' ) {
+			return $html;
+		}
+		
+		// Check if build_root is valid
+		$use_build_root = false;
+		if ( $build_root !== '' && is_string( $build_root ) && strlen( $build_root ) > 0 ) {
+			$use_build_root = @is_dir( $build_root );
+		}
+		
+		if ( ! $use_build_root ) {
+			Logger::info( 'Skipping image processing - build_root not available.', array(
+				'build_root' => $build_root,
+			) );
+			return $html;
+		}
+		
+		// Parse HTML to find all <img> tags
+		libxml_use_internal_errors( true );
+		$dom = new \DOMDocument();
+		$dom->encoding = 'UTF-8';
+		$loaded = $dom->loadHTML( '<?xml encoding="UTF-8"><!doctype html><html><body><div id="vibecode-deploy-image-process-root">' . $html . '</div></body></html>' );
+		libxml_clear_errors();
+		
+		if ( ! $loaded ) {
+			Logger::warning( 'Failed to parse HTML for image processing.', array() );
+			return $html;
+		}
+		
+		$xpath = new \DOMXPath( $dom );
+		$root = $xpath->query( '//*[@id="vibecode-deploy-image-process-root"]' )->item( 0 );
+		if ( ! $root ) {
+			return $html;
+		}
+		
+		// Find all <img> tags
+		$images = $xpath->query( './/img', $root );
+		if ( ! $images || $images->length === 0 ) {
+			return $html;
+		}
+		
+		Logger::info( 'Processing images in HTML before URL rewriting.', array(
+			'image_count' => $images->length,
+			'build_root' => $build_root,
+		) );
+		
+		$images_processed = 0;
+		$images_uploaded = 0;
+		
+		foreach ( $images as $img ) {
+			if ( ! ( $img instanceof \DOMElement ) ) {
+				continue;
+			}
+			
+			$src = $img->getAttribute( 'src' );
+			if ( $src === '' ) {
+				continue;
+			}
+			
+			$images_processed++;
+			
+			// Skip absolute URLs
+			if ( preg_match( '/^(https?:|\/\/)/i', $src ) ) {
+				Logger::info( 'Skipping absolute URL image.', array( 'src' => $src ) );
+				continue;
+			}
+			
+			// Normalize source path
+			$normalized_path = (string) preg_replace( '/^\.\//', '', $src );
+			$normalized_path = ltrim( $normalized_path, '/' );
+			
+			// Try multiple path variations
+			$path_variations = array( $normalized_path );
+			if ( strpos( $normalized_path, 'resources/' ) !== 0 && strpos( $normalized_path, 'images/' ) !== 0 ) {
+				$path_variations[] = 'resources/' . $normalized_path;
+				$path_variations[] = 'resources/images/' . $normalized_path;
+				$path_variations[] = 'images/' . $normalized_path;
+			}
+			
+			$file_path = '';
+			$found_path = '';
+			
+			foreach ( $path_variations as $path_var ) {
+				$test_path = rtrim( $build_root, '/\\' ) . DIRECTORY_SEPARATOR . str_replace( '/', DIRECTORY_SEPARATOR, $path_var );
+				if ( file_exists( $test_path ) && is_readable( $test_path ) ) {
+					$file_path = $test_path;
+					$found_path = $path_var;
+					break;
+				}
+			}
+			
+			if ( $file_path !== '' ) {
+				$filename = basename( $found_path );
+				$alt = $img->getAttribute( 'alt' );
+				
+				$metadata = array();
+				if ( $alt !== '' ) {
+					$metadata['alt'] = $alt;
+				}
+				
+				Logger::info( 'Uploading image to Media Library from HTML processing.', array(
+					'file_path' => $file_path,
+					'filename' => $filename,
+					'original_src' => $src,
+				) );
+				
+				$attachment_id = MediaLibraryService::upload_image_to_media_library( $file_path, $filename, $src, $metadata );
+				
+				if ( $attachment_id ) {
+					$image_url = MediaLibraryService::get_attachment_url( $attachment_id );
+					// Update src attribute to Media Library URL
+					$img->setAttribute( 'src', $image_url );
+					// Add data attribute to store attachment ID for later block conversion
+					$img->setAttribute( 'data-attachment-id', (string) $attachment_id );
+					$images_uploaded++;
+					Logger::info( 'Image uploaded and src updated in HTML.', array(
+						'attachment_id' => $attachment_id,
+						'new_src' => $image_url,
+					) );
+				} else {
+					Logger::warning( 'Failed to upload image to Media Library.', array(
+						'file_path' => $file_path,
+						'filename' => $filename,
+					) );
+				}
+			} else {
+				Logger::warning( 'Image file not found in build root during HTML processing.', array(
+					'original_src' => $src,
+					'normalized_path' => $normalized_path,
+					'path_variations_tried' => $path_variations,
+				) );
+			}
+		}
+		
+		// Extract modified HTML
+		$inner_html = '';
+		foreach ( $root->childNodes as $child ) {
+			$inner_html .= $dom->saveHTML( $child );
+		}
+		
+		Logger::info( 'Image processing in HTML complete.', array(
+			'images_processed' => $images_processed,
+			'images_uploaded' => $images_uploaded,
+		) );
+		
+		return $inner_html;
 	}
 
 	public static function run_import( string $project_slug, string $fingerprint, string $build_root, bool $set_front_page, bool $force_claim_unowned, bool $deploy_template_parts = true, bool $generate_404_template = true, bool $force_claim_templates = false, bool $validate_cpt_shortcodes = false, array $selected_pages = array(), array $selected_css = array(), array $selected_js = array(), array $selected_templates = array(), array $selected_template_parts = array(), array $selected_theme_files = array() ): array {

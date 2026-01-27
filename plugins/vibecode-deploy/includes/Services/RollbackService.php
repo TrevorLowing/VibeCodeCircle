@@ -3,6 +3,8 @@
 namespace VibeCode\Deploy\Services;
 
 use VibeCode\Deploy\Importer;
+use VibeCode\Deploy\Logger;
+use VibeCode\Deploy\Services\MediaLibraryService;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -96,6 +98,7 @@ final class RollbackService {
 		$restored = 0;
 		$errors = 0;
 		$error_messages = array();
+		$deleted_attachments = 0;
 
 		$created_pages = isset( $manifest['created_pages'] ) && is_array( $manifest['created_pages'] ) ? $manifest['created_pages'] : array();
 		foreach ( $created_pages as $it ) {
@@ -245,6 +248,33 @@ final class RollbackService {
 			BuildService::clear_active_fingerprint( $project_slug );
 		}
 
+		// Delete orphaned Media Library attachments created during this deployment
+		$created_attachments = isset( $manifest['created_attachments'] ) && is_array( $manifest['created_attachments'] ) ? $manifest['created_attachments'] : array();
+		foreach ( $created_attachments as $att ) {
+			$attachment_id = isset( $att['attachment_id'] ) ? (int) $att['attachment_id'] : 0;
+			if ( $attachment_id > 0 ) {
+				// Only delete if truly orphaned (not referenced in any post content)
+				if ( MediaLibraryService::is_attachment_orphaned( $attachment_id ) ) {
+					$result = wp_delete_attachment( $attachment_id, true ); // true = force delete, removes file
+					if ( $result ) {
+						$deleted_attachments++;
+						Logger::info( 'Deleted orphaned Media Library attachment during rollback.', array(
+							'attachment_id' => $attachment_id,
+							'project_slug' => $project_slug,
+							'fingerprint' => $fingerprint,
+						) );
+					}
+				} else {
+					// Attachment is still referenced, preserve it
+					Logger::info( 'Preserved Media Library attachment during rollback (still referenced).', array(
+						'attachment_id' => $attachment_id,
+						'project_slug' => $project_slug,
+						'fingerprint' => $fingerprint,
+					) );
+				}
+			}
+		}
+
 		// Separate warnings (skippable) from errors (non-skippable)
 		$warnings = array();
 		$actual_errors = array();
@@ -260,6 +290,7 @@ final class RollbackService {
 			'ok' => $errors === 0,
 			'deleted' => $deleted,
 			'restored' => $restored,
+			'deleted_attachments' => $deleted_attachments,
 			'errors' => $errors,
 			'error_messages' => $error_messages, // All messages for logging
 			'warnings' => $warnings, // Skippable messages

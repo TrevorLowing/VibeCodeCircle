@@ -5,6 +5,7 @@ namespace VibeCode\Deploy\Admin;
 use VibeCode\Deploy\Services\DeploymentValidator;
 use VibeCode\Deploy\Services\EnvService;
 use VibeCode\Deploy\Services\BuildService;
+use VibeCode\Deploy\Services\EtchWPComplianceService;
 use VibeCode\Deploy\Settings;
 
 defined( 'ABSPATH' ) || exit;
@@ -55,6 +56,16 @@ final class HealthCheckPage {
 		$settings = Settings::get_all();
 		$project_slug = isset( $settings['project_slug'] ) ? (string) $settings['project_slug'] : '';
 		$active_fingerprint = $project_slug !== '' ? BuildService::get_active_fingerprint( $project_slug ) : '';
+
+		// Handle compliance check request
+		$compliance_results = null;
+		$compliance_page_id = 0;
+		if ( isset( $_POST['vibecode_deploy_run_compliance_check'] ) && check_admin_referer( 'vibecode_deploy_compliance_check', 'vibecode_deploy_compliance_check_nonce' ) ) {
+			$compliance_page_id = isset( $_POST['compliance_page_id'] ) ? (int) $_POST['compliance_page_id'] : 0;
+			if ( $compliance_page_id > 0 ) {
+				$compliance_results = EtchWPComplianceService::run_comprehensive_check( $compliance_page_id );
+			}
+		}
 
 		$validation_results = null;
 		if ( $project_slug !== '' && $active_fingerprint !== '' ) {
@@ -169,6 +180,121 @@ final class HealthCheckPage {
 			echo '<p>' . esc_html__( 'No active deployment found. Deploy a build first.', 'vibecode-deploy' ) . '</p>';
 			echo '</div>';
 		}
+
+		// EtchWP Compliance Check section
+		echo '<div class="card" style="max-width: 1100px;">';
+		echo '<h2 class="title">' . esc_html__( 'EtchWP Compliance Check', 'vibecode-deploy' ) . '</h2>';
+		echo '<p class="description">' . esc_html__( 'Run comprehensive compliance checks on deployed pages to verify EtchWP compatibility.', 'vibecode-deploy' ) . '</p>';
+
+		// Get all pages for selection
+		$pages = get_pages( array( 'number' => 100, 'sort_column' => 'post_title' ) );
+
+		if ( ! empty( $pages ) ) {
+			echo '<form method="post" action="">';
+			wp_nonce_field( 'vibecode_deploy_compliance_check', 'vibecode_deploy_compliance_check_nonce' );
+			echo '<table class="form-table" role="presentation">';
+			echo '<tr>';
+			echo '<th scope="row"><label for="compliance_page_id">' . esc_html__( 'Select Page', 'vibecode-deploy' ) . '</label></th>';
+			echo '<td>';
+			echo '<select name="compliance_page_id" id="compliance_page_id" class="regular-text">';
+			echo '<option value="0">' . esc_html__( '-- Select a page --', 'vibecode-deploy' ) . '</option>';
+			foreach ( $pages as $page ) {
+				$selected = ( $compliance_page_id === $page->ID ) ? ' selected' : '';
+				echo '<option value="' . esc_attr( (string) $page->ID ) . '"' . $selected . '>' . esc_html( $page->post_title ) . ' (' . esc_html( $page->post_name ) . ')</option>';
+			}
+			echo '</select>';
+			echo '</td>';
+			echo '</tr>';
+			echo '</table>';
+			echo '<p class="submit">';
+			echo '<input type="submit" name="vibecode_deploy_run_compliance_check" class="button button-primary" value="' . esc_attr__( 'Run Compliance Check', 'vibecode-deploy' ) . '" />';
+			echo '</p>';
+			echo '</form>';
+
+			// Display compliance results
+			if ( $compliance_results !== null && is_array( $compliance_results ) ) {
+				$overall_status = isset( $compliance_results['overall_status'] ) ? (string) $compliance_results['overall_status'] : 'unknown';
+				$score = isset( $compliance_results['score'] ) ? (float) $compliance_results['score'] : 0;
+				$status_color = $overall_status === 'pass' ? '#00a32a' : ( $overall_status === 'warning' ? '#dba617' : '#d63638' );
+				$status_text = $overall_status === 'pass' ? esc_html__( 'Pass', 'vibecode-deploy' ) : ( $overall_status === 'warning' ? esc_html__( 'Warning', 'vibecode-deploy' ) : esc_html__( 'Fail', 'vibecode-deploy' ) );
+
+				echo '<div style="margin-top: 1.5rem; padding: 1rem; background: #f0f0f1; border-left: 4px solid ' . esc_attr( $status_color ) . ';">';
+				echo '<h3 style="margin-top: 0;">' . esc_html__( 'Compliance Results', 'vibecode-deploy' ) . '</h3>';
+				echo '<p><strong>' . esc_html__( 'Overall Status:', 'vibecode-deploy' ) . '</strong> <span style="color: ' . esc_attr( $status_color ) . ';">' . esc_html( $status_text ) . '</span> (' . esc_html( (string) $score ) . '%)</p>';
+
+				if ( isset( $compliance_results['checks'] ) && is_array( $compliance_results['checks'] ) ) {
+					echo '<table class="widefat striped" style="margin-top: 1rem;">';
+					echo '<thead><tr><th style="width:200px;">' . esc_html__( 'Check', 'vibecode-deploy' ) . '</th><th style="width:100px;">' . esc_html__( 'Status', 'vibecode-deploy' ) . '</th><th>' . esc_html__( 'Details', 'vibecode-deploy' ) . '</th></tr></thead>';
+					echo '<tbody>';
+
+					$check_labels = array(
+						'block_editability' => __( 'Block Editability', 'vibecode-deploy' ),
+						'post_content_preservation' => __( 'Post Content', 'vibecode-deploy' ),
+						'image_handling' => __( 'Image Handling', 'vibecode-deploy' ),
+						'block_conversion' => __( 'Block Conversion', 'vibecode-deploy' ),
+					);
+
+					foreach ( $compliance_results['checks'] as $check_key => $check ) {
+						if ( ! is_array( $check ) ) {
+							continue;
+						}
+						$check_status = isset( $check['status'] ) ? (string) $check['status'] : 'unknown';
+						$check_color = $check_status === 'pass' ? '#00a32a' : ( $check_status === 'warning' ? '#dba617' : '#d63638' );
+						$check_text = $check_status === 'pass' ? esc_html__( 'Pass', 'vibecode-deploy' ) : ( $check_status === 'warning' ? esc_html__( 'Warning', 'vibecode-deploy' ) : esc_html__( 'Fail', 'vibecode-deploy' ) );
+						$check_label = isset( $check_labels[ $check_key ] ) ? $check_labels[ $check_key ] : $check_key;
+
+						// Build details message
+						$details = array();
+						if ( isset( $check['message'] ) && is_string( $check['message'] ) && $check['message'] !== '' ) {
+							$details[] = $check['message'];
+						}
+						if ( isset( $check['percentage'] ) && is_numeric( $check['percentage'] ) ) {
+							$details[] = sprintf( __( '%.1f%% compliance', 'vibecode-deploy' ), (float) $check['percentage'] );
+						}
+						if ( isset( $check['total_blocks'] ) && is_numeric( $check['total_blocks'] ) ) {
+							$details[] = sprintf( __( '%d blocks', 'vibecode-deploy' ), (int) $check['total_blocks'] );
+						}
+						if ( isset( $check['blocks_with_etchData'] ) && is_numeric( $check['blocks_with_etchData'] ) ) {
+							$details[] = sprintf( __( '%d with etchData', 'vibecode-deploy' ), (int) $check['blocks_with_etchData'] );
+						}
+						if ( isset( $check['total_images'] ) && is_numeric( $check['total_images'] ) ) {
+							$details[] = sprintf( __( '%d images', 'vibecode-deploy' ), (int) $check['total_images'] );
+						}
+						if ( isset( $check['issues'] ) && is_array( $check['issues'] ) && count( $check['issues'] ) > 0 ) {
+							$details[] = sprintf( __( '%d issue(s)', 'vibecode-deploy' ), count( $check['issues'] ) );
+						}
+
+						echo '<tr>';
+						echo '<td><strong>' . esc_html( $check_label ) . '</strong></td>';
+						echo '<td><span style="color: ' . esc_attr( $check_color ) . ';">' . esc_html( $check_text ) . '</span></td>';
+						echo '<td>' . esc_html( implode( ' • ', $details ) ) . '</td>';
+						echo '</tr>';
+
+						// Show issues if any
+						if ( isset( $check['issues'] ) && is_array( $check['issues'] ) && count( $check['issues'] ) > 0 ) {
+							echo '<tr><td colspan="3" style="padding-left: 2rem;">';
+							echo '<ul style="list-style: disc; margin: 0.5rem 0;">';
+							foreach ( $check['issues'] as $issue ) {
+								if ( is_array( $issue ) && isset( $issue['message'] ) ) {
+									echo '<li>' . esc_html( (string) $issue['message'] ) . '</li>';
+								}
+							}
+							echo '</ul>';
+							echo '</td></tr>';
+						}
+					}
+
+					echo '</tbody>';
+					echo '</table>';
+				}
+
+				echo '</div>';
+			}
+		} else {
+			echo '<p>' . esc_html__( 'No pages found. Deploy pages first.', 'vibecode-deploy' ) . '</p>';
+		}
+
+		echo '</div>';
 
 		echo '</div>';
 	}

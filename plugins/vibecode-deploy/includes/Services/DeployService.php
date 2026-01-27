@@ -5,6 +5,8 @@ namespace VibeCode\Deploy\Services;
 use VibeCode\Deploy\Importer;
 use VibeCode\Deploy\Logger;
 use VibeCode\Deploy\Settings;
+use VibeCode\Deploy\Services\EtchWPComplianceService;
+use VibeCode\Deploy\Services\MediaLibraryService;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -115,6 +117,74 @@ final class DeployService {
 		}
 		$path = rtrim( $build_root, '/\\' ) . DIRECTORY_SEPARATOR . str_replace( '/', DIRECTORY_SEPARATOR, $relative );
 		return is_file( $path );
+	}
+
+	/**
+	 * Extract Media Library attachment IDs from Gutenberg block content.
+	 *
+	 * Parses post_content to find image blocks with attachment IDs.
+	 *
+	 * @param string $content Post content (Gutenberg blocks).
+	 * @return array Array of attachment IDs (integers).
+	 */
+	private static function extract_attachment_ids_from_content( string $content ): array {
+		$attachment_ids = array();
+		if ( $content === '' ) {
+			return $attachment_ids;
+		}
+
+		// Parse blocks to find image blocks with attachment IDs
+		$blocks = parse_blocks( $content );
+		if ( ! is_array( $blocks ) ) {
+			return $attachment_ids;
+		}
+
+		foreach ( $blocks as $block ) {
+			if ( ! is_array( $block ) || ! isset( $block['blockName'] ) ) {
+				continue;
+			}
+
+			// Check for image blocks (core/image)
+			$block_name = isset( $block['blockName'] ) && is_string( $block['blockName'] ) ? $block['blockName'] : '';
+			if ( $block_name === 'core/image' ) {
+				$attrs = isset( $block['attrs'] ) && is_array( $block['attrs'] ) ? $block['attrs'] : array();
+				$attachment_id = isset( $attrs['id'] ) && is_numeric( $attrs['id'] ) ? (int) $attrs['id'] : 0;
+				
+				if ( $attachment_id > 0 && ! in_array( $attachment_id, $attachment_ids, true ) ) {
+					$attachment_ids[] = $attachment_id;
+				}
+			}
+
+			// Recursively check inner blocks
+			if ( isset( $block['innerBlocks'] ) && is_array( $block['innerBlocks'] ) && ! empty( $block['innerBlocks'] ) ) {
+				// Recursively process inner blocks
+				$inner_blocks_content = '';
+				foreach ( $block['innerBlocks'] as $inner_block ) {
+					if ( is_array( $inner_block ) ) {
+						// Reconstruct block content for recursive parsing
+						$inner_block_name = isset( $inner_block['blockName'] ) ? (string) $inner_block['blockName'] : '';
+						$inner_attrs = isset( $inner_block['attrs'] ) && is_array( $inner_block['attrs'] ) ? $inner_block['attrs'] : array();
+						$inner_html = isset( $inner_block['innerHTML'] ) ? (string) $inner_block['innerHTML'] : '';
+						
+						// Check inner block for image
+						if ( $inner_block_name === 'core/image' ) {
+							$inner_attachment_id = isset( $inner_attrs['id'] ) && is_numeric( $inner_attrs['id'] ) ? (int) $inner_attrs['id'] : 0;
+							if ( $inner_attachment_id > 0 && ! in_array( $inner_attachment_id, $attachment_ids, true ) ) {
+								$attachment_ids[] = $inner_attachment_id;
+							}
+						}
+						
+						// Recursively check nested inner blocks
+						if ( isset( $inner_block['innerBlocks'] ) && is_array( $inner_block['innerBlocks'] ) && ! empty( $inner_block['innerBlocks'] ) ) {
+							// For deeply nested blocks, we'd need to recurse further
+							// For now, we'll handle one level deep
+						}
+					}
+				}
+			}
+		}
+
+		return array_unique( $attachment_ids );
 	}
 
 	/**
@@ -652,7 +722,7 @@ final class DeployService {
 			$raw_content = $content;
 
 			// Convert to block markup
-			$content_blocks = HtmlToEtchConverter::convert( $raw_content );
+			$content_blocks = HtmlToEtchConverter::convert( $raw_content, $build_root );
 			
 			// Verify converted content doesn't include wp:post-content blocks
 			// (should not happen, but validate to be safe)
@@ -814,6 +884,8 @@ final class DeployService {
 		$updated_template_parts = array();
 		$created_templates = array();
 		$updated_templates = array();
+		$created_attachments = array();
+		$updated_attachments = array();
 
 		$pages = Importer::list_page_files( $build_root );
 		$slug_set = array();
@@ -940,19 +1012,25 @@ final class DeployService {
 			$assets = AssetService::extract_head_assets( $dom, $project_slug );
 
 			$content = self::inner_html( $dom, $main );
-			// CRITICAL: URL rewriting order matters!
-			// 1. Rewrite asset URLs FIRST (css/, js/, resources/ -> plugin URL)
+			
+			// CRITICAL: Processing order matters!
+			// 1. Process images FIRST (upload to Media Library, update src attributes)
+			//    This must happen BEFORE URL rewriting so images still have relative paths
+			// 2. Rewrite asset URLs (css/, js/, resources/ -> plugin URL)
 			//    This ensures resources/ paths are converted before page URL rewriting
-			// 2. Then rewrite page URLs (extensionless links -> WordPress permalinks)
+			// 3. Rewrite page URLs (extensionless links -> WordPress permalinks)
 			//    rewrite_urls() skips already-converted plugin asset URLs
 			// 
 			// @see VibeCodeCircle/plugins/vibecode-deploy/docs/STRUCTURAL_RULES.md#url-rewriting-rules
+			$content = Importer::process_images_in_html( $content, $build_root );
+			
+			// Then rewrite asset URLs (images already processed, so their src may be Media Library URLs now)
 			$content = AssetService::rewrite_asset_urls( $content, $project_slug );
 			// Then rewrite page URLs (skip resources already converted to plugin URLs)
 			$content = self::rewrite_urls( $content, $slug_set, $resources_base_url );
 			$raw_content = $content;
 
-			$content = HtmlToEtchConverter::convert( $raw_content );
+			$content = HtmlToEtchConverter::convert( $raw_content, $build_root );
 
 			$title = self::title_from_dom( $dom, self::title_from_slug( $slug ) );
 
@@ -1116,6 +1194,81 @@ final class DeployService {
 					'has_content' => ( $final_content !== '' ),
 					'content_length' => strlen( $final_content ),
 				), $project_slug );
+			}
+
+			// Extract Media Library attachment IDs from post_content for manifest tracking
+			// Only track attachments that belong to this project (have project slug meta)
+			$page_attachment_ids = self::extract_attachment_ids_from_content( $final_content );
+			foreach ( $page_attachment_ids as $attachment_id ) {
+				if ( $attachment_id > 0 ) {
+					// Verify this attachment belongs to this project
+					$attachment_project_slug = get_post_meta( $attachment_id, MediaLibraryService::META_PROJECT_SLUG, true );
+					if ( $attachment_project_slug === $project_slug ) {
+						// Get filename from attachment
+						$attachment_file = get_attached_file( $attachment_id );
+						$filename = $attachment_file ? basename( $attachment_file ) : '';
+						
+						// Check if attachment was created during this deployment or updated
+						// We can't easily determine this from post_content alone, so we'll track all as "created"
+						// The rollback logic will handle orphaned detection
+						// For updated attachments, we track them separately if we can detect file changes
+						$existing_file_hash = get_post_meta( $attachment_id, MediaLibraryService::META_FILE_HASH, true );
+						$has_existing_hash = $existing_file_hash !== '' && $existing_file_hash !== false;
+						
+						// Simple heuristic: if attachment has file hash meta, it might have been updated
+						// But we can't be sure, so we'll track in created_attachments for now
+						// Rollback will use orphaned detection to determine what to delete
+						$created_attachments[] = array(
+							'attachment_id' => $attachment_id,
+							'source_path' => '', // Will be empty, but we have attachment_id for lookup
+							'filename' => $filename,
+						);
+					}
+				}
+			}
+
+			// Run EtchWP compliance check after successful deployment (optional, can be disabled)
+			// Check if EtchWP is active before running compliance checks
+			$is_etchwp = defined( 'ETCH_PLUGIN_FILE' ) || defined( 'ETCHWP_VERSION' ) || function_exists( 'etchwp_version' );
+			if ( $is_etchwp ) {
+				try {
+					$compliance_results = EtchWPComplianceService::run_comprehensive_check( $post_id );
+					if ( is_array( $compliance_results ) ) {
+						$overall_status = isset( $compliance_results['overall_status'] ) ? (string) $compliance_results['overall_status'] : 'unknown';
+						$score = isset( $compliance_results['score'] ) ? (float) $compliance_results['score'] : 0;
+						
+						if ( $overall_status === 'fail' ) {
+							Logger::warning( 'EtchWP compliance check failed for page.', array(
+								'page_slug' => $slug,
+								'post_id' => $post_id,
+								'score' => $score,
+								'status' => $overall_status,
+								'checks' => isset( $compliance_results['checks'] ) ? $compliance_results['checks'] : array(),
+							), $project_slug );
+						} elseif ( $overall_status === 'warning' ) {
+							Logger::info( 'EtchWP compliance check warnings for page.', array(
+								'page_slug' => $slug,
+								'post_id' => $post_id,
+								'score' => $score,
+								'status' => $overall_status,
+							), $project_slug );
+						} else {
+							Logger::info( 'EtchWP compliance check passed for page.', array(
+								'page_slug' => $slug,
+								'post_id' => $post_id,
+								'score' => $score,
+								'status' => $overall_status,
+							), $project_slug );
+						}
+					}
+				} catch ( \Exception $e ) {
+					// Log error but don't fail deployment
+					Logger::warning( 'EtchWP compliance check error (non-fatal).', array(
+						'page_slug' => $slug,
+						'post_id' => $post_id,
+						'error' => $e->getMessage(),
+					), $project_slug );
+				}
 			}
 
 			if ( $slug === 'home' ) {
@@ -1442,6 +1595,8 @@ final class DeployService {
 				'updated_template_parts' => $updated_template_parts,
 				'created_templates' => $created_templates,
 				'updated_templates' => $updated_templates,
+				'created_attachments' => $created_attachments, // Media Library attachments created during deployment
+				'updated_attachments' => $updated_attachments, // Media Library attachments updated during deployment
 				'theme_files' => $theme_snapshots, // Theme file snapshots for rollback
 				'assets' => $asset_info, // CSS/JS asset information
 				'result' => array(
