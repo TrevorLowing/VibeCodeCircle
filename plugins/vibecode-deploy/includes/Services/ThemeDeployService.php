@@ -385,7 +385,7 @@ final class ThemeDeployService {
 		), $project_slug ?: 'vibecode-deploy' );
 		$staging_shortcodes = self::extract_shortcode_registrations( $staging_content );
 		$staging_acf_filters = self::extract_acf_filters( $staging_content );
-		$staging_helper_functions = self::extract_helper_functions( $staging_content );
+		$staging_helper_functions = self::extract_helper_functions( $staging_content, $project_slug );
 
 		// Merge helper functions first (they may be used by shortcodes)
 		$theme_content = self::merge_helper_functions( $theme_content, $staging_helper_functions );
@@ -1489,25 +1489,33 @@ final class ThemeDeployService {
 	 * Extract helper functions from functions.php content.
 	 *
 	 * Extracts standalone functions (not closures) that start with a project prefix
-	 * (e.g., 'cfa_') and are used by shortcodes or CPTs.
+	 * (e.g., 'cfa_', 'bgp_') and are used by shortcodes or CPTs.
 	 *
 	 * @param string $content Functions.php content.
+	 * @param string $project_slug Project slug for matching project-specific prefixes.
 	 * @return array Array of function names => function code blocks.
 	 */
-	private static function extract_helper_functions( string $content ): array {
+	private static function extract_helper_functions( string $content, string $project_slug = '' ): array {
 		$functions = array();
 		$pos = 0;
 
 		// Match function declarations: function function_name($params) { ... }
 		// Look for functions that start with common prefixes used by shortcodes
 		$pattern = '/function\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\([^)]*\)\s*\{/';
+		
+		// Build prefix pattern including project-specific prefix
+		$prefix_pattern = '/^(cfa_|helper_|get_|render_|normalize_|is_|migrate_|format_|days_|ensure_)/';
+		if ( ! empty( $project_slug ) ) {
+			$prefix_pattern = '/^(' . preg_quote( $project_slug, '/' ) . '_|cfa_|helper_|get_|render_|normalize_|is_|migrate_|format_|days_|ensure_)/';
+		}
+		
 		while ( preg_match( $pattern, $content, $matches, PREG_OFFSET_CAPTURE, $pos ) ) {
 			$func_name = $matches[1][0];
 			$func_start = $matches[0][1];
 			
 			// Only extract functions that start with common prefixes (cfa_, project-specific prefixes)
-			// or are explicitly helper functions (contain 'helper', 'get_', 'render_', 'normalize_', 'is_')
-			if ( preg_match( '/^(cfa_|helper_|get_|render_|normalize_|is_|migrate_|format_|days_)/', $func_name ) ) {
+			// or are explicitly helper functions (contain 'helper', 'get_', 'render_', 'normalize_', 'is_', 'ensure_')
+			if ( preg_match( $prefix_pattern, $func_name ) ) {
 				// Find opening brace
 				$brace_start = strpos( $content, '{', $func_start );
 				if ( $brace_start === false ) {
