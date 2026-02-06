@@ -845,7 +845,6 @@ final class DeployService {
 	 * @param string $project_slug           Project identifier.
 	 * @param string $fingerprint            Build fingerprint.
 	 * @param string $build_root             Path to build root directory.
-	 * @param bool   $set_front_page        Whether to set home.html as front page.
 	 * @param bool   $force_claim_unowned   Whether to claim pages not owned by this project.
 	 * @param bool   $deploy_template_parts Whether to extract header/footer from home.html.
 	 * @param bool   $generate_404_template  Whether to generate 404 template.
@@ -859,7 +858,7 @@ final class DeployService {
 	 * @param array  $selected_theme_files  Optional array of theme file names to deploy (empty = all).
 	 * @return array Deployment results with 'pages_created', 'pages_updated', 'templates_created', etc.
 	 */
-	public static function run_import( string $project_slug, string $fingerprint, string $build_root, bool $set_front_page, bool $force_claim_unowned, bool $deploy_template_parts = true, bool $generate_404_template = true, bool $force_claim_templates = false, bool $validate_cpt_shortcodes = false, array $selected_pages = array(), array $selected_css = array(), array $selected_js = array(), array $selected_templates = array(), array $selected_template_parts = array(), array $selected_theme_files = array() ): array {
+	public static function run_import( string $project_slug, string $fingerprint, string $build_root, bool $force_claim_unowned, bool $deploy_template_parts = true, bool $generate_404_template = true, bool $force_claim_templates = false, bool $validate_cpt_shortcodes = false, array $selected_pages = array(), array $selected_css = array(), array $selected_js = array(), array $selected_templates = array(), array $selected_template_parts = array(), array $selected_theme_files = array() ): array {
 		// Optional: Flush caches before import for fresh deployment
 		// This ensures no stale data interferes with new deployment
 		if ( $force_claim_templates ) {
@@ -876,10 +875,6 @@ final class DeployService {
 		$active_before = BuildService::get_active_fingerprint( $project_slug );
 		$settings = Settings::get_all();
 		$placeholder_config = ShortcodePlaceholderService::load_config( $build_root );
-		$front_before = array(
-			'show_on_front' => get_option( 'show_on_front' ),
-			'page_on_front' => get_option( 'page_on_front' ),
-		);
 		$created_pages = array();
 		$updated_pages = array();
 		$created_template_parts = array();
@@ -905,7 +900,6 @@ final class DeployService {
 		$updated = 0;
 		$skipped = 0;
 		$errors = 0;
-		$home_id = null;
 
 		// Normalize selected filters
 		$selected_pages = array_map( 'sanitize_key', $selected_pages );
@@ -1274,10 +1268,6 @@ final class DeployService {
 					), $project_slug );
 				}
 			}
-
-			if ( $slug === 'home' ) {
-				$home_id = $post_id;
-			}
 		}
 
 		// Auto-create block templates for all post types if they don't exist
@@ -1309,11 +1299,6 @@ final class DeployService {
 		// Flush rewrite rules after CPT templates are created (needed for single post URLs to work)
 		flush_rewrite_rules( false ); // Soft flush (faster)
 		Logger::info( 'Flushed rewrite rules after template creation.', array(), $project_slug );
-
-		if ( $set_front_page && $home_id ) {
-			update_option( 'show_on_front', 'page' );
-			update_option( 'page_on_front', $home_id );
-		}
 
 		$auto_parts_result = TemplateService::auto_extract_template_parts_from_home(
 			$project_slug,
@@ -1588,11 +1573,6 @@ final class DeployService {
 				'user_id' => (int) get_current_user_id(),
 				'active_before' => $active_before,
 				'active_after' => sanitize_text_field( $fingerprint ),
-				'front_before' => $front_before,
-				'front_after' => array(
-					'show_on_front' => get_option( 'show_on_front' ),
-					'page_on_front' => get_option( 'page_on_front' ),
-				),
 				'created_pages' => $created_pages,
 				'updated_pages' => $updated_pages,
 				'created_template_parts' => $created_template_parts,

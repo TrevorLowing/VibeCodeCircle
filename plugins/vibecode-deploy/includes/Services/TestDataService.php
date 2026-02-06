@@ -10,6 +10,8 @@
 
 namespace VibeCode\Deploy\Services;
 
+use VibeCode\Deploy\Settings;
+
 /**
  * Test Data Service
  */
@@ -74,6 +76,16 @@ class TestDataService {
 
 		$all_cpts = array_merge( $public_cpts, $non_public_cpts );
 		$all_cpts = array_unique( $all_cpts );
+
+		// Only allow CPTs deployed by this plugin (project-prefixed).
+		$project_slug = Settings::get_all()['project_slug'] ?? '';
+		if ( $project_slug !== '' ) {
+			$all_cpts = array_values( array_filter( $all_cpts, function( $cpt ) use ( $project_slug ) {
+				return strpos( $cpt, $project_slug . '_' ) === 0;
+			} ) );
+		} else {
+			$all_cpts = array();
+		}
 
 		// Filter to selected CPTs if provided
 		if ( ! empty( $selected_cpts ) ) {

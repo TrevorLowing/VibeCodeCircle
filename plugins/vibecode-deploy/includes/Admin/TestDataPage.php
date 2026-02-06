@@ -9,6 +9,7 @@
 
 namespace VibeCode\Deploy\Admin;
 
+use VibeCode\Deploy\Settings;
 use VibeCode\Deploy\Services\TestDataService;
 use VibeCode\Deploy\Services\HtmlTestPageService;
 use VibeCode\Deploy\Services\HtmlTestPageAuditService;
@@ -239,6 +240,16 @@ class TestDataPage {
 		// Sort alphabetically for consistent display
 		sort( $all_cpts );
 
+		// Only list CPTs deployed by this plugin (project-prefixed).
+		$project_slug = Settings::get_all()['project_slug'] ?? '';
+		if ( $project_slug !== '' ) {
+			$all_cpts = array_values( array_filter( $all_cpts, function( $cpt ) use ( $project_slug ) {
+				return strpos( $cpt, $project_slug . '_' ) === 0;
+			} ) );
+		} else {
+			$all_cpts = array();
+		}
+
 		$cpt_status = array();
 		foreach ( $all_cpts as $cpt ) {
 			$exists = post_type_exists( $cpt );
@@ -254,6 +265,12 @@ class TestDataPage {
 		<div class="wrap">
 			<h1><?php echo esc_html__( 'Test Data', 'vibecode-deploy' ); ?></h1>
 			<p><?php echo esc_html__( 'Create example posts for Custom Post Types to help with testing and development.', 'vibecode-deploy' ); ?></p>
+
+			<?php if ( empty( $all_cpts ) && $project_slug === '' ) : ?>
+				<div class="notice notice-info" style="max-width: 800px; margin-top: 20px;">
+					<p><?php echo esc_html__( 'Set Project Slug in Vibe Code Deploy → Configuration to list CPTs deployed by this plugin.', 'vibecode-deploy' ); ?></p>
+				</div>
+			<?php endif; ?>
 
 			<div class="card" style="max-width: 800px; margin-top: 20px;">
 				<h2><?php echo esc_html__( 'Current Status', 'vibecode-deploy' ); ?></h2>

@@ -514,8 +514,8 @@ final class Importer {
 				}
 				$inline_elements = array( 'a', 'span', 'strong', 'em', 'b', 'i', 'u', 'small', 'sub', 'sup', 'code', 'kbd', 'samp', 'var', 'mark', 'time', 'abbr', 'cite', 'q', 'dfn', 'button', 'label' );
 				
-				if ( in_array( $parent_tag, $inline_elements, true ) ) {
-					// For inline elements, preserve text as-is (no <p> wrapper)
+				if ( in_array( $parent_tag, $inline_elements, true ) || $in_list_context ) {
+					// For inline elements or list items, preserve text as-is (no <p> wrapper)
 					$blocks .= esc_html( $text );
 					continue;
 				}
@@ -1739,8 +1739,8 @@ final class Importer {
 		return $inner_html;
 	}
 
-	public static function run_import( string $project_slug, string $fingerprint, string $build_root, bool $set_front_page, bool $force_claim_unowned, bool $deploy_template_parts = true, bool $generate_404_template = true, bool $force_claim_templates = false, bool $validate_cpt_shortcodes = false, array $selected_pages = array(), array $selected_css = array(), array $selected_js = array(), array $selected_templates = array(), array $selected_template_parts = array(), array $selected_theme_files = array() ): array {
-		return DeployService::run_import( $project_slug, $fingerprint, $build_root, $set_front_page, $force_claim_unowned, $deploy_template_parts, $generate_404_template, $force_claim_templates, $validate_cpt_shortcodes, $selected_pages, $selected_css, $selected_js, $selected_templates, $selected_template_parts, $selected_theme_files );
+	public static function run_import( string $project_slug, string $fingerprint, string $build_root, bool $force_claim_unowned, bool $deploy_template_parts = true, bool $generate_404_template = true, bool $force_claim_templates = false, bool $validate_cpt_shortcodes = false, array $selected_pages = array(), array $selected_css = array(), array $selected_js = array(), array $selected_templates = array(), array $selected_template_parts = array(), array $selected_theme_files = array() ): array {
+		return DeployService::run_import( $project_slug, $fingerprint, $build_root, $force_claim_unowned, $deploy_template_parts, $generate_404_template, $force_claim_templates, $validate_cpt_shortcodes, $selected_pages, $selected_css, $selected_js, $selected_templates, $selected_template_parts, $selected_theme_files );
 	}
 
 	/**

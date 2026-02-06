@@ -136,8 +136,8 @@ staging-zip/
 						
 						<div class="vcd-issue">
 							<h4><?php echo esc_html__( '❌ Blank home page', 'vibecode-deploy' ); ?></h4>
-							<p><strong><?php echo esc_html__( 'Cause:', 'vibecode-deploy' ); ?></strong> <?php echo esc_html__( 'Front page not set correctly.', 'vibecode-deploy' ); ?></p>
-							<p><strong><?php echo esc_html__( 'Solution:', 'vibecode-deploy' ); ?></strong> <?php echo esc_html__( 'Check Settings → Reading. Ensure "Front page displays" is set to "A static page" and Home is selected.', 'vibecode-deploy' ); ?></p>
+							<p><strong><?php echo esc_html__( 'Cause:', 'vibecode-deploy' ); ?></strong> <?php echo esc_html__( 'The plugin does not set the front page automatically. WordPress must have a front page configured.', 'vibecode-deploy' ); ?></p>
+							<p><strong><?php echo esc_html__( 'Solution:', 'vibecode-deploy' ); ?></strong> <?php echo esc_html__( 'Go to Settings → Reading. Set "Front page displays" to "A static page" and choose your Home page.', 'vibecode-deploy' ); ?></p>
 						</div>
 					</div>
 				</div>

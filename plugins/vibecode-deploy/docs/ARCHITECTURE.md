@@ -777,9 +777,9 @@ $class_attr = ' class="' . esc_attr($original_classes) . ' wp-block-group"';
    - Flush rewrite rules
 
 4. **Post-Deployment**
-   - Set front page (if home.html)
    - Update active fingerprint
    - Log deployment results
+   - (Front page is not set by the plugin; users set it manually in Settings → Reading.)
 
 ### Workflow 2: Template Creation
 

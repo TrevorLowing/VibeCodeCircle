@@ -62,6 +62,7 @@
 11. [External CDN Dependencies](#external-cdn-dependencies)
 12. [Code Documentation Standards](#code-documentation-standards)
 13. [Theme File Structure](#theme-file-structure)
+14. [CPT Single Templates and 404 Template](#cpt-single-templates-and-404-template)
 
 ---
 
@@ -945,6 +946,8 @@ $content = self::rewrite_urls($content, $slug_set, $resources_base_url); // SECO
 - `about.html` → `/about/`
 - `home` → `/home/` (or `/` if set as front page)
 
+The plugin does not set the front page; set it in **Settings → Reading** if you want `/` to show the home page.
+
 **External URLs (Not Rewritten):**
 - `https://example.com` → Unchanged
 - `mailto:info@example.com` → Unchanged
@@ -1536,6 +1539,39 @@ add_filter( 'render_block', 'bgp_ensure_shortcode_execution', 5, 2 );
 
 ---
 
+## CPT Single Templates and 404 Template
+
+### ✅ REQUIRED: Staging Must Include Single-CPT and 404 Templates
+
+**Critical Principle:** The plugin is **prefix-agnostic**. Template requirements and class naming apply to any project; use your project's class prefix (e.g. `cfa-` for CFA, `bgp-` for BioGasPros) in template markup.
+
+**Plugin Behavior (Automatic Creation):**
+- The plugin can **automatically create** default block templates for single CPT views (`single-{post_type}.html`) and a generated 404 template (`404.html`) at deploy time when they are missing.
+- These auto-generated templates use minimal structure and do not use your project's header/footer, layout, or class prefix.
+- Relying on plugin defaults results in single-CPT and 404 pages that do not match your site's theme styling.
+
+**Required Staging Content:**
+- Staging **must** include a custom **`single-{post_type}.html`** for **each** Custom Post Type used by the project (e.g. `single-advisory.html`, `single-product.html` — exact filename matches the CPT slug used by the theme).
+- Staging **must** include a custom **`404.html`** template.
+- Templates must use the **project's class prefix** (e.g. `cfa-`, `bgp-`) and the same layout structure as the rest of the site (e.g. shared header/footer, same main wrapper and semantic blocks) so single and 404 views match theme styling.
+
+**Why This Matters:**
+- Single-CPT and 404 pages that use your header, footer, and prefix-based classes stay visually and structurally consistent with the rest of the site.
+- Omitting these templates causes either plugin-generated defaults (inconsistent look) or fallback theme behavior that may not match the deployed design.
+
+**Rules:**
+- ✅ Include `single-{post_type}.html` in `templates/` for every CPT registered by the project (prefix-agnostic: filename uses the actual CPT slug, e.g. `single-cfa_advisory.html` or `single-bgp_product.html`).
+- ✅ Include `404.html` in `templates/`.
+- ✅ Use the project's class prefix in template markup (e.g. `{prefix}-main`, `{prefix}-page-content`, `{prefix}-container`) so styling and layout match the rest of the site.
+- ✅ Reuse the same template-part and block structure as other templates (e.g. template-parts for header/footer, same main wrapper).
+- ❌ Do not rely on plugin-generated single or 404 templates if you need consistent theme styling.
+
+**Reference:**
+- Project-specific structural rules (e.g. CFA, BGP) should list the exact CPT slugs and required template filenames for that project.
+- Plugin code: template creation in `DeployService` / block template handling.
+
+---
+
 ## Plugin Agnosticism and Generic Verification
 
 ### ✅ REQUIRED: Plugin is Fully Agnostic
@@ -1741,6 +1777,11 @@ Before deploying a project, verify:
 - [ ] `pages` section exists (even if empty)
 - [ ] Shortcode names match registered shortcodes
 - [ ] Taxonomy terms in shortcodes match registered terms
+
+### CPT Single and 404 Templates
+- [ ] Staging `templates/` includes `single-{post_type}.html` for each CPT used by the project
+- [ ] Staging `templates/` includes `404.html`
+- [ ] Templates use the project's class prefix and match site layout (header/footer, main wrapper)
 
 ### Theme Files
 - [ ] `theme/functions.php` exists with CPT, taxonomy, shortcode registrations

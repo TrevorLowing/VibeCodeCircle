@@ -64,6 +64,7 @@ final class ImportPage {
 		}
 		$notice = '';
 		$error = null; // Use null so isset() check works correctly
+		$home_page_reminder = '';
 		$preflight = null;
 		$import_result = null;
 		$selected_fingerprint = '';
@@ -378,7 +379,6 @@ final class ImportPage {
 			Logger::info( 'Deploy nonce verified.', array( 'project_slug' => (string) $settings['project_slug'] ), (string) $settings['project_slug'] );
 			
 			$selected_fingerprint = isset( $_POST['vibecode_deploy_fingerprint'] ) ? sanitize_text_field( (string) $_POST['vibecode_deploy_fingerprint'] ) : '';
-			$set_front_page = ! empty( $_POST['vibecode_deploy_set_front_page'] );
 			$force_claim_unowned = ! empty( $_POST['vibecode_deploy_force_claim_unowned'] );
 			$deploy_template_parts = ! isset( $_POST['vibecode_deploy_deploy_template_parts'] ) ? true : ( ! empty( $_POST['vibecode_deploy_deploy_template_parts'] ) );
 			$generate_404_template = ! isset( $_POST['vibecode_deploy_generate_404_template'] ) ? true : ( ! empty( $_POST['vibecode_deploy_generate_404_template'] ) );
@@ -473,7 +473,6 @@ final class ImportPage {
 				Logger::info( 'Import started.', array( 
 					'project_slug' => (string) $settings['project_slug'], 
 					'fingerprint' => $selected_fingerprint, 
-					'set_front_page' => (bool) $set_front_page, 
 					'force_claim_unowned' => (bool) $force_claim_unowned, 
 					'deploy_template_parts' => (bool) $deploy_template_parts, 
 					'generate_404_template' => (bool) $generate_404_template, 
@@ -523,7 +522,7 @@ final class ImportPage {
 				ob_start();
 				
 				try {
-					$import_result = Importer::run_import( (string) $settings['project_slug'], $selected_fingerprint, $build_root, $set_front_page, $force_claim_unowned, $deploy_template_parts, $generate_404_template, $force_claim_templates, $validate_cpt_shortcodes, $selected_pages, $selected_css, $selected_js, $selected_templates, $selected_template_parts, $selected_theme_files );
+					$import_result = Importer::run_import( (string) $settings['project_slug'], $selected_fingerprint, $build_root, $force_claim_unowned, $deploy_template_parts, $generate_404_template, $force_claim_templates, $validate_cpt_shortcodes, $selected_pages, $selected_css, $selected_js, $selected_templates, $selected_template_parts, $selected_theme_files );
 					
 					// Get any buffered output (should be empty, but log if not)
 					$buffered_output = ob_get_clean();
@@ -546,6 +545,15 @@ final class ImportPage {
 					} elseif ( is_array( $import_result ) && (int) ( $import_result['errors'] ?? 0 ) === 0 ) {
 						BuildService::set_active_fingerprint( (string) $settings['project_slug'], $selected_fingerprint );
 						$notice = __( 'Deploy complete.', 'vibecode-deploy' );
+						// Remind user to set front page if not already set
+						if ( get_option( 'show_on_front' ) !== 'page' || (int) get_option( 'page_on_front' ) <= 0 ) {
+							$reading_url = admin_url( 'options-reading.php' );
+							$home_page_reminder = sprintf(
+								/* translators: %s: link to Settings → Reading */
+								__( 'Home page is not set. Go to %s to set your front page.', 'vibecode-deploy' ),
+								'<a href="' . esc_url( $reading_url ) . '">' . esc_html__( 'Settings → Reading', 'vibecode-deploy' ) . '</a>'
+							);
+						}
 						Logger::info( 'Import complete.', array( 'project_slug' => (string) $settings['project_slug'], 'fingerprint' => $selected_fingerprint, 'result' => $import_result ), (string) $settings['project_slug'] );
 					} else {
 						$error = 'Deployment completed with errors. Please check the logs for details.';
@@ -626,6 +634,9 @@ final class ImportPage {
 			echo '<div class="notice notice-error"><p>' . esc_html( $error ) . '</p></div>';
 		} elseif ( $notice !== '' ) {
 			echo '<div class="notice notice-success"><p>' . $notice . '</p></div>';
+			if ( $home_page_reminder !== '' ) {
+				echo '<div class="notice notice-warning"><p>' . $home_page_reminder . '</p></div>';
+			}
 		}
 
 		// Debug: Show if preflight was attempted but result is null
@@ -1104,9 +1115,6 @@ final class ImportPage {
 				echo '<form method="post" id="vibecode-deploy-import-form">';
 				wp_nonce_field( 'vibecode_deploy_run_import', 'vibecode_deploy_run_import_nonce' );
 				echo '<input type="hidden" name="vibecode_deploy_fingerprint" value="' . esc_attr( $selected_fingerprint ) . '" />';
-				echo '<label style="display:block; margin: 8px 0;">';
-				echo '<input type="checkbox" name="vibecode_deploy_set_front_page" value="1" checked /> Set Home page as front page (if present)';
-				echo '</label>';
 				echo '<label style="display:block; margin: 8px 0;">';
 				echo '<input type="hidden" name="vibecode_deploy_deploy_template_parts" value="0" />';
 				echo '<input type="checkbox" name="vibecode_deploy_deploy_template_parts" value="1" checked /> Extract header/footer from home.html into template parts (recommended for block themes)';

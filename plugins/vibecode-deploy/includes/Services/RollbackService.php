@@ -235,14 +235,6 @@ final class RollbackService {
 			}
 		}
 
-		$front_before = isset( $manifest['front_before'] ) && is_array( $manifest['front_before'] ) ? $manifest['front_before'] : array();
-		if ( array_key_exists( 'show_on_front', $front_before ) ) {
-			update_option( 'show_on_front', (string) $front_before['show_on_front'] );
-		}
-		if ( array_key_exists( 'page_on_front', $front_before ) ) {
-			update_option( 'page_on_front', (int) $front_before['page_on_front'] );
-		}
-
 		$active_before = isset( $manifest['active_before'] ) ? (string) $manifest['active_before'] : '';
 		if ( $active_before !== '' ) {
 			BuildService::set_active_fingerprint( $project_slug, $active_before );

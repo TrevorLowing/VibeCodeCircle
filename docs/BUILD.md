@@ -77,16 +77,16 @@ Staging zips are typically built from the **CFA project** (or your site project)
 
 ### From CFA Project
 
-1. Ensure `vibecode-deploy-staging/` directory exists in CFA root
-2. Create zip from CFA root:
+**Recommended:** Run CFA’s build script from the CFA repo. It writes **directly** to **VibeCodeCircle/dist/vibecode-deploy-staging.zip** (CFA and VibeCodeCircle must be siblings).
 
 ```bash
 cd /path/to/CFA
-zip -r vibecode-deploy-staging.zip vibecode-deploy-staging \
-  -x "*.DS_Store" "__MACOSX/*" "*/__MACOSX/*" "._*"
+./scripts/build-vibecode-staging-zip.sh
 ```
 
-3. Copy to VibeCodeCircle dist (optional, for consistency):
+No copy step is needed when using this script.
+
+**Manual build:** If you create the zip by hand (e.g. with `zip -r vibecode-deploy-staging.zip vibecode-deploy-staging ...` from CFA root), copy it to VibeCodeCircle/dist/ before uploading:
 
 ```bash
 cp vibecode-deploy-staging.zip /path/to/VibeCodeCircle/dist/

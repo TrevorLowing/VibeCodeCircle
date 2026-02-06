@@ -58,7 +58,7 @@ Vibe Code Deploy is a WordPress plugin that converts static HTML websites into G
 
 #### 2.1.5 Page Management
 - Create/update/skip existing pages based on ownership
-- Support for front page setting
+- Front page: user sets manually in Settings → Reading (plugin does not set it; shows reminder after deploy if not set)
 - Maintain page hierarchy and navigation
 - Custom post type support with shortcode validation
 - **Automatic page template assignment**: Automatically detects block templates (`page-{slug}`) during deployment (block templates only, no PHP template fallback)

@@ -224,7 +224,18 @@ final class AssetService {
 				}
 				// Skip external URLs (http://, https://) that aren't whitelisted
 				if ( strpos( $src, 'http://' ) === 0 || strpos( $src, 'https://' ) === 0 ) {
-					continue;
+					// Allow whitelisted external assets (e.g. for maps)
+					$allowed_domains = array( 'unpkg.com', 'cdnjs.cloudflare.com', 'fonts.googleapis.com', 'fonts.gstatic.com', 'ajax.googleapis.com' );
+					$is_allowed = false;
+					foreach ( $allowed_domains as $domain ) {
+						if ( strpos( $src, $domain ) !== false ) {
+							$is_allowed = true;
+							break;
+						}
+					}
+					if ( ! $is_allowed ) {
+						continue;
+					}
 				}
 				if ( strpos( $src, 'js/' ) !== 0 ) {
 					continue;

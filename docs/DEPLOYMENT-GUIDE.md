@@ -244,11 +244,11 @@ cp vibecode-deploy-staging.zip /path/to/VibeCodeCircle/dist/
 
 ### 3. Deploy
 1. Configure options:
-   - Set as front page (for home.html)
    - Extract header/footer from home.html
    - Generate 404 template
    - Force claim unowned pages
    - Validate CPT shortcodes
+   - (Front page is not set by the plugin; set it in Settings → Reading after deploy.)
 2. Click **Deploy**
 
 ## Step 5: Post-Deployment Tasks
@@ -293,6 +293,8 @@ add_action('wp_enqueue_scripts', function() {
 ```
 
 ### 3. Set Front Page
+The plugin does not set the front page. After deployment, set it manually.
+
 1. Go to **Settings → Reading**
 2. Select "A static page"
 3. Choose "Home" as front page

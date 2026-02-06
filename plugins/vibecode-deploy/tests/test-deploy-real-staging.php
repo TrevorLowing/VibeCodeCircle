@@ -148,7 +148,6 @@ $deploy_result = Importer::run_import(
 	$project_slug,
 	$fingerprint,
 	$build_root,
-	false, // set_front_page
 	false, // force_claim_unowned
 	true,  // deploy_template_parts (ENABLED for full deployment)
 	true,  // generate_404_template (ENABLED for full deployment)

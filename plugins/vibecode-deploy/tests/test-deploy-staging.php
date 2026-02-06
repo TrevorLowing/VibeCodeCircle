@@ -206,7 +206,6 @@ if ( $fingerprint ) {
 		$project_slug,
 		$fingerprint,
 		$build_root,
-		false, // set_front_page
 		false, // force_claim_unowned
 		false, // deploy_template_parts
 		false, // generate_404_template

@@ -97,7 +97,6 @@ foreach ( $pages_to_fix as $page_slug ) {
 		$project_slug,
 		$active_fingerprint,
 		$build_root,
-		false, // set_front_page
 		true,  // force_claim_unowned
 		true,  // deploy_template_parts
 		true,  // generate_404_template
