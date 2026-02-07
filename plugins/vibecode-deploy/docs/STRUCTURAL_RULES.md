@@ -370,6 +370,7 @@ zip -r vibecode-deploy-staging.zip vibecode-deploy-staging -x "*.DS_Store" "__MA
 - Semantic blocks: Preserved via `className` attribute
 - Example: `<p class="intro-text">` → `wp:paragraph` block with `className: "intro-text"`
 - CSS classes remain functional after conversion
+- **Image blocks:** The class is output on both the block’s `className` attribute and the **inner `<img>` element**, so project CSS (e.g. hero logo sizing in `css/styles.css`) applies to the rendered image. Display size should be controlled by CSS class, not inline style.
 
 **Other Attributes:**
 - IDs, data-* attributes, and other HTML attributes are preserved
