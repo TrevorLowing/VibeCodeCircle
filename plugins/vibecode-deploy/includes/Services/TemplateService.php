@@ -1291,6 +1291,8 @@ defined( 'ABSPATH' ) || exit;
 					continue;
 				}
 
+				// Process images (upload to Media Library when enabled) before rewrite_urls
+				$raw = Importer::process_images_in_html( $raw, $build_root );
 				$content_blocks = self::rewrite_urls( $raw, $slug_set, $resources_base_url );
 				$res = self::upsert_template( $project_slug, $fingerprint, $slug, $content_blocks, $force_claim_templates );
 				if ( empty( $res['ok'] ) ) {

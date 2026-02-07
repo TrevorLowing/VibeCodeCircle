@@ -423,6 +423,28 @@ final class Importer {
 		return $files;
 	}
 
+	/**
+	 * Build project-agnostic path variations for resolving image files in staging.
+	 * Always tries standard locations (e.g. resources/images/) so any project finds the file.
+	 *
+	 * @param string $normalized_path Relative path (no leading ./ or /).
+	 * @return array List of path strings to try under build_root.
+	 */
+	private static function get_image_path_variations( string $normalized_path ): array {
+		$variations = array( $normalized_path );
+		$variations[] = 'resources/images/' . basename( $normalized_path );
+		if ( strpos( $normalized_path, 'resources/images/' ) !== 0 ) {
+			$variations[] = 'resources/images/' . $normalized_path;
+		}
+		if ( strpos( $normalized_path, 'resources/' ) !== 0 ) {
+			$variations[] = 'resources/' . $normalized_path;
+		}
+		if ( strpos( $normalized_path, 'images/' ) !== 0 ) {
+			$variations[] = 'images/' . $normalized_path;
+		}
+		return array_values( array_unique( $variations ) );
+	}
+
 	private static function inner_html( \DOMDocument $dom, \DOMNode $node ): string {
 		$html = '';
 		foreach ( $node->childNodes as $child ) {
@@ -912,16 +934,7 @@ final class Importer {
 						$normalized_path = (string) preg_replace( '/^\.\//', '', $path_to_resolve );
 						$normalized_path = ltrim( $normalized_path, '/' );
 						
-						// Try multiple path variations
-						$path_variations = array( $normalized_path );
-						
-						// If path doesn't start with resources/, try adding it
-						if ( strpos( $normalized_path, 'resources/' ) !== 0 && strpos( $normalized_path, 'images/' ) !== 0 ) {
-							$path_variations[] = 'resources/' . $normalized_path;
-							$path_variations[] = 'resources/images/' . $normalized_path;
-							$path_variations[] = 'images/' . $normalized_path;
-						}
-						
+						$path_variations = self::get_image_path_variations( $normalized_path );
 						$file_path = '';
 						$found_path = '';
 						
@@ -955,13 +968,13 @@ final class Importer {
 							if ( isset( $attrs['alt'] ) && is_string( $attrs['alt'] ) ) {
 								$metadata['alt'] = $attrs['alt'];
 							}
-							$attachment_id = MediaLibraryService::upload_image_to_media_library( $file_path, $filename, $source_path, $metadata );
+							$result = MediaLibraryService::upload_image_to_media_library( $file_path, $filename, $source_path, $metadata );
 							
-							if ( $attachment_id ) {
-								$image_url = MediaLibraryService::get_attachment_url( $attachment_id );
-								$image_attrs['id'] = $attachment_id;
+							if ( is_array( $result ) && isset( $result['attachment_id'], $result['url'] ) && $result['url'] !== '' ) {
+								$image_url = $result['url'];
+								$image_attrs['id'] = $result['attachment_id'];
 								Logger::info( 'Image uploaded to Media Library successfully.', array(
-									'attachment_id' => $attachment_id,
+									'attachment_id' => $result['attachment_id'],
 									'image_url' => $image_url,
 								) );
 							} else {
@@ -997,14 +1010,7 @@ final class Importer {
 								$normalized_path = (string) preg_replace( '/^\.\//', '', $path_to_resolve );
 								$normalized_path = ltrim( $normalized_path, '/' );
 								
-								// Try multiple path variations
-								$path_variations = array( $normalized_path );
-								if ( strpos( $normalized_path, 'resources/' ) !== 0 && strpos( $normalized_path, 'images/' ) !== 0 ) {
-									$path_variations[] = 'resources/' . $normalized_path;
-									$path_variations[] = 'resources/images/' . $normalized_path;
-									$path_variations[] = 'images/' . $normalized_path;
-								}
-								
+								$path_variations = self::get_image_path_variations( $normalized_path );
 								$file_path = '';
 								$found_path = '';
 								
@@ -1030,13 +1036,13 @@ final class Importer {
 									if ( isset( $attrs['alt'] ) && is_string( $attrs['alt'] ) ) {
 										$metadata['alt'] = $attrs['alt'];
 									}
-									$attachment_id = MediaLibraryService::upload_image_to_media_library( $file_path, $filename, $source_path, $metadata );
+									$result = MediaLibraryService::upload_image_to_media_library( $file_path, $filename, $source_path, $metadata );
 									
-									if ( $attachment_id ) {
-										$image_url = MediaLibraryService::get_attachment_url( $attachment_id );
-										$image_attrs['id'] = $attachment_id;
+									if ( is_array( $result ) && isset( $result['attachment_id'], $result['url'] ) && $result['url'] !== '' ) {
+										$image_url = $result['url'];
+										$image_attrs['id'] = $result['attachment_id'];
 										Logger::info( 'Image uploaded to Media Library successfully (fallback).', array(
-											'attachment_id' => $attachment_id,
+											'attachment_id' => $result['attachment_id'],
 										) );
 									}
 								} else {
@@ -1091,14 +1097,20 @@ final class Importer {
 			);
 			
 			// Build HTML attributes (id, data-*, etc.)
-			// Use converted URL for src attribute in HTML
+			// Use converted URL for src attribute in HTML. Output class on inner img so project CSS applies (e.g. .cfa-hero__logo).
 			$element_attrs = '';
 			if ( $image_url !== '' ) {
 				$element_attrs .= ' src="' . esc_attr( $image_url ) . '"';
 			}
+			$img_class = isset( $image_attrs['className'] ) && is_string( $image_attrs['className'] ) && $image_attrs['className'] !== ''
+				? $image_attrs['className']
+				: ( isset( $attrs['class'] ) && is_string( $attrs['class'] ) ? $attrs['class'] : '' );
+			if ( $img_class !== '' ) {
+				$element_attrs .= ' class="' . esc_attr( $img_class ) . '"';
+			}
 			foreach ( $attrs as $key => $value ) {
 				if ( in_array( $key, array( 'class', 'src', 'alt', 'width', 'height' ), true ) ) {
-					continue; // Already handled
+					continue; // Already handled (class output above; rest in block attrs)
 				}
 				if ( is_string( $value ) && $value !== '' ) {
 					$element_attrs .= ' ' . esc_attr( $key ) . '="' . esc_attr( $value ) . '"';
@@ -1662,14 +1674,7 @@ final class Importer {
 			$normalized_path = (string) preg_replace( '/^\.\//', '', $src );
 			$normalized_path = ltrim( $normalized_path, '/' );
 			
-			// Try multiple path variations
-			$path_variations = array( $normalized_path );
-			if ( strpos( $normalized_path, 'resources/' ) !== 0 && strpos( $normalized_path, 'images/' ) !== 0 ) {
-				$path_variations[] = 'resources/' . $normalized_path;
-				$path_variations[] = 'resources/images/' . $normalized_path;
-				$path_variations[] = 'images/' . $normalized_path;
-			}
-			
+			$path_variations = self::get_image_path_variations( $normalized_path );
 			$file_path = '';
 			$found_path = '';
 			
@@ -1697,18 +1702,15 @@ final class Importer {
 					'original_src' => $src,
 				) );
 				
-				$attachment_id = MediaLibraryService::upload_image_to_media_library( $file_path, $filename, $src, $metadata );
+				$result = MediaLibraryService::upload_image_to_media_library( $file_path, $filename, $src, $metadata );
 				
-				if ( $attachment_id ) {
-					$image_url = MediaLibraryService::get_attachment_url( $attachment_id );
-					// Update src attribute to Media Library URL
-					$img->setAttribute( 'src', $image_url );
-					// Add data attribute to store attachment ID for later block conversion
-					$img->setAttribute( 'data-attachment-id', (string) $attachment_id );
+				if ( is_array( $result ) && isset( $result['attachment_id'], $result['url'] ) && $result['url'] !== '' ) {
+					$img->setAttribute( 'src', $result['url'] );
+					$img->setAttribute( 'data-attachment-id', (string) $result['attachment_id'] );
 					$images_uploaded++;
 					Logger::info( 'Image uploaded and src updated in HTML.', array(
-						'attachment_id' => $attachment_id,
-						'new_src' => $image_url,
+						'attachment_id' => $result['attachment_id'],
+						'new_src' => $result['url'],
 					) );
 				} else {
 					Logger::warning( 'Failed to upload image to Media Library.', array(

@@ -717,7 +717,9 @@ final class DeployService {
 
 			// Extract main content (same as page content extraction)
 			$content = self::inner_html( $dom, $main );
-			// Rewrite asset URLs FIRST (resources/ -> plugin URL) before rewrite_urls processes them
+			// Process images (upload to Media Library when enabled) before rewrite_asset_urls
+			$content = Importer::process_images_in_html( $content, $build_root );
+			// Rewrite asset URLs (resources/ -> plugin URL for any remaining) before rewrite_urls processes them
 			$content = AssetService::rewrite_asset_urls( $content, $project_slug );
 			// Then rewrite page URLs (skip resources already converted to plugin URLs)
 			$content = self::rewrite_urls( $content, $slug_set, $resources_base_url );

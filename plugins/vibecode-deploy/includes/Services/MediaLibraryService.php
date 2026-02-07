@@ -29,16 +29,17 @@ final class MediaLibraryService {
 	 * Upload image to Media Library or reuse existing attachment.
 	 *
 	 * Checks if image already exists by source path hash. If exists and file unchanged,
-	 * returns existing attachment ID. If file changed, updates attachment. If not exists,
-	 * uploads new image.
+	 * returns existing attachment ID and URL. If file changed, updates attachment. If not exists,
+	 * uploads new image. Returns the URL from the upload result so callers do not depend on
+	 * a separate lookup (project-agnostic, avoids timing/sync issues).
 	 *
 	 * @param string $file_path Full path to image file in staging.
 	 * @param string $filename Just the filename (e.g., "logo.png").
 	 * @param string $source_path Source path from HTML (e.g., "resources/images/logo.png").
 	 * @param array  $metadata Optional metadata (alt text, etc.).
-	 * @return int|false Attachment ID on success, false on failure.
+	 * @return array|false On success: array( 'attachment_id' => int, 'url' => string ). On failure: false.
 	 */
-	public static function upload_image_to_media_library( string $file_path, string $filename, string $source_path, array $metadata = array() ): int|false {
+	public static function upload_image_to_media_library( string $file_path, string $filename, string $source_path, array $metadata = array() ): array|false {
 		// Validate file exists
 		if ( ! file_exists( $file_path ) || ! is_readable( $file_path ) ) {
 			Logger::error( 'Image file not found or not readable.', array( 'file_path' => $file_path ) );
@@ -172,7 +173,8 @@ final class MediaLibraryService {
 					'source_path' => $source_path,
 					'file_hash' => $new_file_hash,
 				) );
-				return $existing;
+				$url = self::get_attachment_url( $existing );
+				return array( 'attachment_id' => $existing, 'url' => $url !== '' ? $url : (string) wp_get_attachment_url( $existing ) );
 			} else {
 				// File changed, update attachment
 				Logger::info( 'File changed, updating existing Media Library attachment.', array(
@@ -181,7 +183,12 @@ final class MediaLibraryService {
 					'old_file_hash' => is_string( $existing_file_hash ) ? $existing_file_hash : 'not_set',
 					'new_file_hash' => $new_file_hash,
 				) );
-				return self::update_attachment_if_changed( $existing, $file_path, $new_file_hash );
+				$updated_id = self::update_attachment_if_changed( $existing, $file_path, $new_file_hash );
+				if ( $updated_id === false ) {
+					return false;
+				}
+				$url = self::get_attachment_url( $updated_id );
+				return array( 'attachment_id' => $updated_id, 'url' => $url !== '' ? $url : (string) wp_get_attachment_url( $updated_id ) );
 			}
 		} else {
 			Logger::info( 'No existing Media Library attachment found, will create new attachment.', array(
@@ -251,7 +258,9 @@ final class MediaLibraryService {
 			'filename' => $filename,
 		) );
 
-		return $attachment_id;
+		// Use URL from upload result (WordPress standard); avoids separate lookup and timing issues.
+		$url = isset( $upload['url'] ) && is_string( $upload['url'] ) ? $upload['url'] : self::get_attachment_url( $attachment_id );
+		return array( 'attachment_id' => $attachment_id, 'url' => $url !== '' ? $url : (string) wp_get_attachment_url( $attachment_id ) );
 	}
 
 	/**
