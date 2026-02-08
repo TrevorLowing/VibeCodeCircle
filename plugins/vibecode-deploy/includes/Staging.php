@@ -381,6 +381,7 @@ final class Staging {
 		$zip->close();
 
 		Logger::info( 'Extraction completed successfully.', array(
+			'plugin_version' => defined( 'VIBECODE_DEPLOY_PLUGIN_VERSION' ) ? VIBECODE_DEPLOY_PLUGIN_VERSION : 'unknown',
 			'project_slug' => $project_slug,
 			'fingerprint' => $fingerprint,
 			'target_root' => $target_root,

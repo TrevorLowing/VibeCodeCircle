@@ -25,6 +25,7 @@ final class Bootstrap {
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Logger.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/BuildService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/ClassPrefixDetector.php';
+		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/StagingPrefixValidator.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/AssetService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/MediaLibraryService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/ShortcodePlaceholderService.php';
@@ -41,6 +42,7 @@ final class Bootstrap {
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/ThemeSetupService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/ThemeDeployService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/TestDataService.php';
+		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/CptExtractionService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/HtmlTestPageService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/HtmlTestPageAuditService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/EtchWPComplianceService.php';
@@ -58,6 +60,22 @@ final class Bootstrap {
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Admin/HelpPage.php';
 
 		add_action( 'plugins_loaded', array( __CLASS__, 'register' ) );
+		add_action( 'init', array( __CLASS__, 'maybe_flush_rewrite_rules_deferred' ), 20 );
+	}
+
+	/**
+	 * Flush rewrite rules on init when set by a previous deploy (CPTs merged but not yet registered in same request).
+	 *
+	 * @return void
+	 */
+	public static function maybe_flush_rewrite_rules_deferred(): void {
+		if ( ! get_option( 'vibecode_deploy_flush_rewrite_rules_on_init', false ) ) {
+			return;
+		}
+		delete_option( 'vibecode_deploy_flush_rewrite_rules_on_init' );
+		flush_rewrite_rules( false );
+		$project_slug = \VibeCode\Deploy\Settings::get_all()['project_slug'] ?? '';
+		Logger::info( 'Flushed rewrite rules on init (deferred from deploy)', array(), $project_slug ?: 'vibecode-deploy' );
 	}
 
 	/**

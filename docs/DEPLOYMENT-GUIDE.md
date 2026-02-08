@@ -90,6 +90,14 @@ Each HTML page must follow this structure:
 3. **Main**: Only content inside `<main>` becomes page content
 4. **CSS Classes**: Use BEM naming with project prefix (e.g., `my-site-*` or configure in plugin settings)
 
+### Optional: Extract CPT content from static HTML
+
+**When to use:** If your static HTML contains product cards, FAQ items, or similar repeated blocks and you want the plugin to **create CPT posts** from that content during deploy, you can enable **CPT extraction** via the staging config. This is **opt-in only**; projects that do not set it (e.g. CFA) are unchanged.
+
+- In `vibecode-deploy-shortcodes.json`, add `"extract_cpt_from_static": true` and an `extract_cpt_pages` object that defines per-page selectors and field mappings (see plugin STRUCTURAL_RULES.md).
+- Your staging zip must contain the **full** page HTML (with the product/FAQ markup), not placeholder-only pages. Some build scripts (e.g. BGP) prompt: "Include full page content and extract CPT data from static HTML? (y/n)" and, when you answer **y**, copy source HTML into staging and set the extraction flag.
+- If the flag is missing or `false`, the plugin never runs extraction. If `true` but no matching HTML or rules, no posts are created.
+
 ### CPT Consideration Before Deployment
 
 **Before deploying, review your static HTML content to identify items that should be Custom Post Types (CPTs) instead of hardcoded content.**
@@ -141,6 +149,17 @@ Use a CPT with shortcode:
 - Content will need to be manually entered into WordPress admin
 - Shortcodes will render the content dynamically
 - Future updates can be made without editing HTML files
+
+### Creating CPT content via WordPress REST API
+
+CPT posts can be created and updated via the **WordPress REST API** without any Vibe Code Deploy plugin code. WordPress exposes REST endpoints for any CPT registered with `show_in_rest => true`.
+
+- **Create:** `POST /wp-json/wp/v2/{cpt_slug}` (e.g. `POST /wp-json/wp/v2/cfa_investigation`)
+- **Read/Update/Delete:** `GET` / `PUT` or `PATCH` / `DELETE` on `/wp-json/wp/v2/{cpt_slug}` and `/wp-json/wp/v2/{cpt_slug}/{id}`
+- **Authentication:** Use [Application Passwords](https://developer.wordpress.org/rest-api/using-the-rest-api/authentication/#application-passwords) (Users → Profile → Application Passwords). Send `Authorization: Basic base64(username:application_password)`.
+- **Custom meta:** To allow meta in the API, register each key with `register_post_meta()` and `'show_in_rest' => true` (and an appropriate `auth_callback`). Otherwise the core API will not accept or return it.
+
+Ensure your theme registers CPTs with `show_in_rest => true` if you want to create or manage CPT content via the REST API.
 
 ## Step 2: Create Staging ZIP
 

@@ -208,6 +208,9 @@ final class ThemeDeployService {
 										'theme_file' => $theme_file,
 										'file_exists' => file_exists( $theme_file ),
 									), $project_slug ?: 'vibecode-deploy' );
+									// Deferred flush: on next request CPTs will register; flush then so permalinks work
+									update_option( 'vibecode_deploy_flush_rewrite_rules_on_init', 1 );
+									Logger::info( 'Set deferred rewrite flush option (registration function not in memory)', array(), $project_slug ?: 'vibecode-deploy' );
 								}
 							} else {
 								// Fallback: Try to trigger init hooks manually for anonymous functions
@@ -215,6 +218,8 @@ final class ThemeDeployService {
 								Logger::info( 'No named CPT registration function found, CPTs will register on next page load', array(
 									'cpt_count' => $cpt_count,
 								), $project_slug ?: 'vibecode-deploy' );
+								update_option( 'vibecode_deploy_flush_rewrite_rules_on_init', 1 );
+								Logger::info( 'Set deferred rewrite flush option (no named registration function)', array(), $project_slug ?: 'vibecode-deploy' );
 							}
 						}
 						
@@ -1754,9 +1759,9 @@ final class ThemeDeployService {
 					}
 					
 					if ( $brace_end !== false ) {
-						// Check for add_filter/add_action calls after the function
+						// Check for add_filter/add_action calls after the function (allow multi-line and multiple calls)
 						$search_start = $brace_end + 1;
-						$search_end = min( $search_start + 200, strlen( $theme_content ) );
+						$search_end = min( $search_start + 2000, strlen( $theme_content ) );
 						$after_function = substr( $theme_content, $search_start, $search_end - $search_start );
 						
 						// Find all add_filter/add_action calls for this function
@@ -1764,13 +1769,58 @@ final class ThemeDeployService {
 						$filter_end = $brace_end;
 						
 						if ( preg_match( $filter_pattern, $after_function, $filter_match, PREG_OFFSET_CAPTURE ) ) {
-							// Find the end of the last filter call
-							$last_filter_pos = $filter_match[0][1];
-							$line_end = strpos( $after_function, "\n", $last_filter_pos );
-							if ( $line_end !== false ) {
-								$filter_end = $search_start + $line_end;
-							} else {
-								$filter_end = $search_start + strlen( $after_function );
+							// Find the end of every add_filter/add_action call for this function (may be multi-line)
+							$search_len = strlen( $after_function );
+							$last_call_end = 0;
+							$offset = 0;
+							while ( $offset < $search_len && preg_match( $filter_pattern, $after_function, $m, PREG_OFFSET_CAPTURE, $offset ) ) {
+								$call_start = $m[0][1];
+								$open_paren = strpos( $after_function, '(', $call_start );
+								if ( $open_paren === false ) {
+									$offset = $call_start + 1;
+									continue;
+								}
+								$paren_count = 1;
+								$in_string = false;
+								$string_char = '';
+								$i = $open_paren + 1;
+								while ( $i < $search_len && $paren_count > 0 ) {
+									$c = $after_function[ $i ];
+									if ( $in_string ) {
+										if ( $c === $string_char && ( $i === 0 || $after_function[ $i - 1 ] !== '\\' ) ) {
+											$in_string = false;
+										}
+										$i++;
+										continue;
+									}
+									if ( $c === '"' || $c === "'" ) {
+										$in_string = true;
+										$string_char = $c;
+										$i++;
+										continue;
+									}
+									if ( $c === '(' ) {
+										$paren_count++;
+									} elseif ( $c === ')' ) {
+										$paren_count--;
+										if ( $paren_count === 0 ) {
+											$i++;
+											while ( $i < $search_len && ( $after_function[ $i ] === ' ' || $after_function[ $i ] === "\t" ) ) {
+												$i++;
+											}
+											if ( $i < $search_len && $after_function[ $i ] === ';' ) {
+												$i++;
+											}
+											break;
+										}
+									}
+									$i++;
+								}
+								$last_call_end = ( $paren_count === 0 && $i <= $search_len ) ? $i : ( strpos( $after_function, "\n", $call_start ) ?: $search_len );
+								$offset = $last_call_end;
+							}
+							if ( $last_call_end > 0 ) {
+								$filter_end = $search_start + $last_call_end;
 							}
 						}
 						
@@ -2169,18 +2219,18 @@ Version: 1.0.0
 	}
 
 	/**
-	 * Ensure CPT menu structure exists with parent menu item and nested CPTs.
+	 * Ensure CPTs have show_ui and ACF-compatible args; add ACF post types filter.
 	 *
-	 * Creates a parent menu item with uppercase project prefix and nests all CPTs under it.
-	 * Also ensures all CPTs have explicit show_ui and show_in_menu settings.
+	 * Does not create a parent menu; CPTs appear as top-level admin menu items.
+	 * Ensures project CPTs have explicit show_ui and ACF-compatible settings.
 	 *
 	 * @param string $theme_content Current theme functions.php content.
 	 * @param string $project_slug Project slug (e.g., 'bgp', 'cfa').
-	 * @return string Content with menu structure function added.
+	 * @return string Content with CPT/ACF helper function added.
 	 */
 	private static function ensure_cpt_menu_structure( string $theme_content, string $project_slug ): string {
 		if ( empty( $project_slug ) ) {
-			return $theme_content; // Can't create menu without project slug
+			return $theme_content; // Can't add helpers without project slug
 		}
 		
 		// Check if CPTs exist in the content
@@ -2201,64 +2251,30 @@ Version: 1.0.0
 			return $theme_content; // No CPTs with project prefix
 		}
 		
-		// Check if menu creation function already exists
+		// Check if helper function already exists
 		$menu_function_name = $project_slug . '_create_cpt_menu';
 		$menu_function_pattern = '/function\s+' . preg_quote( $menu_function_name, '/' ) . '\s*\(/';
 		if ( preg_match( $menu_function_pattern, $theme_content ) ) {
-			// Menu function already exists, skip
+			// Helper already exists, skip
 			return $theme_content;
 		}
 		
-		// Generate parent menu slug (uppercase project prefix)
-		$parent_menu_slug = strtoupper( $project_slug );
-		$parent_menu_title = strtoupper( $project_slug );
+		// Generate helper code: register_post_type_args filter (show_ui, ACF-compatible args; no parent menu) + ACF get_post_types filter
+		$menu_function_code = "\n\n/**\n * CPT admin visibility and ACF compatibility.\n * \n * Ensures project CPTs have show_ui and ACF-compatible args. CPTs appear as top-level menu items.\n * Auto-generated by Vibe Code Deploy plugin.\n */\n";
 		
-		// Generate menu creation function code
-		// CRITICAL: We need to create the parent menu FIRST, then modify CPTs to nest under it
-		// The parent menu must exist before CPTs can nest under it
-		$menu_function_code = "\n\n/**\n * Create Admin Menu Structure for CPTs\n * \n * Creates a parent menu item with uppercase project prefix and nests all CPTs under it.\n * This provides better organization in the WordPress admin menu.\n * \n * Auto-generated by Vibe Code Deploy plugin.\n */\n";
-		
-		// Function 1: Create parent menu (runs early on admin_menu)
-		$parent_menu_function = "function {$menu_function_name}_parent() {\n";
-		$parent_menu_function .= "\t\$parent_menu_slug = '" . esc_attr( $parent_menu_slug ) . "';\n";
-		$parent_menu_function .= "\t\$parent_menu_title = '" . esc_attr( $parent_menu_title ) . "';\n\n";
-		$parent_menu_function .= "\t// Create parent menu item (must exist before CPTs can nest under it)\n";
-		$parent_menu_function .= "\tadd_menu_page(\n";
-		$parent_menu_function .= "\t\t\$parent_menu_title,\n";
-		$parent_menu_function .= "\t\t\$parent_menu_title,\n";
-		$parent_menu_function .= "\t\t'manage_options',\n";
-		$parent_menu_function .= "\t\t\$parent_menu_slug,\n";
-		$parent_menu_function .= "\t\t'',\n";
-		$parent_menu_function .= "\t\t'dashicons-admin-generic',\n";
-		$parent_menu_function .= "\t\t20 // Position in menu\n";
-		$parent_menu_function .= "\t);\n";
-		$parent_menu_function .= "}\n";
-		$parent_menu_function .= "add_action( 'admin_menu', '{$menu_function_name}_parent', 5 ); // Priority 5 to run early\n\n";
-		
-		// Function 2: Modify CPTs to nest under parent menu using register_post_type_args filter
-		// This filter runs during CPT registration, allowing us to set show_in_menu before registration completes
-		$menu_function_code .= $parent_menu_function;
 		$menu_function_code .= "function {$menu_function_name}() {\n";
-		$menu_function_code .= "\t\$project_slug = '" . esc_attr( $project_slug ) . "';\n";
-		$menu_function_code .= "\t\$parent_menu_slug = '" . esc_attr( $parent_menu_slug ) . "';\n\n";
-		$menu_function_code .= "\t// Modify CPT registrations to nest under parent menu\n";
-		$menu_function_code .= "\t// Use register_post_type_args filter to modify during registration\n";
 		$menu_function_code .= "\t\$cpt_slugs = array(";
 		foreach ( $cpt_slugs as $cpt_slug ) {
 			$menu_function_code .= "\n\t\t'" . esc_attr( $cpt_slug ) . "',";
 		}
 		$menu_function_code .= "\n\t);\n\n";
-		$menu_function_code .= "\tadd_filter( 'register_post_type_args', function( \$args, \$post_type ) use ( \$cpt_slugs, \$parent_menu_slug ) {\n";
+		$menu_function_code .= "\t// Ensure CPTs have show_ui and ACF-compatible args (no parent menu; CPTs stay top-level)\n";
+		$menu_function_code .= "\tadd_filter( 'register_post_type_args', function( \$args, \$post_type ) use ( \$cpt_slugs ) {\n";
 		$menu_function_code .= "\t\tif ( in_array( \$post_type, \$cpt_slugs, true ) ) {\n";
-		$menu_function_code .= "\t\t\t// Nest CPT under parent menu\n";
-		$menu_function_code .= "\t\t\t\$args['show_in_menu'] = \$parent_menu_slug;\n";
-		$menu_function_code .= "\t\t\t// Ensure show_ui is true for menu visibility and ACF compatibility\n";
 		$menu_function_code .= "\t\t\t\$args['show_ui'] = true;\n";
-		$menu_function_code .= "\t\t\t// Ensure publicly_queryable is true for ACF to detect CPT\n";
 		$menu_function_code .= "\t\t\tif ( ! isset( \$args['publicly_queryable'] ) ) {\n";
 		$menu_function_code .= "\t\t\t\t\$args['publicly_queryable'] = true;\n";
 		$menu_function_code .= "\t\t\t}\n";
-		$menu_function_code .= "\t\t\t// Ensure show_in_rest is true for ACF compatibility\n";
 		$menu_function_code .= "\t\t\tif ( ! isset( \$args['show_in_rest'] ) ) {\n";
 		$menu_function_code .= "\t\t\t\t\$args['show_in_rest'] = true;\n";
 		$menu_function_code .= "\t\t\t}\n";
@@ -2314,9 +2330,8 @@ Version: 1.0.0
 			$theme_content = $before . $menu_function_code . $after;
 		}
 		
-		Logger::info( 'Added CPT menu structure function', array(
+		Logger::info( 'Added CPT/ACF helper function', array(
 			'function_name' => $menu_function_name,
-			'parent_menu_slug' => $parent_menu_slug,
 			'cpt_count' => count( $cpt_slugs ),
 			'cpt_slugs' => $cpt_slugs,
 		), $project_slug ?: 'vibecode-deploy' );

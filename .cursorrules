@@ -338,3 +338,4 @@ For complete documentation, see:
 - **Developer Guide**: `docs/DEVELOPER_GUIDE.md`
 - **WordPress Plugin Best Practices**: `docs/WORDPRESS_PLUGIN_BEST_PRACTICES.md`
 - **API Reference**: `docs/API_REFERENCE.md`
+- **Structural Rules (all deploy projects)**: `plugins/vibecode-deploy/docs/STRUCTURAL_RULES.md` — includes **prefix requirements**: CPTs, shortcodes, taxonomies, ACF group/field names, and (recommended) post meta keys must use the project prefix (e.g. `cfa_`, `bgp_`). Plugin validates these on upload.

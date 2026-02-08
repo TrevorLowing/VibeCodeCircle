@@ -99,7 +99,8 @@ class TestDataPage {
 		// Handle form submission
 		if ( isset( $_POST['vibecode_deploy_seed_test_data'] ) && check_admin_referer( 'vibecode_deploy_seed_test_data', 'vibecode_deploy_seed_test_data_nonce' ) ) {
 			$selected_cpts = isset( $_POST['selected_cpts'] ) && is_array( $_POST['selected_cpts'] ) ? array_map( 'sanitize_key', $_POST['selected_cpts'] ) : array();
-			$results = TestDataService::seed_test_data( $selected_cpts );
+			$force_seed = isset( $_POST['vibecode_deploy_force_seed'] ) && $_POST['vibecode_deploy_force_seed'] === '1';
+			$results = TestDataService::seed_test_data( $selected_cpts, $force_seed );
 
 			Logger::info(
 				'Test data seeded.',
@@ -311,10 +312,17 @@ class TestDataPage {
 
 			<div class="card" style="max-width: 800px; margin-top: 20px;">
 				<h2><?php echo esc_html__( 'Seed Test Data', 'vibecode-deploy' ); ?></h2>
-				<p><?php echo esc_html__( 'Select which CPTs to seed with test data. CPTs that already have published posts will be skipped.', 'vibecode-deploy' ); ?></p>
+				<p><?php echo esc_html__( 'Select which CPTs to seed with test data. By default, CPTs that already have published posts are skipped. Check "Seed even if CPT already has posts" to add more sample posts to those CPTs.', 'vibecode-deploy' ); ?></p>
 
 				<form method="post" action="">
 					<?php wp_nonce_field( 'vibecode_deploy_seed_test_data', 'vibecode_deploy_seed_test_data_nonce' ); ?>
+
+					<p style="margin-bottom: 1em;">
+						<label>
+							<input type="checkbox" name="vibecode_deploy_force_seed" value="1" />
+							<?php echo esc_html__( 'Seed even if CPT already has posts', 'vibecode-deploy' ); ?>
+						</label>
+					</p>
 
 					<table class="form-table">
 						<tbody>
@@ -340,7 +348,7 @@ class TestDataPage {
 											</label>
 										</th>
 										<td>
-											<span style="color: orange;">Will be skipped (already has <?php echo esc_html( $status['published'] ); ?> published posts)</span>
+											<span style="color: orange;"><?php echo esc_html( sprintf( __( 'Already has %d published post(s). Check "Seed even if CPT already has posts" above to add more.', 'vibecode-deploy' ), $status['published'] ) ); ?></span>
 										</td>
 									</tr>
 								<?php else : ?>

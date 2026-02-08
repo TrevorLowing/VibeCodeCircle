@@ -52,9 +52,10 @@ class TestDataService {
 	 * Seed test data for all CPTs.
 	 *
 	 * @param array $selected_cpts Optional array of CPT slugs to seed. If empty, seeds all CPTs.
+	 * @param bool  $force_seed    If true, seed even when CPT already has published posts (adds more posts).
 	 * @return array Results with 'created', 'skipped', 'errors' keys.
 	 */
-	public static function seed_test_data( array $selected_cpts = array() ): array {
+	public static function seed_test_data( array $selected_cpts = array(), bool $force_seed = false ): array {
 		$results = array(
 			'created' => array(),
 			'skipped' => array(),
@@ -103,9 +104,9 @@ class TestDataService {
 				continue;
 			}
 
-			// Check if CPT already has posts
+			// Check if CPT already has posts (skip unless force_seed)
 			$existing = wp_count_posts( $cpt );
-			if ( (int) $existing->publish > 0 ) {
+			if ( ! $force_seed && (int) $existing->publish > 0 ) {
 				$results['skipped'][] = array(
 					'cpt' => $cpt,
 					'reason' => 'CPT already has published posts',

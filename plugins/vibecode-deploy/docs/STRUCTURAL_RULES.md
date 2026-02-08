@@ -1050,6 +1050,22 @@ if ( ! isset( $config['pages'] ) ) {
 - Missing `pages` section causes validation to be skipped
 - Validation helps catch shortcode issues before deployment
 
+### Optional: CPT extraction from static HTML
+
+**When to use:** Projects that have product cards, FAQ items, or similar repeated content in static HTML can optionally have the plugin **extract** that content and create CPT posts during deploy. This is **opt-in only**; sites that do not set these keys are unaffected.
+
+**Optional keys in `vibecode-deploy-shortcodes.json`:**
+
+- **`extract_cpt_from_static`** (boolean): If `true`, after page import the plugin runs CPT extraction. If missing or `false`, extraction is **never** run (default; safe for all projects e.g. CFA).
+- **`extract_cpt_pages`** (object): Per-page extraction rules. Only read when `extract_cpt_from_static === true`. Keys are page slugs; each value has `sections` (array of rules: `item_selector`, `cpt`, `taxonomy`, `term`, `fields` mapping CSS selectors to post_title, post_content, or `*_meta` for post meta).
+
+**Behavior:**
+- If the flag is not set or is `false`, the plugin skips extraction entirely (no DOM parsing, no `wp_insert_post`).
+- If the flag is `true` but `extract_cpt_pages` is missing or empty, extraction runs but finds no pages to process → no posts created.
+- Duplicate handling: existing posts are matched by title + CPT + taxonomy term; matches are updated, others created.
+
+**Backward compatibility:** Existing staging zips (e.g. CFA) do not include these keys, so behavior is unchanged. Only projects that explicitly add `extract_cpt_from_static` and `extract_cpt_pages` (e.g. via a build script prompt) enable extraction.
+
 **Plugin Code Reference:**
 - `VibeCodeCircle/plugins/vibecode-deploy/includes/Services/ShortcodePlaceholderService.php:351`
 
@@ -1080,6 +1096,72 @@ register_post_type( 'bgp_product', array(
     'supports' => array( 'title', 'editor', 'thumbnail', 'custom-fields', 'revisions' ),
 ) );
 ```
+
+### ✅ REQUIRED: CPT Slug Prefix (All Projects)
+
+**Rule:** All custom post types must use the **project prefix** in the CPT slug. This applies to every project (CFA, BGP, and any future project).
+
+**Requirements:**
+- **Registration:** `register_post_type()` must use a prefixed slug (e.g. `cfa_advisory`, `bgp_product`), not an unprefixed slug (e.g. `advisory`, `product`).
+- **Queries and shortcodes:** `WP_Query` and shortcodes must use the same prefixed `post_type` value.
+- **ACF:** Any ACF field that targets a post type (e.g. post_object, relationship, or field group location) must use the **prefixed** CPT slug (e.g. `cfa_investigation`, `cfa_advisory`, `bgp_product`). Unprefixed values (e.g. `investigation`, `advisory`) can break relationships and field group display.
+- **Template filenames:** `single-{post_type}.html` must use the full prefixed slug (e.g. `single-cfa_advisory.html`, `single-bgp_product.html`).
+
+**Examples by project:**
+- **CFA:** prefix `cfa_` → `cfa_advisory`, `cfa_investigation`, `cfa_evidence_record`, `cfa_foia_request`, etc.
+- **BGP:** prefix `bgp_` → `bgp_product`, `bgp_faq`, etc.
+
+**Why:** Prefixed CPTs avoid conflicts with other plugins or themes, make multi-project WordPress installs safe, and keep ACF post type targeting and template names consistent.
+
+**Plugin validation:** The plugin checks CPT slugs in theme `functions.php` after upload and reports violations (warn or fail per settings).
+
+### ✅ REQUIRED: Shortcode Tag Prefix (All Projects)
+
+**Rule:** All shortcode tags must use the **project prefix**. Register shortcodes with a prefixed tag (e.g. `cfa_advisories`, `bgp_products`), not an unprefixed tag (e.g. `advisories`, `products`).
+
+**Requirements:**
+- **Registration:** `add_shortcode( '{prefix}_name', ... )` must use the project prefix (e.g. `cfa_`, `bgp_`) so the tag is `{prefix}_name`.
+- **Config:** Shortcode names in `vibecode-deploy-shortcodes.json` (in `pages` and `post_types`) must match these prefixed tags and must start with `project_slug` + `_`.
+
+**Examples:** CFA → `cfa_advisories`, `cfa_investigations`; BGP → `bgp_products`, `bgp_faqs`.
+
+**Why:** Avoids conflicts with core/shortcodes from other plugins and keeps validation consistent with `project_slug`.
+
+**Plugin validation:** The plugin checks all shortcode names in the config file against the project prefix after upload.
+
+### ✅ REQUIRED: Taxonomy Slug Prefix for Project-Specific Taxonomies (All Projects)
+
+**Rule:** Project-specific taxonomies must use a **prefixed** slug when registered. Use a slug that starts with the project prefix (e.g. `cfa_advisory_classification`, `bgp_product_type`) so it does not collide with core or other plugins.
+
+**Requirements:**
+- **Registration:** `register_taxonomy( 'X', $post_types, $args )` — for taxonomies that belong only to this project, `X` must start with `{project_slug}_` (e.g. `cfa_agency`, `bgp_product_type`).
+- **Shared taxonomies:** If a taxonomy is intentionally shared across projects or with core (e.g. a common `agency` list), document it; the plugin may allowlist known shared slugs.
+
+**Examples:** CFA → `cfa_advisory_classification`, or prefixed `agency` as `cfa_agency`; BGP → `bgp_product_type`, `bgp_faq_category`.
+
+**Why:** Unprefixed taxonomy slugs (e.g. `category`, `tag`, `agency`) can conflict with WordPress core or other plugins on the same install.
+
+**Plugin validation:** The plugin checks taxonomy slugs in theme `functions.php` after upload (with an allowlist for known shared taxonomies) and reports violations.
+
+### ✅ REQUIRED: ACF Field Group and Field Name Prefix (All Projects)
+
+**Rule:** ACF field group keys and field names must use the **project prefix** so they do not collide with other projects or plugins.
+
+**Requirements:**
+- **Field group key:** The group `key` in ACF JSON (e.g. `group_cfa_advisory`, `group_bgp_product`) must start with `group_` + `{project_slug}_` (e.g. `group_cfa_`, `group_bgp_`).
+- **Field names:** Each field `name` in the group should start with `{project_slug}_` (e.g. `cfa_advisory_docket_id`, `bgp_product_price`). This applies to top-level and repeater/sub fields that are project-specific.
+
+**Why:** Prevents ACF field key/name collisions when multiple themes or projects use ACF on the same WordPress install.
+
+**Plugin validation:** The plugin checks `theme/acf-json/*.json` after upload and reports group keys and field names that do not match the project prefix.
+
+### ✅ RECOMMENDED: Post Meta Key Prefix (All Projects)
+
+**Rule:** Project-specific post meta keys should use the **project prefix** (e.g. `cfa_advisory_docket_id`, `bgp_product_sku`). Do not use generic keys like `docket_id` or `price` for project meta.
+
+**Why:** Avoids overwriting or reading meta from core or other plugins. Core and some plugins use unprefixed or underscore-prefixed meta (e.g. `_thumbnail_id`); project meta should be clearly namespaced.
+
+**Note:** This rule is recommended and documented; automated validation of meta keys in PHP is optional (allowlisting core/ACF keys would be required to avoid false positives).
 
 ### Taxonomy Query Best Practices
 
@@ -1565,6 +1647,8 @@ add_filter( 'render_block', 'bgp_ensure_shortcode_execution', 5, 2 );
 - ✅ Include `404.html` in `templates/`.
 - ✅ Use the project's class prefix in template markup (e.g. `{prefix}-main`, `{prefix}-page-content`, `{prefix}-container`) so styling and layout match the rest of the site.
 - ✅ Reuse the same template-part and block structure as other templates (e.g. template-parts for header/footer, same main wrapper).
+- ✅ **Wrap main body in section + container:** Inside `<main>`, wrap the post content block (and any shortcodes) in a **section** with the project's page-section class (e.g. `{prefix}-page-section` or `{prefix}-page-section--hero-adjacent`) and a **container** div with the project's container class (e.g. `{prefix}-container`). This gives single posts the same max-width, padding, and vertical spacing as list/archive pages. Without it, the main area will lack layout and look unstyled.
+- ✅ **Style post body (entry-content):** Staging CSS must include prose styles for `.entry-content` and `.wp-block-post-content` inside main (e.g. `.{prefix}-main .entry-content`) — paragraphs, headings, lists, links — so that WordPress post content block output is professionally styled.
 - ❌ Do not rely on plugin-generated single or 404 templates if you need consistent theme styling.
 
 **Reference:**

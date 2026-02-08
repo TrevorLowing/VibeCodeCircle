@@ -3,6 +3,7 @@
 namespace VibeCode\Deploy\Services;
 
 use VibeCode\Deploy\Importer;
+use VibeCode\Deploy\Logger;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -1273,6 +1274,11 @@ defined( 'ABSPATH' ) || exit;
 			}
 
 			$tpl_files = self::list_template_files( $build_root );
+			$tpl_basenames = array_map( 'basename', $tpl_files );
+			Logger::info( '[CPT] Deploying from templates/: files', array(
+				'files' => $tpl_basenames,
+			), $project_slug );
+
 			foreach ( $tpl_files as $path ) {
 				$slug = (string) preg_replace( '/\.html$/', '', basename( $path ) );
 				$slug = sanitize_key( $slug );
@@ -1288,6 +1294,7 @@ defined( 'ABSPATH' ) || exit;
 				$raw = file_get_contents( $path );
 				if ( $raw === false ) {
 					$errors++;
+					Logger::warning( '[CPT] Template file read failed', array( 'slug' => $slug, 'path' => $path ), $project_slug );
 					continue;
 				}
 
@@ -1298,13 +1305,27 @@ defined( 'ABSPATH' ) || exit;
 				if ( empty( $res['ok'] ) ) {
 					$errors++;
 					$error_messages[] = isset( $res['error'] ) && is_string( $res['error'] ) ? $res['error'] : 'Template upsert failed.';
+					Logger::warning( '[CPT] Template upsert failed', array(
+						'slug' => $slug,
+						'status' => 'error',
+						'error' => $res['error'] ?? 'unknown',
+					), $project_slug );
 					continue;
 				}
 
 				if ( ! empty( $res['skipped'] ) ) {
 					$skipped++;
+					Logger::info( '[CPT] Template upsert skipped', array( 'slug' => $slug, 'status' => 'skipped' ), $project_slug );
 					continue;
 				}
+
+				$status = ! empty( $res['created'] ) ? 'created' : 'updated';
+				$post_id = isset( $res['post_id'] ) ? (int) $res['post_id'] : 0;
+				Logger::info( '[CPT] Template upsert ok', array(
+					'slug' => $slug,
+					'status' => $status,
+					'post_id' => $post_id,
+				), $project_slug );
 
 				if ( ! empty( $res['created'] ) ) {
 					$created++;

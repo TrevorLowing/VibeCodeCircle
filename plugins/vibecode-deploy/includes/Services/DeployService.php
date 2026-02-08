@@ -1033,6 +1033,8 @@ final class DeployService {
 			$content = HtmlToEtchConverter::convert( $raw_content, $build_root );
 
 			$title = self::title_from_dom( $dom, self::title_from_slug( $slug ) );
+			// Append slug so Settings → Reading homepage selector shows which page is which (e.g. "Home (home)").
+			$title = $title . ' (' . $slug . ')';
 
 			// Check if custom block template exists - if so, clear post_content so template is used
 			// Check both: 1) Already registered in WordPress, 2) File exists in theme directory
@@ -1272,6 +1274,12 @@ final class DeployService {
 			}
 		}
 
+		// [CPT] Log which post types exist before ensure_post_type_templates (theme not yet deployed)
+		$cpt_before = get_post_types( array( 'public' => true, '_builtin' => false ), 'names' );
+		Logger::info( '[CPT] Before ensure_post_type_templates: get_post_types(public, non-builtin)', array(
+			'post_types' => array_values( $cpt_before ),
+		), $project_slug );
+
 		// Auto-create block templates for all post types if they don't exist
 		$cpt_template_results = TemplateService::ensure_post_type_templates( $project_slug, $fingerprint );
 		
@@ -1509,6 +1517,40 @@ final class DeployService {
 			if ( isset( $theme_deploy['snapshots'] ) && is_array( $theme_deploy['snapshots'] ) ) {
 				$theme_snapshots = $theme_deploy['snapshots'];
 			}
+
+			// [CPT] After theme deploy: log get_post_types and CPT deployment summary
+			$cpt_after = get_post_types( array( 'public' => true, '_builtin' => false ), 'names' );
+			Logger::info( '[CPT] After theme deploy: get_post_types(public, non-builtin)', array(
+				'post_types' => array_values( $cpt_after ),
+			), $project_slug );
+
+			$single_slugs = array();
+			if ( isset( $template_result['created_templates'] ) && is_array( $template_result['created_templates'] ) ) {
+				foreach ( $template_result['created_templates'] as $t ) {
+					if ( isset( $t['slug'] ) ) {
+						$single_slugs[] = $t['slug'];
+					}
+				}
+			}
+			if ( isset( $template_result['updated_templates'] ) && is_array( $template_result['updated_templates'] ) ) {
+				foreach ( $template_result['updated_templates'] as $t ) {
+					if ( isset( $t['slug'] ) ) {
+						$single_slugs[] = $t['slug'];
+					}
+				}
+			}
+			$single_slugs = array_unique( $single_slugs );
+			$theme_merged = in_array( 'functions.php', array_merge(
+				$theme_deploy['created'] ?? array(),
+				$theme_deploy['updated'] ?? array()
+			), true );
+			Logger::info( '[CPT] CPT deployment summary', array(
+				'theme_merged' => $theme_merged,
+				'cpt_count_after_theme' => count( $cpt_after ),
+				'single_templates_deployed' => $single_slugs,
+				'rewrite_flush_after_theme' => $theme_merged,
+				'deferred_flush_option' => (bool) get_option( 'vibecode_deploy_flush_rewrite_rules_on_init', false ),
+			), $project_slug );
 		}
 
 		// Collect asset information from staging
@@ -1566,6 +1608,12 @@ final class DeployService {
 			\VibeCode\Deploy\Logger::error( 'Unknown prefixed items validation failed.', array( 'errors' => $unknown_errors ), $project_slug );
 		}
 
+		// Optional: extract CPT posts from static HTML when staging was built with extract_cpt_from_static.
+		$cpt_extraction = array( 'created' => 0, 'updated' => 0, 'errors' => array() );
+		if ( ! empty( $placeholder_config['extract_cpt_from_static'] ) ) {
+			$cpt_extraction = CptExtractionService::extract_from_build( $build_root, $placeholder_config, $project_slug );
+		}
+
 		if ( $errors === 0 ) {
 			$manifest = array(
 				'version' => 1,
@@ -1618,6 +1666,9 @@ final class DeployService {
 			'skipped' => $skipped,
 			'errors' => $errors,
 			'template_result' => is_array( $template_result ) ? $template_result : array(),
+			'cpt_extraction_created' => isset( $cpt_extraction['created'] ) ? (int) $cpt_extraction['created'] : 0,
+			'cpt_extraction_updated' => isset( $cpt_extraction['updated'] ) ? (int) $cpt_extraction['updated'] : 0,
+			'cpt_extraction_errors' => isset( $cpt_extraction['errors'] ) && is_array( $cpt_extraction['errors'] ) ? $cpt_extraction['errors'] : array(),
 		);
 	}
 }

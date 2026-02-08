@@ -9,6 +9,7 @@ use VibeCode\Deploy\Staging;
 use VibeCode\Deploy\Services\BuildService;
 use VibeCode\Deploy\Services\ClassPrefixDetector;
 use VibeCode\Deploy\Services\EnvService;
+use VibeCode\Deploy\Services\StagingPrefixValidator;
 use VibeCode\Deploy\Services\ManifestService;
 use VibeCode\Deploy\Services\RollbackService;
 
@@ -199,7 +200,13 @@ final class ImportPage {
 						), $project_slug_to_use );
 						
 						if ( ! isset( $error ) ) {
-							Logger::info( 'Zip uploaded; extracting to staging.', array( 'project_slug' => $project_slug_to_use, 'zip_path' => (string) $upload['file'], 'zip_size' => filesize( (string) $upload['file'] ) ), $project_slug_to_use );
+							Logger::info( 'Zip uploaded; extracting to staging.', array(
+								'plugin_version' => defined( 'VIBECODE_DEPLOY_PLUGIN_VERSION' ) ? VIBECODE_DEPLOY_PLUGIN_VERSION : 'unknown',
+								'project_slug' => $project_slug_to_use,
+								'zip_path' => (string) $upload['file'],
+								'zip_name' => isset( $upload['file'] ) ? basename( (string) $upload['file'] ) : '',
+								'zip_size' => filesize( (string) $upload['file'] ),
+							), $project_slug_to_use );
 							$result = Staging::extract_zip_to_staging( (string) $upload['file'], $project_slug_to_use );
 							@unlink( (string) $upload['file'] );
 
@@ -280,7 +287,18 @@ final class ImportPage {
 								} else {
 									$notice = ( isset( $notice ) ? $notice . ' ' : '' ) . 'Staging uploaded: ' . esc_html( $selected_fingerprint ) . ' (' . esc_html( (string) $result['files'] ) . ' files)';
 								}
-								
+
+								// Staging prefix validation (shortcodes, CPTs, taxonomies, ACF)
+								$prefix_validation = StagingPrefixValidator::validate( $build_root, $project_slug_to_use, $settings );
+								$prefix_errors   = isset( $prefix_validation['errors'] ) && is_array( $prefix_validation['errors'] ) ? $prefix_validation['errors'] : array();
+								$prefix_warnings = isset( $prefix_validation['warnings'] ) && is_array( $prefix_validation['warnings'] ) ? $prefix_validation['warnings'] : array();
+								if ( count( $prefix_errors ) > 0 ) {
+									$notice = ( isset( $notice ) ? $notice . ' ' : '' ) . '<strong>Prefix validation errors:</strong> ' . esc_html( implode( '; ', array_slice( $prefix_errors, 0, 5 ) ) ) . ( count( $prefix_errors ) > 5 ? ' (' . ( count( $prefix_errors ) - 5 ) . ' more)' : '' );
+								}
+								if ( count( $prefix_warnings ) > 0 ) {
+									$notice = ( isset( $notice ) ? $notice . ' ' : '' ) . '<strong>Prefix validation warnings:</strong> ' . esc_html( implode( '; ', array_slice( $prefix_warnings, 0, 5 ) ) ) . ( count( $prefix_warnings ) > 5 ? ' (' . ( count( $prefix_warnings ) - 5 ) . ' more)' : '' );
+								}
+
 								Logger::info( 'Staging extracted.', array(
 									'project_slug' => $project_slug_to_use,
 									'fingerprint' => $selected_fingerprint,
@@ -470,13 +488,15 @@ final class ImportPage {
 				}
 				
 				$build_root = BuildService::build_root_path( (string) $settings['project_slug'], $selected_fingerprint );
-				Logger::info( 'Import started.', array( 
-					'project_slug' => (string) $settings['project_slug'], 
-					'fingerprint' => $selected_fingerprint, 
-					'force_claim_unowned' => (bool) $force_claim_unowned, 
-					'deploy_template_parts' => (bool) $deploy_template_parts, 
-					'generate_404_template' => (bool) $generate_404_template, 
-					'force_claim_templates' => (bool) $force_claim_templates, 
+				Logger::info( 'Import started.', array(
+					'plugin_version' => defined( 'VIBECODE_DEPLOY_PLUGIN_VERSION' ) ? VIBECODE_DEPLOY_PLUGIN_VERSION : 'unknown',
+					'project_slug' => (string) $settings['project_slug'],
+					'fingerprint' => $selected_fingerprint,
+					'build_root' => $build_root,
+					'force_claim_unowned' => (bool) $force_claim_unowned,
+					'deploy_template_parts' => (bool) $deploy_template_parts,
+					'generate_404_template' => (bool) $generate_404_template,
+					'force_claim_templates' => (bool) $force_claim_templates,
 					'validate_cpt_shortcodes' => (bool) $validate_cpt_shortcodes,
 					'selected_pages' => count( $selected_pages ),
 					'selected_css' => count( $selected_css ),
@@ -554,7 +574,12 @@ final class ImportPage {
 								'<a href="' . esc_url( $reading_url ) . '">' . esc_html__( 'Settings → Reading', 'vibecode-deploy' ) . '</a>'
 							);
 						}
-						Logger::info( 'Import complete.', array( 'project_slug' => (string) $settings['project_slug'], 'fingerprint' => $selected_fingerprint, 'result' => $import_result ), (string) $settings['project_slug'] );
+						Logger::info( 'Import complete.', array(
+							'plugin_version' => defined( 'VIBECODE_DEPLOY_PLUGIN_VERSION' ) ? VIBECODE_DEPLOY_PLUGIN_VERSION : 'unknown',
+							'project_slug' => (string) $settings['project_slug'],
+							'fingerprint' => $selected_fingerprint,
+							'result' => $import_result,
+						), (string) $settings['project_slug'] );
 					} else {
 						$error = 'Deployment completed with errors. Please check the logs for details.';
 						if ( is_array( $import_result ) && isset( $import_result['errors'] ) ) {
@@ -1326,6 +1351,17 @@ final class ImportPage {
 				echo 'Skipped: <strong>' . esc_html( (string) ( $import_result['skipped'] ?? 0 ) ) . '</strong> '; 
 				echo 'Errors: <strong>' . esc_html( (string) ( $import_result['errors'] ?? 0 ) ) . '</strong>'; 
 				echo '</p>';
+
+				$cpt_created = (int) ( $import_result['cpt_extraction_created'] ?? 0 );
+				$cpt_updated = (int) ( $import_result['cpt_extraction_updated'] ?? 0 );
+				$cpt_errors  = isset( $import_result['cpt_extraction_errors'] ) && is_array( $import_result['cpt_extraction_errors'] ) ? $import_result['cpt_extraction_errors'] : array();
+				if ( $cpt_created > 0 || $cpt_updated > 0 || ! empty( $cpt_errors ) ) {
+					echo '<p>CPT extraction: <strong>' . esc_html( (string) $cpt_created ) . '</strong> created, <strong>' . esc_html( (string) $cpt_updated ) . '</strong> updated';
+					if ( ! empty( $cpt_errors ) ) {
+						echo '; <strong>' . esc_html( (string) count( $cpt_errors ) ) . '</strong> error(s)';
+					}
+					echo '.</p>';
+				}
 
 				$template_result = isset( $import_result['template_result'] ) && is_array( $import_result['template_result'] ) ? $import_result['template_result'] : array();
 				$debug = isset( $template_result['debug'] ) && is_array( $template_result['debug'] ) ? $template_result['debug'] : array();
