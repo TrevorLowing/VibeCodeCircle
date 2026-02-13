@@ -14,8 +14,36 @@ use VibeCode\Deploy\Settings;
 
 /**
  * Test Data Service
+ *
+ * Creates example posts for registered CPTs. Seed count per CPT comes from
+ * option vibecode_deploy_seed_counts, filter vibecode_deploy_seed_count_{cpt}, or default (filter vibecode_deploy_seed_default_count or 30).
+ * When ACF is active, fills all ACF fields with placeholder values.
  */
 class TestDataService {
+
+	/** Default number of posts to create per CPT when no option/filter is set. */
+	private const DEFAULT_SEED_COUNT = 30;
+
+	/**
+	 * Get the number of posts to seed for a CPT.
+	 *
+	 * @param string $cpt_slug CPT slug.
+	 * @return int Count (>= 1).
+	 */
+	private static function get_seed_count_for_cpt( string $cpt_slug ): int {
+		$counts = get_option( 'vibecode_deploy_seed_counts', array() );
+		if ( is_array( $counts ) && isset( $counts[ $cpt_slug ] ) && is_numeric( $counts[ $cpt_slug ] ) ) {
+			$n = (int) $counts[ $cpt_slug ];
+			return $n >= 1 ? $n : self::DEFAULT_SEED_COUNT;
+		}
+		$filter_name = 'vibecode_deploy_seed_count_' . $cpt_slug;
+		if ( has_filter( $filter_name ) ) {
+			$n = (int) apply_filters( $filter_name, self::DEFAULT_SEED_COUNT );
+			return $n >= 1 ? $n : self::DEFAULT_SEED_COUNT;
+		}
+		$default = (int) apply_filters( 'vibecode_deploy_seed_default_count', self::DEFAULT_SEED_COUNT );
+		return $default >= 1 ? $default : self::DEFAULT_SEED_COUNT;
+	}
 
 	/**
 	 * Generate lorem ipsum text.
@@ -136,46 +164,160 @@ class TestDataService {
 	 */
 	private static function seed_generic_cpt( string $cpt_slug ): array {
 		$display_name = self::get_cpt_display_name( $cpt_slug );
-		$created = array();
+		$created      = array();
+		$count        = self::get_seed_count_for_cpt( $cpt_slug );
 
-		// Create 3 sample posts per CPT
-		for ( $i = 1; $i <= 3; $i++ ) {
+		for ( $i = 1; $i <= $count; $i++ ) {
 			$title = sprintf( 'Sample %s Post %d', $display_name, $i );
-			
+
 			$post_id = wp_insert_post(
 				array(
-					'post_title' => $title,
+					'post_title'   => $title,
 					'post_content' => self::lorem_ipsum( 2 ),
-					'post_status' => 'publish',
-					'post_type' => $cpt_slug,
+					'post_status'  => 'publish',
+					'post_type'    => $cpt_slug,
 				),
 				true
 			);
 
 			if ( is_wp_error( $post_id ) ) {
-				// Log error but continue with other posts
 				error_log( sprintf( 'TestDataService: Failed to create post for CPT %s: %s', $cpt_slug, $post_id->get_error_message() ) );
 				continue;
 			}
 
 			if ( $post_id === 0 ) {
-				// wp_insert_post returned 0 (shouldn't happen with true flag, but check anyway)
 				error_log( sprintf( 'TestDataService: wp_insert_post returned 0 for CPT %s', $cpt_slug ) );
 				continue;
 			}
 
-			// Add generic meta fields based on CPT slug
-			// Use pattern: {cpt_slug}_test_field_{number}
-			update_post_meta( $post_id, $cpt_slug . '_test_field_1', 'Lorem ipsum value 1' );
-			update_post_meta( $post_id, $cpt_slug . '_test_field_2', 'Lorem ipsum value 2' );
-			update_post_meta( $post_id, $cpt_slug . '_test_field_3', 'Sample test data ' . $i );
-			
-			// Add a date field if it's a common pattern
-			update_post_meta( $post_id, $cpt_slug . '_test_date', gmdate( 'Y-m-d', strtotime( '-' . $i . ' days' ) ) );
+			if ( function_exists( '\update_field' ) && function_exists( '\acf_get_field_groups' ) ) {
+				self::fill_acf_placeholders( $post_id, $cpt_slug, $i, $created );
+			} else {
+				update_post_meta( $post_id, $cpt_slug . '_test_field_1', 'Lorem ipsum value 1' );
+				update_post_meta( $post_id, $cpt_slug . '_test_field_2', 'Lorem ipsum value 2' );
+				update_post_meta( $post_id, $cpt_slug . '_test_field_3', 'Sample test data ' . $i );
+				update_post_meta( $post_id, $cpt_slug . '_test_date', gmdate( 'Y-m-d', strtotime( '-' . $i . ' days' ) ) );
+			}
 
 			$created[] = $post_id;
 		}
 
 		return $created;
+	}
+
+	/**
+	 * Fill ACF fields for a post with placeholder values based on field type.
+	 *
+	 * @param int      $post_id   Post ID.
+	 * @param string   $cpt_slug  Post type.
+	 * @param int      $index     1-based index of this post in the seed run (for date/variation).
+	 * @param int[]    $previous_ids Previously created post IDs in this CPT (for post_object/relationship).
+	 * @return void
+	 */
+	private static function fill_acf_placeholders( int $post_id, string $cpt_slug, int $index, array $previous_ids ): void {
+		if ( ! function_exists( '\acf_get_field_groups' ) || ! function_exists( '\acf_get_fields' ) || ! function_exists( '\update_field' ) ) {
+			return;
+		}
+		$groups = \acf_get_field_groups( array( 'post_type' => $cpt_slug ) );
+		if ( ! is_array( $groups ) ) {
+			return;
+		}
+		foreach ( $groups as $group ) {
+			$fields = isset( $group['key'] ) ? \acf_get_fields( $group['key'] ) : null;
+			if ( ! is_array( $fields ) ) {
+				continue;
+			}
+			foreach ( $fields as $field ) {
+				$value = self::placeholder_value_for_acf_field( $field, $index, $post_id, $cpt_slug, $previous_ids );
+				if ( $value !== null ) {
+					\update_field( $field['name'], $value, $post_id );
+				}
+			}
+		}
+	}
+
+	/**
+	 * Get a placeholder value for an ACF field (and sub_fields for repeater/group).
+	 *
+	 * @param array    $field        ACF field array (with type, name, choices, sub_fields, etc.).
+	 * @param int      $index        1-based index for date/variation.
+	 * @param int      $post_id      Post ID (context).
+	 * @param string   $cpt_slug     Post type.
+	 * @param int[]    $previous_ids Previously created post IDs for post_object/relationship.
+	 * @return mixed Value for update_field, or null to skip.
+	 */
+	private static function placeholder_value_for_acf_field( array $field, int $index, int $post_id, string $cpt_slug, array $previous_ids ) {
+		$type = isset( $field['type'] ) ? $field['type'] : 'text';
+		$name = isset( $field['name'] ) ? $field['name'] : '';
+
+		switch ( $type ) {
+			case 'text':
+			case 'email':
+			case 'url':
+				return 'Sample ' . $name . ' ' . $index;
+			case 'textarea':
+			case 'wysiwyg':
+				return 'Lorem ipsum for ' . $name . '. ' . substr( self::lorem_ipsum( 1 ), 3, 120 );
+			case 'number':
+			case 'range':
+				return $index;
+			case 'date_picker':
+			case 'date_time_picker':
+				return gmdate( 'Y-m-d', strtotime( '-' . $index . ' days' ) );
+			case 'select':
+			case 'radio':
+			case 'button_group':
+				$choices = isset( $field['choices'] ) && is_array( $field['choices'] ) ? $field['choices'] : array();
+				if ( ! empty( $choices ) ) {
+					$vals = array_values( $choices );
+					return is_array( $vals[0] ) ? ( $vals[0]['value'] ?? $vals[0] ) : $vals[0];
+				}
+				return '';
+			case 'checkbox':
+				return array();
+			case 'true_false':
+				return false;
+			case 'repeater':
+				$sub_fields = isset( $field['sub_fields'] ) && is_array( $field['sub_fields'] ) ? $field['sub_fields'] : array();
+				$rows      = array();
+				$row_count = min( 2, empty( $sub_fields ) ? 0 : 2 );
+				for ( $r = 0; $r < $row_count; $r++ ) {
+					$row = array();
+					foreach ( $sub_fields as $sub ) {
+						$sub_val = self::placeholder_value_for_acf_field( $sub, $index + $r, $post_id, $cpt_slug, $previous_ids );
+						if ( $sub_val !== null && isset( $sub['name'] ) ) {
+							$row[ $sub['name'] ] = $sub_val;
+						}
+					}
+					if ( ! empty( $row ) ) {
+						$rows[] = $row;
+					}
+				}
+				return $rows;
+			case 'group':
+				$sub_fields = isset( $field['sub_fields'] ) && is_array( $field['sub_fields'] ) ? $field['sub_fields'] : array();
+				$group_val  = array();
+				foreach ( $sub_fields as $sub ) {
+					$sub_val = self::placeholder_value_for_acf_field( $sub, $index, $post_id, $cpt_slug, $previous_ids );
+					if ( $sub_val !== null && isset( $sub['name'] ) ) {
+						$group_val[ $sub['name'] ] = $sub_val;
+					}
+				}
+				return $group_val;
+			case 'file':
+			case 'image':
+				return 0;
+			case 'post_object':
+			case 'relationship':
+				if ( ! empty( $previous_ids ) && ( ! isset( $field['multiple'] ) || ! $field['multiple'] ) ) {
+					return $previous_ids[0];
+				}
+				if ( ! empty( $previous_ids ) ) {
+					return array_slice( $previous_ids, 0, 2 );
+				}
+				return 0;
+			default:
+				return 'Sample ' . $index;
+		}
 	}
 }

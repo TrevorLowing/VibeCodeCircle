@@ -102,8 +102,17 @@ vibecode-deploy-staging/          # OR {project-slug}-deployment/
 │   ├── functions.php
 │   └── acf-json/
 │       └── group_*.json
+├── scripts/                      # Optional: Post-deploy scripts (WP-CLI, etc.)
+│   ├── mu-plugins/               # Optional: Files here are copied to wp-content/mu-plugins/ during deploy
+│   │   └── *.php
+│   └── ...
+├── seed/                         # Optional: Seed data (JSON, etc.)
 └── vibecode-deploy-shortcodes.json  # Optional: Shortcode rules
 ```
+
+### scripts/mu-plugins/ (optional)
+
+If the staging zip contains **scripts/mu-plugins/** , the plugin copies every **file** in that directory to **wp-content/mu-plugins/** during deploy (creating `mu-plugins` if needed). Use this for must-use plugins (e.g. enforcer, role sync) that should be deployed with the project. Do not put WP-CLI runnable scripts here—keep those in **scripts/** only.
 
 ### Allowed Root Directories
 
@@ -115,6 +124,8 @@ vibecode-deploy-staging/          # OR {project-slug}-deployment/
 - `templates/` (optional)
 - `template-parts/` (optional)
 - `theme/` (optional)
+- `scripts/` (optional; may contain `mu-plugins/` for auto-copy to wp-content/mu-plugins)
+- `seed/` (optional)
 
 **New Format** (`{project-slug}-deployment/`):
 - `pages/` (required)
@@ -308,6 +319,18 @@ zip -r vibecode-deploy-staging.zip vibecode-deploy-staging -x "*.DS_Store" "__MA
 **Plugin Code Reference:**
 - `VibeCodeCircle/plugins/vibecode-deploy/includes/Services/DeployService.php`
 - Extracts `<main>` content via DOMDocument parsing
+
+### Header and Footer Template Part Extraction
+
+**When "Extract header/footer from home.html" is enabled**, the plugin creates template parts from `pages/home.html` only:
+
+- **Header template part:** The plugin uses the **inner HTML of the first `<header>`** in `pages/home.html`. Only content **inside** that `<header>` element is included. Any content that is a **sibling before** the first `<header>` (e.g. a top bar, announcement strip, or banner) is **not** included and will not appear after deploy.
+- **Footer template part:** Same rule for the first `<footer>` in `pages/home.html` — only its inner HTML is used.
+
+**Rule:** Any content that must appear in the site header on every page (e.g. top bar, secondary nav) **must be inside** the single `<header>` element in `home.html`. Move such content inside `<header>` so it is included in the extracted header template part.
+
+**Plugin Code Reference:**
+- `VibeCodeCircle/plugins/vibecode-deploy/includes/Services/TemplateService.php` — uses `//header` and `//footer` XPath, then `inner_html()` of the first match (lines 300–301, 320).
 
 ---
 
@@ -1050,24 +1073,95 @@ if ( ! isset( $config['pages'] ) ) {
 - Missing `pages` section causes validation to be skipped
 - Validation helps catch shortcode issues before deployment
 
+### Seed data (seed/*.json)
+
+**When to use:** To create CPT (and core `post`) content during deploy without parsing HTML, add a **seed** directory to staging with one JSON file per post type (e.g. `seed/bgp_products.json`, `seed/cfa_advisory.json`, `seed/posts.json`). Each file has `post_type` and `items[]`. The plugin imports these in the same follow-up request as CPT extraction (after theme is loaded). Idempotent: matches existing by title + post type + terms; update or create. Category terms (e.g. for Insights) are created if missing.
+
+**JSON format per file:**
+- **`post_type`** (string): CPT slug or `post`.
+- **`items`** (array): Each item may have:
+  - **`post_title`** (string, required)
+  - **`post_content`** (string, optional)
+  - **`post_excerpt`** (string, optional)
+  - **`meta`** (object, optional): Meta/custom field values. Use **ACF field names** as keys. When ACF is active, the plugin applies these via **`update_field()`** so all ACF types are supported: repeaters = array of row objects (each row keyed by sub-field name), file/image = attachment ID (or 0), post_object/relationship = post ID or array of IDs, date_picker = `Y-m-d` string, select/radio = choice value. When ACF is inactive, values are stored with `update_post_meta()`.
+  - **`terms`** (object, optional): Taxonomy slug => array of term slugs (e.g. `"cfa_agency": ["doj"]`).
+
+**Pagination testing:** Include at least **3× the list `per_page`** for each CPT that has a list/index page (e.g. advisories per_page 6 → 18 items, FOIA index per_page 20 → 60 items) so pagination can be tested after deploy.
+
+See **CPT_HINTS_AND_SEED_PLAN.md** for format and BGP examples.
+
+### Test Data seed counts (Test Data UI)
+
+The **Seed Test Data** admin UI creates sample posts per CPT. The number of posts per CPT is determined by:
+
+1. **Option `vibecode_deploy_seed_counts`** (array): CPT slug => count. Set automatically when you deploy or run CPT/seed: the plugin parses `vibecode-deploy-shortcodes.json` and computes **3 × max(per_page)** for each shortcode that lists a CPT, then saves this option. So after deploy, Test Data will create 18 advisories, 30 investigations, 60 FOIA requests, etc., when you click **Seed Test Data**.
+2. **Filter `vibecode_deploy_seed_count_{$cpt_slug}`**: Per-CPT override (e.g. `vibecode_deploy_seed_count_cfa_advisory`). Return an integer to override the count for that CPT.
+3. **Filter `vibecode_deploy_seed_default_count`**: Default when no option/filter is set (default **30**).
+
+When ACF is active, Test Data also fills all ACF fields with placeholder values (text, date, select first choice, repeater rows, etc.) so list and single views render with data.
+
 ### Optional: CPT extraction from static HTML
 
 **When to use:** Projects that have product cards, FAQ items, or similar repeated content in static HTML can optionally have the plugin **extract** that content and create CPT posts during deploy. This is **opt-in only**; sites that do not set these keys are unaffected.
 
+**Two extraction modes (both require `extract_cpt_from_static === true`):**
+
+1. **Hint-based (recommended):** Wrap each CPT item block in the HTML with comment markers. The plugin extracts **only** those blocks. No extraction from other DOM nodes. See **CPT block hints** below.
+2. **Selector-based (legacy):** Use `extract_cpt_pages` with per-page `sections` (item_selector, fields). Used only for pages that do **not** contain `VIBECODE_CPT_BLOCK` markers.
+
 **Optional keys in `vibecode-deploy-shortcodes.json`:**
 
 - **`extract_cpt_from_static`** (boolean): If `true`, after page import the plugin runs CPT extraction. If missing or `false`, extraction is **never** run (default; safe for all projects e.g. CFA).
-- **`extract_cpt_pages`** (object): Per-page extraction rules. Only read when `extract_cpt_from_static === true`. Keys are page slugs; each value has `sections` (array of rules: `item_selector`, `cpt`, `taxonomy`, `term`, `fields` mapping CSS selectors to post_title, post_content, or `*_meta` for post meta).
+- **`extract_cpt_pages`** (object): Per-page extraction rules for **selector-based** extraction. Keys are page slugs; each value has `sections` (array of rules: `item_selector`, `cpt`, `taxonomy`, `term`, `fields` mapping CSS selectors to post_title, post_content, or `*_meta` for post meta). Pages that contain `VIBECODE_CPT_BLOCK` use hint-based extraction instead and are skipped here.
+- **`cpt_field_maps`** (object, optional): Per-CPT field mapping for **hint-based** extraction. Keys are CPT slugs; each value is an object mapping `post_title`, `post_content`, and optional `{key}_meta` to CSS selectors (e.g. `{"bgp_product": {"post_title": ".bgp-accessory-title", "post_content": ".bgp-accessory-text", "price_meta": ".bgp-accessory-price"}}`). If omitted, the plugin infers the map from the first matching section in `extract_cpt_pages` for that CPT.
 
 **Behavior:**
 - If the flag is not set or is `false`, the plugin skips extraction entirely (no DOM parsing, no `wp_insert_post`).
-- If the flag is `true` but `extract_cpt_pages` is missing or empty, extraction runs but finds no pages to process → no posts created.
+- **Hint-based:** The plugin scans all `pages/*.html` for the string `VIBECODE_CPT_BLOCK`. For each file that contains it, it parses blocks between `<!-- VIBECODE_CPT_BLOCK cpt="..." taxonomy="..." term="..." -->` and `<!-- /VIBECODE_CPT_BLOCK -->`, applies the field map for that CPT (from `cpt_field_maps` or from `extract_cpt_pages` sections), and creates/updates posts.
+- **Selector-based:** For each page listed in `extract_cpt_pages` that did **not** have hint blocks, the plugin uses the legacy section/item_selector/fields rules.
+- **Implementation:** Extraction runs in a **follow-up HTTP request** (after theme files are deployed) so the newly merged theme `functions.php` is loaded and CPTs are registered before `wp_insert_post`. In the same request as deploy, the theme has not been re-loaded, so running extraction there would create no posts.
 - Duplicate handling: existing posts are matched by title + CPT + taxonomy term; matches are updated, others created.
 
-**Backward compatibility:** Existing staging zips (e.g. CFA) do not include these keys, so behavior is unchanged. Only projects that explicitly add `extract_cpt_from_static` and `extract_cpt_pages` (e.g. via a build script prompt) enable extraction.
+**Backward compatibility:** Existing staging zips (e.g. CFA) do not include these keys, so behavior is unchanged. Only projects that explicitly add `extract_cpt_from_static` and (optionally) `extract_cpt_pages` or HTML hints enable extraction.
 
 **Plugin Code Reference:**
+- `VibeCodeCircle/plugins/vibecode-deploy/includes/Services/CptExtractionService.php`
 - `VibeCodeCircle/plugins/vibecode-deploy/includes/Services/ShortcodePlaceholderService.php:351`
+
+### CPT block hints (VIBECODE_CPT_BLOCK)
+
+**When to use:** To make extraction explicit and robust, wrap each block that represents **one CPT item** in the HTML with opening and closing comments. Only these blocks are parsed; any section without the wrapper is never extracted.
+
+**Format:**
+
+```html
+<!-- VIBECODE_CPT_BLOCK cpt="bgp_product" taxonomy="bgp_product_type" term="accessory" -->
+<div class="bgp-accessory-card">
+    <h3 class="bgp-accessory-title">Desulfurizer Unit</h3>
+    <p class="bgp-accessory-text">Remove H₂S for cleaner burning.</p>
+    <p class="bgp-accessory-price">8,500 KES</p>
+</div>
+<!-- /VIBECODE_CPT_BLOCK -->
+```
+
+- **Opening comment:** `<!-- VIBECODE_CPT_BLOCK cpt="..." taxonomy="..." term="..." -->` — attributes: `cpt` (required), `taxonomy` and `term` (optional, for assigning terms to the post).
+- **Block content:** The next node(s) until the closing comment (typically one wrapper div). The plugin parses this fragment and applies the field map (selectors) **within** the block to get `post_title`, `post_content`, and meta.
+- **Closing comment:** `<!-- /VIBECODE_CPT_BLOCK -->`
+- **Field mapping:** Either define **`cpt_field_maps`** in config (e.g. `post_title` → `.bgp-accessory-title`, `post_content` → `.bgp-accessory-text`, `price_meta` → `.bgp-accessory-price`) or rely on the plugin inferring from the first matching section in `extract_cpt_pages` for that CPT.
+
+See **CPT_HINTS_AND_SEED_PLAN.md** for full design and BGP examples.
+
+### Seeding / representative content
+
+To get a deployed site that looks like the final design (rather than empty list pages), use one or both of:
+
+1. **CPT extraction from static HTML (above):** Include **representative content** in the staging HTML. Use **hint-based** extraction (wrap each item in `VIBECODE_CPT_BLOCK` / `/VIBECODE_CPT_BLOCK`) and optionally `cpt_field_maps`, or use **selector-based** `extract_cpt_pages`. Deploy will create those as CPT posts. Ensure enough cards/sections so extraction creates the desired number of items per CPT.
+2. **Seed data (seed/*.json):** Add `seed/*.json` for CPT (and core `post`) content; no HTML parsing. See **Seed data** above.
+3. **Manual or scripted seed data (project-level):** After deploy, create CPT posts via WordPress admin, WP-CLI, or a one-off script. Optional; no plugin change required.
+
+**Seeding checklist (optional):**
+- [ ] If using hint-based extraction: each CPT item block is wrapped in `VIBECODE_CPT_BLOCK` / `/VIBECODE_CPT_BLOCK`; `cpt_field_maps` or matching `extract_cpt_pages` section defines selectors.
+- [ ] If using selector-based only: `extract_cpt_pages` rules and selectors match the HTML structure.
 
 ---
 

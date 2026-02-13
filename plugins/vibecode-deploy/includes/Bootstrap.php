@@ -43,6 +43,7 @@ final class Bootstrap {
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/ThemeDeployService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/TestDataService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/CptExtractionService.php';
+		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/SeedImportService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/HtmlTestPageService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/HtmlTestPageAuditService.php';
 		require_once VIBECODE_DEPLOY_PLUGIN_DIR . '/includes/Services/EtchWPComplianceService.php';
@@ -61,6 +62,55 @@ final class Bootstrap {
 
 		add_action( 'plugins_loaded', array( __CLASS__, 'register' ) );
 		add_action( 'init', array( __CLASS__, 'maybe_flush_rewrite_rules_deferred' ), 20 );
+		add_action( 'wp_ajax_vibecode_deploy_run_cpt_extraction', array( __CLASS__, 'ajax_run_cpt_extraction' ) );
+		add_action( 'wp_ajax_nopriv_vibecode_deploy_run_cpt_extraction', array( __CLASS__, 'ajax_run_cpt_extraction' ) );
+	}
+
+	/**
+	 * AJAX handler: run CPT extraction in a fresh request so the newly deployed theme (and its CPTs) is loaded.
+	 * Authenticated by one-time transient token set by DeployService.
+	 *
+	 * @return void
+	 */
+	public static function ajax_run_cpt_extraction(): void {
+		$token = isset( $_POST['token'] ) && is_string( $_POST['token'] ) ? sanitize_text_field( wp_unslash( $_POST['token'] ) ) : '';
+		if ( $token === '' ) {
+			wp_send_json_error( array( 'message' => 'Missing token' ) );
+		}
+
+		$transient_key = 'vibecode_deploy_cpt_extraction_' . $token;
+		$data          = get_transient( $transient_key );
+		delete_transient( $transient_key );
+		if ( ! is_array( $data ) || empty( $data['project_slug'] ) || empty( $data['fingerprint'] ) ) {
+			wp_send_json_error( array( 'message' => 'Invalid or expired token' ) );
+		}
+
+		$project_slug = sanitize_key( $data['project_slug'] );
+		$fingerprint  = sanitize_text_field( $data['fingerprint'] );
+		$build_root   = \VibeCode\Deploy\Services\BuildService::build_root_path( $project_slug, $fingerprint );
+		if ( ! is_dir( $build_root ) ) {
+			wp_send_json_error( array( 'message' => 'Build root not found' ) );
+		}
+
+		$config = \VibeCode\Deploy\Services\ShortcodePlaceholderService::load_config( $build_root );
+		if ( ! empty( $config ) && empty( $config['_error'] ) ) {
+			\VibeCode\Deploy\Services\SeedImportService::compute_and_save_seed_counts_from_config( $config, $project_slug );
+		}
+		$result = array( 'created' => 0, 'updated' => 0, 'errors' => array() );
+
+		if ( ! empty( $config['extract_cpt_from_static'] ) ) {
+			$extraction = \VibeCode\Deploy\Services\CptExtractionService::extract_from_build( $build_root, $config, $project_slug );
+			$result['created'] += (int) ( $extraction['created'] ?? 0 );
+			$result['updated'] += (int) ( $extraction['updated'] ?? 0 );
+			$result['errors']  = array_merge( $result['errors'], is_array( $extraction['errors'] ?? null ) ? $extraction['errors'] : array() );
+		}
+
+		$seed = \VibeCode\Deploy\Services\SeedImportService::import_from_build( $build_root, $project_slug );
+		$result['created'] += (int) ( $seed['created'] ?? 0 );
+		$result['updated'] += (int) ( $seed['updated'] ?? 0 );
+		$result['errors']   = array_merge( $result['errors'], is_array( $seed['errors'] ?? null ) ? $seed['errors'] : array() );
+
+		wp_send_json_success( $result );
 	}
 
 	/**

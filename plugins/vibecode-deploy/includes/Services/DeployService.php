@@ -451,6 +451,30 @@ final class DeployService {
 						}
 					}
 
+					// When processing home.html: warn if content before first <header> might be intended as part of header (e.g. top bar).
+					if ( $slug === 'home' && isset( $xpath ) ) {
+						$header_node = $xpath->query( '//header' )->item( 0 );
+						if ( $header_node instanceof \DOMNode ) {
+							$prev = $header_node->previousSibling;
+							while ( $prev !== null && $prev->nodeType !== XML_ELEMENT_NODE ) {
+								$prev = $prev->previousSibling;
+							}
+							if ( $prev instanceof \DOMElement ) {
+								$class = strtolower( (string) ( $prev->getAttribute( 'class' ) ?? '' ) );
+								$role  = strtolower( (string) ( $prev->getAttribute( 'role' ) ?? '' ) );
+								$is_header_like = (
+									$role === 'complementary'
+									|| strpos( $class, 'topbar' ) !== false
+									|| strpos( $class, 'banner' ) !== false
+									|| strpos( $class, 'announcement' ) !== false
+								);
+								if ( $is_header_like ) {
+									$warnings[] = 'home.html has content before the first <header> (e.g. top bar). Only the content inside <header> is used for the header template part. Move that content inside <header> if it should appear on every page.';
+								}
+							}
+						}
+					}
+
 					$assets = AssetService::extract_head_assets( $dom, $project_slug );
 					$css = isset( $assets['css'] ) && is_array( $assets['css'] ) ? $assets['css'] : array();
 					$js = isset( $assets['js'] ) && is_array( $assets['js'] ) ? $assets['js'] : array();
@@ -877,6 +901,9 @@ final class DeployService {
 		$active_before = BuildService::get_active_fingerprint( $project_slug );
 		$settings = Settings::get_all();
 		$placeholder_config = ShortcodePlaceholderService::load_config( $build_root );
+		if ( ! empty( $placeholder_config ) && empty( $placeholder_config['_error'] ) ) {
+			SeedImportService::compute_and_save_seed_counts_from_config( $placeholder_config, $project_slug );
+		}
 		$created_pages = array();
 		$updated_pages = array();
 		$created_template_parts = array();
@@ -1553,6 +1580,37 @@ final class DeployService {
 			), $project_slug );
 		}
 
+		// Deploy mu-plugins from staging scripts/mu-plugins/ to wp-content/mu-plugins/
+		$mu_plugins_src = $build_root . DIRECTORY_SEPARATOR . 'scripts' . DIRECTORY_SEPARATOR . 'mu-plugins';
+		if ( is_dir( $mu_plugins_src ) && is_readable( $mu_plugins_src ) ) {
+			$wp_mu = wp_normalize_path( WP_CONTENT_DIR . DIRECTORY_SEPARATOR . 'mu-plugins' );
+			if ( ! is_dir( $wp_mu ) ) {
+				wp_mkdir_p( $wp_mu );
+			}
+			$mu_copied = array();
+			$mu_entries = scandir( $mu_plugins_src );
+			if ( is_array( $mu_entries ) ) {
+				foreach ( $mu_entries as $entry ) {
+					if ( $entry === '.' || $entry === '..' ) {
+						continue;
+					}
+					$src_file = $mu_plugins_src . DIRECTORY_SEPARATOR . $entry;
+					if ( ! is_file( $src_file ) ) {
+						continue;
+					}
+					$dest_file = $wp_mu . DIRECTORY_SEPARATOR . $entry;
+					if ( copy( $src_file, $dest_file ) ) {
+						$mu_copied[] = $entry;
+					} else {
+						Logger::warning( 'Mu-plugin copy failed.', array( 'file' => $entry, 'dest' => $dest_file ), $project_slug );
+					}
+				}
+			}
+			if ( ! empty( $mu_copied ) ) {
+				Logger::info( 'Mu-plugins deployed from staging scripts/mu-plugins/.', array( 'copied' => $mu_copied ), $project_slug );
+			}
+		}
+
 		// Collect asset information from staging
 		$asset_info = array( 'css' => array(), 'js' => array() );
 		$css_dir = $build_root . '/css';
@@ -1608,10 +1666,45 @@ final class DeployService {
 			\VibeCode\Deploy\Logger::error( 'Unknown prefixed items validation failed.', array( 'errors' => $unknown_errors ), $project_slug );
 		}
 
-		// Optional: extract CPT posts from static HTML when staging was built with extract_cpt_from_static.
+		// Optional: extract CPT posts from static HTML and/or import seed/*.json.
+		// Run in a follow-up HTTP request so the newly deployed theme (and its CPT registrations) is loaded.
 		$cpt_extraction = array( 'created' => 0, 'updated' => 0, 'errors' => array() );
-		if ( ! empty( $placeholder_config['extract_cpt_from_static'] ) ) {
-			$cpt_extraction = CptExtractionService::extract_from_build( $build_root, $placeholder_config, $project_slug );
+		$run_cpt_or_seed = ! empty( $placeholder_config['extract_cpt_from_static'] )
+			|| ( is_dir( $build_root . DIRECTORY_SEPARATOR . 'seed' ) && is_readable( $build_root . DIRECTORY_SEPARATOR . 'seed' ) );
+		if ( $run_cpt_or_seed ) {
+			$token = bin2hex( random_bytes( 16 ) );
+			$transient_key = 'vibecode_deploy_cpt_extraction_' . $token;
+			set_transient( $transient_key, array(
+				'project_slug' => $project_slug,
+				'fingerprint'  => $fingerprint,
+			), 120 );
+
+			$ajax_url = admin_url( 'admin-ajax.php' );
+			$response = wp_remote_post( $ajax_url, array(
+				'timeout' => 60,
+				'blocking' => true,
+				'body'    => array(
+					'action' => 'vibecode_deploy_run_cpt_extraction',
+					'token'  => $token,
+				),
+			) );
+
+			$code = wp_remote_retrieve_response_code( $response );
+			$body = wp_remote_retrieve_body( $response );
+			$decoded = is_string( $body ) ? json_decode( $body, true ) : null;
+			if ( $code === 200 && is_array( $decoded ) && ! empty( $decoded['success'] ) && is_array( $decoded['data'] ?? null ) ) {
+				$cpt_extraction = array(
+					'created' => (int) ( $decoded['data']['created'] ?? 0 ),
+					'updated' => (int) ( $decoded['data']['updated'] ?? 0 ),
+					'errors'  => is_array( $decoded['data']['errors'] ?? null ) ? $decoded['data']['errors'] : array(),
+				);
+			} else {
+				$cpt_extraction['errors'][] = __( 'CPT extraction deferred or failed (theme may need to be loaded first).', 'vibecode-deploy' );
+				Logger::warning( 'CPT extraction internal request failed or returned invalid response.', array(
+					'response_code' => $code,
+					'body_preview'  => is_string( $body ) ? substr( $body, 0, 500 ) : '',
+				), $project_slug );
+			}
 		}
 
 		if ( $errors === 0 ) {

@@ -27,6 +27,9 @@ final class Staging {
 		'woff2',
 		'ttf',
 		'otf',
+		'sh',
+		'conf',
+		'htaccess',
 	);
 
 	private const REQUIRED_ROOT_OLD = 'vibecode-deploy-staging/';
@@ -44,6 +47,8 @@ final class Staging {
 		'js',
 		'resources',
 		'theme',
+		'seed',
+		'scripts',
 	);
 	private const ALLOWED_TOP_LEVEL_DIRS_NEW = array(
 		'pages',
